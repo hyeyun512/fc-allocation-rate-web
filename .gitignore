@@ -1,0 +1,11 @@
+node_modules
+.next
+out
+.env
+.env.local
+.vercel
+*.log
+*.tsbuildinfo
+
+# 참고용으로 넣어둔 원본 엑셀 (민감 데이터, 저장소에 커밋하지 않음)
+*.xlsx
