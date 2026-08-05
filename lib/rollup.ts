@@ -40,6 +40,21 @@ export function latestByPersonAndPeriod(rows: SubmissionRow[]): SubmissionRow[] 
   return Array.from(map.values());
 }
 
+// 같은 org_id + period 조합(조직 단위 제출, person_name이 null)에 대해 가장 최근 제출만 남긴다.
+// 조직 단위 배부율의 분기별 인원수·코멘트 이력을 보여주기 위해 사용.
+export function latestOrgByPeriod(rows: SubmissionRow[]): SubmissionRow[] {
+  const map = new Map<string, SubmissionRow>();
+  for (const row of rows) {
+    if (row.person_name !== null) continue;
+    const key = `${row.org_id}__${row.period}`;
+    const existing = map.get(key);
+    if (!existing || new Date(row.submitted_at) > new Date(existing.submitted_at)) {
+      map.set(key, row);
+    }
+  }
+  return Array.from(map.values());
+}
+
 // 개인별 제출이 있으면 인원수 가중평균, 없으면 조직 단위 제출값을 그대로 사용.
 export function computeRollup(
   orgLevelRow: SubmissionRow | null,

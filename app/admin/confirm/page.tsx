@@ -1,6 +1,6 @@
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { TARGETS, TargetKey } from "@/lib/targets";
-import { latestByPerson, latestByPersonAndPeriod, computeRollup, SubmissionRow } from "@/lib/rollup";
+import { latestByPerson, latestByPersonAndPeriod, latestOrgByPeriod, computeRollup, SubmissionRow } from "@/lib/rollup";
 import { OrgReviewData } from "./ConfirmReview";
 import { SurveyOrgData } from "../SurveyOverview";
 import ConfirmTabs from "./ConfirmTabs";
@@ -38,6 +38,14 @@ export default async function AdminConfirmPage() {
     .not("person_name", "is", null)
     .order("submitted_at", { ascending: false });
 
+  // 개인별 확인이 필요없는 조직(조직 단위 제출, person_name이 null)도 분기별 인원수·코멘트 이력을
+  // 보여주기 위해 전체 기간을 가져온다.
+  const { data: orgLevelSubmissions } = await supabase
+    .from("allocation_submissions")
+    .select("*")
+    .is("person_name", null)
+    .order("submitted_at", { ascending: false });
+
   const { data: rateRows } = await supabase.from("allocation_rate").select("*").order("quarter", { ascending: true });
 
   // HKR(관계사 제외)은 별도 설문 조직이 아니라 다른 본사 조직 값에서 자동계산되며,
@@ -61,6 +69,11 @@ export default async function AdminConfirmPage() {
   const subList = (submissions ?? []) as SubmissionRow[];
   const personSubList = (personSubmissions ?? []) as SubmissionRow[];
   const rates = rateRows ?? [];
+
+  const orgLevelHistoryMap = new Map<string, SubmissionRow>();
+  latestOrgByPeriod((orgLevelSubmissions ?? []) as SubmissionRow[]).forEach((r) => {
+    orgLevelHistoryMap.set(`${r.org_id}__${r.period}`, r);
+  });
 
   const reviewData: OrgReviewData[] = orgList.map((org) => {
     const orgSubs = subList.filter((s) => s.org_id === org.id);
@@ -123,11 +136,16 @@ export default async function AdminConfirmPage() {
       currentRate: currentRateRow ? toRateRecord(currentRateRow) : null,
       currentQuarter: currentRateRow?.quarter ?? null,
       personHistory: orgPersonHistory,
-      rateHistory: orgRateRows.map((r) => ({
-        quarter: r.quarter as string,
-        rates: toRateRecord(r),
-        total: Number(r.total) || 0,
-      })),
+      rateHistory: orgRateRows.map((r) => {
+        const orgSubRow = orgLevelHistoryMap.get(`${org.id}__${r.quarter}`);
+        return {
+          quarter: r.quarter as string,
+          rates: toRateRecord(r),
+          total: Number(r.total) || 0,
+          headcount: orgSubRow?.headcount ?? null,
+          note: orgSubRow?.note ?? null,
+        };
+      }),
       expat: null,
       children: [],
     };

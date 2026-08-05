@@ -27,6 +27,8 @@ export interface RateHistoryEntry {
   quarter: string;
   rates: Record<TargetKey, number>;
   total: number;
+  headcount?: number | null;
+  note?: string | null;
 }
 
 export interface CurrentPerson {
@@ -208,7 +210,7 @@ function computeHkr(honsaOrgs: OrgReviewData[]): RateMap {
   return r;
 }
 
-export function RateTableHead({ withClear }: { withClear?: boolean } = {}) {
+export function RateTableHead({ withClear, withNote }: { withClear?: boolean; withNote?: boolean } = {}) {
   return (
     <thead>
       <tr>
@@ -221,6 +223,7 @@ export function RateTableHead({ withClear }: { withClear?: boolean } = {}) {
           </th>
         ))}
         <th>TOTAL</th>
+        {withNote && <th>코멘트</th>}
       </tr>
     </thead>
   );
@@ -231,11 +234,15 @@ export function ReadOnlyRateRow({
   rec,
   headcount,
   showClearSlot,
+  withNote,
+  note,
 }: {
   label: string;
   rec: Record<TargetKey, number>;
   headcount?: number | null;
   showClearSlot?: boolean;
+  withNote?: boolean;
+  note?: string | null;
 }) {
   const total = recTotal(rec);
   return (
@@ -247,6 +254,15 @@ export function ReadOnlyRateRow({
         <td key={t.key}>{((rec[t.key] || 0) * 100).toFixed(1)}%</td>
       ))}
       <td className="total-col">{(total * 100).toFixed(1)}%</td>
+      {withNote && (
+        <td>
+          {note && (
+            <button className="av-note-btn" type="button">
+              i<span className="tip">{note}</span>
+            </button>
+          )}
+        </td>
+      )}
     </tr>
   );
 }
@@ -257,12 +273,24 @@ function EditableRateRow({
   onChange,
   headcount,
   onClear,
+  headcountEditable,
+  headcountValue,
+  onHeadcountChange,
+  withNote,
+  noteValue,
+  onNoteChange,
 }: {
   label: string;
   rates: RateMap;
   onChange: (key: TargetKey, value: string) => void;
   headcount?: number | null;
   onClear?: () => void;
+  headcountEditable?: boolean;
+  headcountValue?: string;
+  onHeadcountChange?: (value: string) => void;
+  withNote?: boolean;
+  noteValue?: string;
+  onNoteChange?: (value: string) => void;
 }) {
   const total = totalOf(rates);
   const ok = Math.abs(total - 1) < 0.005 || total === 0;
@@ -276,7 +304,21 @@ function EditableRateRow({
         </td>
       )}
       <td>{label}</td>
-      <td>{headcount != null ? `${headcount}명` : "-"}</td>
+      <td>
+        {headcountEditable ? (
+          <input
+            type="number"
+            min="0"
+            value={headcountValue ?? ""}
+            onChange={(e) => onHeadcountChange?.(e.target.value)}
+            style={{ width: 48 }}
+          />
+        ) : headcount != null ? (
+          `${headcount}명`
+        ) : (
+          "-"
+        )}
+      </td>
       {TARGETS.map((t, i) => (
         <td key={t.key}>
           <div className="pct-input">
@@ -303,6 +345,16 @@ function EditableRateRow({
         </td>
       ))}
       <td className={`total-col ${ok ? "total-ok" : "total-bad"}`}>{(total * 100).toFixed(1)}%</td>
+      {withNote && (
+        <td>
+          <input
+            value={noteValue ?? ""}
+            onChange={(e) => onNoteChange?.(e.target.value)}
+            placeholder="코멘트"
+            style={{ width: 120 }}
+          />
+        </td>
+      )}
     </tr>
   );
 }
@@ -593,7 +645,10 @@ function OrgDetail({
   }
 
   function loadPreviousOrgRate() {
-    if (previousOrgRate) setOrgRates(toRateMap(previousOrgRate.rates));
+    if (!previousOrgRate) return;
+    setOrgRates(toRateMap(previousOrgRate.rates));
+    setOrgHeadcountInput(previousOrgRate.headcount != null ? String(previousOrgRate.headcount) : "");
+    setOrgNoteInput(previousOrgRate.note ?? "");
   }
 
   const orgEditable = usesPersonTable ? false : confirmed ? orgUnlocked : true;
@@ -749,55 +804,25 @@ function OrgDetail({
         <div className="panel-sub" style={{ fontWeight: 700, color: "#1a202c", margin: 0 }}>
           ■ 조직별 리소스 배부율{hasExpat ? " (법인분)" : ""}
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-          {!usesPersonTable && orgEditable && (
-            <>
-              <label className="field-hint" style={{ display: "flex", alignItems: "center", gap: 4, margin: 0 }}>
-                인원수
-                <input
-                  type="number"
-                  min="0"
-                  value={orgHeadcountInput}
-                  onChange={(e) => setOrgHeadcountInput(e.target.value)}
-                  style={{ width: 56 }}
-                />
-              </label>
-              <label className="field-hint" style={{ display: "flex", alignItems: "center", gap: 4, margin: 0 }}>
-                메모
-                <input
-                  value={orgNoteInput}
-                  onChange={(e) => setOrgNoteInput(e.target.value)}
-                  placeholder="특이사항"
-                  style={{ width: 160 }}
-                />
-              </label>
-            </>
-          )}
-          {!usesPersonTable && !orgEditable && (orgHeadcountInput || orgNoteInput) && (
-            <span className="field-hint">
-              {orgHeadcountInput && `인원수: ${orgHeadcountInput}명`}
-              {orgHeadcountInput && orgNoteInput ? " · " : ""}
-              {orgNoteInput && `메모: ${orgNoteInput}`}
-            </span>
-          )}
-          {!usesPersonTable && orgEditable && previousOrgRate && (
-            <button className="btn btn-secondary btn-sm" onClick={loadPreviousOrgRate}>
-              전분기 데이터 끌고오기
-            </button>
-          )}
-        </div>
+        {!usesPersonTable && orgEditable && previousOrgRate && (
+          <button className="btn btn-secondary btn-sm" onClick={loadPreviousOrgRate}>
+            전분기 데이터 끌고오기
+          </button>
+        )}
       </div>
       <div className="tbl-scroll" style={{ marginBottom: 12 }}>
         <table className="rate-tbl">
-          <RateTableHead withClear={orgEditable} />
+          <RateTableHead withClear={orgEditable} withNote={!usesPersonTable} />
           <tbody>
             {pastRateHistory.map((h) => (
               <ReadOnlyRateRow
                 key={h.quarter}
                 label={h.quarter}
                 rec={h.rates}
-                headcount={personHeadcountForQuarter(item.personHistory, h.quarter, true)}
+                headcount={usesPersonTable ? personHeadcountForQuarter(item.personHistory, h.quarter, true) : h.headcount}
                 showClearSlot={orgEditable}
+                withNote={!usesPersonTable}
+                note={h.note}
               />
             ))}
             {orgEditable ? (
@@ -807,12 +832,20 @@ function OrgDetail({
                 onChange={updateOrgRate}
                 headcount={currentOrgHeadcount}
                 onClear={() => setOrgRates(emptyRates())}
+                headcountEditable={!usesPersonTable}
+                headcountValue={orgHeadcountInput}
+                onHeadcountChange={setOrgHeadcountInput}
+                withNote={!usesPersonTable}
+                noteValue={orgNoteInput}
+                onNoteChange={setOrgNoteInput}
               />
             ) : (
               <ReadOnlyRateRow
                 label={`${period}${usesPersonTable ? " (자동계산)" : ""}`}
                 rec={toNumRec(displayOrgRates)}
                 headcount={currentOrgHeadcount}
+                withNote={!usesPersonTable}
+                note={orgNoteInput || null}
               />
             )}
           </tbody>
