@@ -53,7 +53,7 @@ a{color:inherit}
 .rate-tbl .total-col{font-weight:700}
 .rate-tbl .total-ok{color:#16a34a}
 .rate-tbl .total-bad{color:#dc2626}
-.tbl-scroll{overflow-x:auto}
+.tbl-scroll{overflow-x:auto;overflow-y:visible}
 
 .person-row-actions{display:flex;justify-content:flex-end;margin-bottom:12px}
 
