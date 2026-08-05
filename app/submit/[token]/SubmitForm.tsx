@@ -194,6 +194,8 @@ export default function SubmitForm({
   const expatPersons = persons.filter((p) => p.role === "주재원");
   const displayOrgRates = usesPersonTable ? averageFromPersons(legalPersons) : orgRates;
   const displayExpatRates = hasExpat ? averageFromPersons(expatPersons) : null;
+  // 개인별 조사 조직은 인원수를 별도로 입력받지 않고 입력된 행 수(법인분)로 자동 계산한다.
+  const autoHeadcount = legalPersons.filter((p) => p.name.trim()).length;
 
   function updateOrgRate(key: TargetKey, value: string) {
     setOrgRates((r) => ({ ...r, [key]: value }));
@@ -266,7 +268,7 @@ export default function SubmitForm({
         body: JSON.stringify({
           token,
           submittedBy,
-          headcount: headcount ? Number(headcount) : null,
+          headcount: usesPersonTable ? autoHeadcount : headcount ? Number(headcount) : null,
           note,
           orgRates: displayOrgRates,
           persons: persons.map((p) => ({
@@ -321,8 +323,12 @@ export default function SubmitForm({
             <input value={submittedBy} onChange={(e) => setSubmittedBy(e.target.value)} placeholder="예: 이용길 팀장님" />
           </div>
           <div className="field">
-            <label>조직 전체 인원수</label>
-            <input type="number" min="0" value={headcount} onChange={(e) => setHeadcount(e.target.value)} placeholder="예: 3" />
+            <label>조직 전체 인원수{usesPersonTable && " (자동 계산)"}</label>
+            {usesPersonTable ? (
+              <input type="number" value={autoHeadcount} disabled />
+            ) : (
+              <input type="number" min="0" value={headcount} onChange={(e) => setHeadcount(e.target.value)} placeholder="예: 3" />
+            )}
           </div>
         </div>
 

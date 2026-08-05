@@ -1,4 +1,5 @@
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
+import { sortQuarters } from "@/lib/quarter";
 import AllocationView, { AllocRateRow } from "./AllocationView";
 
 export const dynamic = "force-dynamic";
@@ -14,7 +15,7 @@ export default async function AdminViewPage() {
     .order("basis", { ascending: true });
 
   const allRows = (rows ?? []) as AllocRateRow[];
-  const quarters = Array.from(new Set(allRows.map((r) => r.quarter))).sort();
+  const quarters = sortQuarters(Array.from(new Set(allRows.map((r) => r.quarter))));
 
   const dataByQuarter: Record<string, AllocRateRow[]> = {};
   quarters.forEach((q) => {

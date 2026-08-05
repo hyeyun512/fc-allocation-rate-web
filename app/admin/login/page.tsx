@@ -25,7 +25,7 @@ function LoginForm() {
       setError(json.error || "로그인에 실패했습니다.");
       return;
     }
-    router.push(searchParams.get("next") || "/admin");
+    router.push(searchParams.get("next") || "/admin/confirm");
     router.refresh();
   }
 

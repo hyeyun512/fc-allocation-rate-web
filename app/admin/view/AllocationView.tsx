@@ -4,6 +4,7 @@ import React, { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import AdminNav from "../AdminNav";
 import { TARGETS, TargetKey } from "@/lib/targets";
+import { parseQuarter, prettyQuarterLabel, shortQuarterLabel } from "@/lib/quarter";
 
 export interface AllocRateRow extends Partial<Record<TargetKey, number | null>> {
   quarter: string;
@@ -27,16 +28,27 @@ interface DeltaRow {
   note: string | null;
 }
 
-const DIVISION_ORDER = ["본사", "주재원", "법인", "건물", "IT", "기타"];
+const DIVISION_ORDER = ["본사", "주재원", "법인", "건물", "IT", "인원수", "ID수", "기타", "직접비"];
+const DIVISION_LABEL: Record<string, string> = {
+  본사: "리소스배부율-본사",
+  주재원: "리소스배부율-주재원",
+  법인: "리소스배부율-법인",
+  건물: "자가사용(건물)",
+  인원수: "IT-인원수",
+  ID수: "IT-ID",
+  기타: "고정비율-기타",
+  직접비: "고정비율-직접비",
+};
+function divisionLabel(division: string): string {
+  return DIVISION_LABEL[division] ?? division;
+}
 const TYPE_COLOR: Record<string, string> = {
   리소스배부율: "var(--cat-green)",
-  "인원수비율(Hu)": "var(--cat-magenta)",
-  EVCS재료비비율: "var(--cat-yellow)",
-  "인원수비율(All)": "var(--cat-aqua)",
-  별도배부율: "var(--cat-orange)",
-  직접비: "var(--cat-violet)",
+  "자가사용(건물)": "var(--cat-orange)",
+  IT: "var(--cat-aqua)",
+  고정비율: "var(--cat-violet)",
 };
-const TYPE_ORDER = ["리소스배부율", "인원수비율(Hu)", "EVCS재료비비율", "인원수비율(All)", "별도배부율", "직접비"];
+const TYPE_ORDER = ["리소스배부율", "자가사용(건물)", "IT", "고정비율"];
 const STATUS_LABEL: Record<string, string> = { new: "신규", removed: "삭제", changed: "변경", same: "동일" };
 
 function sortRows<T extends { division: string; basis: string }>(rows: T[]): T[] {
@@ -125,7 +137,14 @@ export default function AllocationView({
   const [changedOnly, setChangedOnly] = useState(false);
 
   const isDelta = view === "delta";
-  const deltaPair: [string, string] | null = quarters.length >= 2 ? [quarters[quarters.length - 2], quarters[quarters.length - 1]] : null;
+  // 변화 탭은 항상 확정치(청구) 두 분기를 비교한다. 청구 분기가 2개 미만이면 마지막 두 분기로 대체.
+  const billingQuarters = quarters.filter((q) => parseQuarter(q).billing);
+  const deltaPair: [string, string] | null =
+    billingQuarters.length >= 2
+      ? [billingQuarters[billingQuarters.length - 2], billingQuarters[billingQuarters.length - 1]]
+      : quarters.length >= 2
+      ? [quarters[quarters.length - 2], quarters[quarters.length - 1]]
+      : null;
   const delta = useMemo(() => buildDeltaRows(deltaPair, dataByQuarter), [deltaPair, dataByQuarter]);
 
   const quarterRows = sortRows(dataByQuarter[view] ?? []);
@@ -180,10 +199,24 @@ export default function AllocationView({
     const removed = deltaRows.filter((r) => r.status === "removed").length;
     const same = deltaRows.filter((r) => r.status === "same").length;
     stats = [
-      { label: "비교 대상 배부기준", value: `${deltaRows.length}건`, sub: deltaPair ? `${deltaPair[0]} ∪ ${deltaPair[1]} 합집합 기준` : "" },
+      {
+        label: "비교 대상 배부기준",
+        value: `${deltaRows.length}건`,
+        sub: deltaPair ? `${prettyQuarterLabel(deltaPair[0])} ∪ ${prettyQuarterLabel(deltaPair[1])} 합집합 기준` : "",
+      },
       { label: "값 변경", value: `${changed}건`, sub: `${same}건은 변동 없음` },
-      { label: `신규 추가 (${deltaPair?.[1] ?? ""})`, value: `${added}건`, sub: added ? "이전 분기에 없던 배부기준" : "없음", ok: added === 0 },
-      { label: `삭제됨 (${deltaPair?.[1] ?? ""})`, value: `${removed}건`, sub: removed ? "이번 분기에서 제외됨" : "없음", ok: removed === 0 },
+      {
+        label: `신규 추가 (${deltaPair ? prettyQuarterLabel(deltaPair[1]) : ""})`,
+        value: `${added}건`,
+        sub: added ? "이전 분기에 없던 배부기준" : "없음",
+        ok: added === 0,
+      },
+      {
+        label: `삭제됨 (${deltaPair ? prettyQuarterLabel(deltaPair[1]) : ""})`,
+        value: `${removed}건`,
+        sub: removed ? "이번 분기에서 제외됨" : "없음",
+        ok: removed === 0,
+      },
     ];
   } else {
     const total = quarterRows.length;
@@ -192,7 +225,7 @@ export default function AllocationView({
     stats = [
       { label: "배부기준", value: `${total}건`, sub: `${DIVISION_ORDER.length}개 구분 · ${TYPE_ORDER.length}개 유형` },
       { label: "적용 법인", value: `${TARGETS.length}개`, sub: "STB ~ H.Networks" },
-      { label: "배부 유형", value: `${TYPE_ORDER.length}종`, sub: "리소스 · 인원수 · 직접비 등" },
+      { label: "배부 유형", value: `${TYPE_ORDER.length}종`, sub: "리소스 · 건물 · IT · 고정비율" },
       { label: "합계 검증", value: `${validated}/${total}`, sub: excluded ? `${excluded}건 실적 제외 (설계상 total=0)` : "전건 100% 일치", ok: true },
     ];
   }
@@ -217,23 +250,25 @@ export default function AllocationView({
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 12 }}>
           <div>
             <div className="panel-title">
-              {isDelta ? `배부율 변화 — ${deltaPair?.[0]} → ${deltaPair?.[1]}` : `${view} 배부율 마스터`}
+              {isDelta
+                ? `배부율 변화 — ${prettyQuarterLabel(deltaPair?.[0] ?? "")} → ${prettyQuarterLabel(deltaPair?.[1] ?? "")}`
+                : `${prettyQuarterLabel(view)} 배부율 마스터`}
             </div>
             <div className="panel-sub" style={{ maxWidth: 640 }}>
               {isDelta
-                ? `${deltaPair?.[0]} 대비 ${deltaPair?.[1]} 배부기준 변경 내역을 한눈에 비교합니다. 법인별 배분 비율(%p) 증감을 색으로 표시합니다.`
+                ? `${prettyQuarterLabel(deltaPair?.[0] ?? "")} 대비 ${prettyQuarterLabel(deltaPair?.[1] ?? "")} 배부기준 변경 내역을 한눈에 비교합니다. 법인별 배분 비율(%p) 증감을 색으로 표시합니다.`
                 : `전체 조직 ${quarterRows.length}건의 리소스·인원수·직접비 배부율을 한 화면에서 비교합니다.`}
             </div>
           </div>
           <div className="av-qswitch" role="group" aria-label="분기 선택">
             {quarters.map((q) => (
               <button key={q} type="button" className={view === q ? "active" : ""} onClick={() => setView(q)}>
-                {q}
+                {prettyQuarterLabel(q)}
               </button>
             ))}
             {deltaPair && (
               <button type="button" className={`mode-delta ${isDelta ? "active" : ""}`} onClick={() => setView("delta")}>
-                변화 ({deltaPair[1]}-{deltaPair[0]})
+                변화({shortQuarterLabel(deltaPair[1])}-{shortQuarterLabel(deltaPair[0])})(청구)
               </button>
             )}
           </div>
@@ -270,7 +305,7 @@ export default function AllocationView({
               className={`av-chip ${divisions.has(d) ? "active" : ""}`}
               onClick={() => toggleSet(divisions, setDivisions, d)}
             >
-              {d} ({n})
+              {divisionLabel(d)} ({n})
             </button>
           ))}
         </div>
@@ -314,7 +349,7 @@ export default function AllocationView({
         )}
         {isDelta && (
           <div className="av-seq-legend">
-            <span>{deltaPair?.[0]} → {deltaPair?.[1]} 변화</span>
+            <span>{deltaPair ? prettyQuarterLabel(deltaPair[0]) : ""} → {deltaPair ? prettyQuarterLabel(deltaPair[1]) : ""} 변화</span>
             <div className="av-div-bar" />
             <span>감소 ← 0 → 증가 (최대 ±{(delta.scale * 100).toFixed(0)}%p 기준)</span>
           </div>
@@ -365,7 +400,7 @@ export default function AllocationView({
                         return (
                           <tr className="group-row" key={`grp-${row.division}`}>
                             <td className="col-basis">
-                              {row.division} <span className="grp-count">· {count}건</span>
+                              {divisionLabel(row.division)} <span className="grp-count">· {count}건</span>
                             </td>
                             <td colSpan={TARGETS.length + (isDelta ? 1 : 3)}></td>
                           </tr>
@@ -390,7 +425,15 @@ export default function AllocationView({
                             const solo = r.q1 ? r.q1[t.key] : r.q2 ? r.q2[t.key] : null;
                             if (solo === null || solo === undefined) return <td key={t.key} className="heat-cell na"></td>;
                             return (
-                              <td key={t.key} className="heat-cell delta-solo" title={r.status === "removed" ? `${deltaPair?.[0]} 값` : `${deltaPair?.[1]} 값`}>
+                              <td
+                                key={t.key}
+                                className="heat-cell delta-solo"
+                                title={
+                                  r.status === "removed"
+                                    ? `${deltaPair ? prettyQuarterLabel(deltaPair[0]) : ""} 값`
+                                    : `${deltaPair ? prettyQuarterLabel(deltaPair[1]) : ""} 값`
+                                }
+                              >
                                 ({fmtPct(solo, solo < 0.01 ? 1 : 0)})
                               </td>
                             );
@@ -406,7 +449,7 @@ export default function AllocationView({
                               key={t.key}
                               className={`heat-cell ${cls}${strong}`}
                               style={{ ["--dv" as any]: dv.toFixed(4) }}
-                              title={`${r.basis} → ${t.label}: ${deltaPair?.[0]}→${deltaPair?.[1]} ${d >= 0 ? "+" : ""}${(d * 100).toFixed(2)}%p`}
+                              title={`${r.basis} → ${t.label}: ${deltaPair ? prettyQuarterLabel(deltaPair[0]) : ""}→${deltaPair ? prettyQuarterLabel(deltaPair[1]) : ""} ${d >= 0 ? "+" : ""}${(d * 100).toFixed(2)}%p`}
                             >
                               {fmtDelta(d)}
                             </td>
