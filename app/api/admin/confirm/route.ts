@@ -11,7 +11,7 @@ interface PersonPayload {
 }
 
 export async function POST(req: NextRequest) {
-  const { orgId, period, version, rates, persons } = await req.json();
+  const { orgId, period, version, rates, persons, orgHeadcount, orgNote } = await req.json();
 
   if (!orgId || !period || !rates) {
     return NextResponse.json({ error: "필수 항목이 누락되었습니다." }, { status: 400 });
@@ -80,6 +80,28 @@ export async function POST(req: NextRequest) {
       if (personError) {
         return NextResponse.json({ error: personError.message }, { status: 500 });
       }
+    }
+  }
+
+  // 개인별 입력이 없는 조직(조직 단위 배부율)도 인원수·메모를 조직 단위 행(person_name=null)으로 남겨
+  // 다음 라운드에 조회·재확정 시 이어서 볼 수 있게 한다.
+  if (!Array.isArray(persons) && (orgHeadcount !== undefined || orgNote !== undefined)) {
+    const orgSubmissionRow = {
+      org_id: orgId,
+      period,
+      version,
+      person_name: null,
+      sub_team: null,
+      headcount: orgHeadcount ?? null,
+      ...parsed,
+      total: sumTargets(parsed),
+      note: orgNote || null,
+      submitted_by: "관리자 확정 (검토및확정)",
+      status: "confirmed",
+    };
+    const { error: orgSubmissionError } = await supabase.from("allocation_submissions").insert(orgSubmissionRow);
+    if (orgSubmissionError) {
+      return NextResponse.json({ error: orgSubmissionError.message }, { status: 500 });
     }
   }
 

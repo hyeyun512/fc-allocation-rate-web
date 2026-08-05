@@ -111,7 +111,7 @@ export default function ConfirmTabs({
             </div>
           )}
           <button className="btn btn-secondary" disabled={savingSettings} onClick={saveSettings}>
-            {savingSettings ? "저장 중..." : "저장"}
+            {savingSettings ? "선택 중..." : "선택"}
           </button>
         </div>
         <div className="field-hint" style={{ marginTop: 6 }}>

@@ -111,6 +111,8 @@ export default async function AdminConfirmPage() {
       confirmedThisPeriod,
       rollup,
       currentOrgSubmission: orgLevelRow ? toRateRecord(orgLevelRow) : null,
+      submittedHeadcount: orgLevelRow?.headcount ?? null,
+      submittedNote: orgLevelRow?.note ?? null,
       currentPersons: personRows.map((p) => ({
         name: p.person_name as string,
         headcount: p.headcount,

@@ -53,6 +53,8 @@ export interface OrgReviewData {
   confirmedThisPeriod: boolean;
   rollup: Record<TargetKey, number>;
   currentOrgSubmission: Record<TargetKey, number> | null;
+  submittedHeadcount: number | null;
+  submittedNote: string | null;
   currentPersons: CurrentPerson[];
   currentRate: Record<TargetKey, number> | null;
   currentQuarter: string | null;
@@ -561,6 +563,8 @@ function OrgDetail({
   const [orgUnlocked, setOrgUnlocked] = useState(false);
   const [personsUnlocked, setPersonsUnlocked] = useState(false);
   const [orgRates, setOrgRates] = useState<RateMap>(() => toRateMap(item.currentOrgSubmission ?? item.currentRate));
+  const [orgHeadcountInput, setOrgHeadcountInput] = useState(() => (item.submittedHeadcount != null ? String(item.submittedHeadcount) : ""));
+  const [orgNoteInput, setOrgNoteInput] = useState(() => item.submittedNote ?? "");
   const [persons, setPersons] = useState<PersonEditRow[]>(() => initialPersons(item));
   const [confirming, setConfirming] = useState(false);
   const [confirmed, setConfirmed] = useState(item.confirmedThisPeriod && (!item.expat || item.expat.confirmedThisPeriod));
@@ -606,7 +610,11 @@ function OrgDetail({
     if (named.length === 0) return null;
     return named.reduce((s, p) => s + (Number(p.headcount) || 1), 0);
   }
-  const currentOrgHeadcount = usesPersonTable ? namedHeadcountSum(legalPersons) : null;
+  const currentOrgHeadcount = usesPersonTable
+    ? namedHeadcountSum(legalPersons)
+    : orgHeadcountInput.trim() !== ""
+    ? Number(orgHeadcountInput)
+    : null;
   const currentExpatHeadcount = hasExpat ? namedHeadcountSum(expatPersons) : null;
 
   function updateOrgRate(key: TargetKey, value: string) {
@@ -676,6 +684,8 @@ function OrgDetail({
           version,
           rates: computedOrgRates,
           persons: usesPersonTable ? toPersonPayload(legalPersons) : undefined,
+          orgHeadcount: usesPersonTable ? undefined : orgHeadcountInput.trim() ? Number(orgHeadcountInput) : null,
+          orgNote: usesPersonTable ? undefined : orgNoteInput || null,
         }),
       });
       const json = await res.json();
@@ -739,11 +749,43 @@ function OrgDetail({
         <div className="panel-sub" style={{ fontWeight: 700, color: "#1a202c", margin: 0 }}>
           ■ 조직별 리소스 배부율{hasExpat ? " (법인분)" : ""}
         </div>
-        {!usesPersonTable && orgEditable && previousOrgRate && (
-          <button className="btn btn-secondary btn-sm" onClick={loadPreviousOrgRate}>
-            전분기 데이터 끌고오기
-          </button>
-        )}
+        <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+          {!usesPersonTable && orgEditable && (
+            <>
+              <label className="field-hint" style={{ display: "flex", alignItems: "center", gap: 4, margin: 0 }}>
+                인원수
+                <input
+                  type="number"
+                  min="0"
+                  value={orgHeadcountInput}
+                  onChange={(e) => setOrgHeadcountInput(e.target.value)}
+                  style={{ width: 56 }}
+                />
+              </label>
+              <label className="field-hint" style={{ display: "flex", alignItems: "center", gap: 4, margin: 0 }}>
+                메모
+                <input
+                  value={orgNoteInput}
+                  onChange={(e) => setOrgNoteInput(e.target.value)}
+                  placeholder="특이사항"
+                  style={{ width: 160 }}
+                />
+              </label>
+            </>
+          )}
+          {!usesPersonTable && !orgEditable && (orgHeadcountInput || orgNoteInput) && (
+            <span className="field-hint">
+              {orgHeadcountInput && `인원수: ${orgHeadcountInput}명`}
+              {orgHeadcountInput && orgNoteInput ? " · " : ""}
+              {orgNoteInput && `메모: ${orgNoteInput}`}
+            </span>
+          )}
+          {!usesPersonTable && orgEditable && previousOrgRate && (
+            <button className="btn btn-secondary btn-sm" onClick={loadPreviousOrgRate}>
+              전분기 데이터 끌고오기
+            </button>
+          )}
+        </div>
       </div>
       <div className="tbl-scroll" style={{ marginBottom: 12 }}>
         <table className="rate-tbl">
