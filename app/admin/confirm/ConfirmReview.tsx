@@ -69,6 +69,16 @@ export interface OrgReviewData {
 
 type RateMap = Record<TargetKey, string>;
 
+interface PersonHistoryRow {
+  name: string;
+  period: string;
+  headcount: number | null;
+  rates: Record<TargetKey, number>;
+  total: number;
+  note: string | null;
+  role: PersonRole;
+}
+
 interface PersonEditRow {
   key: string;
   name: string;
@@ -645,6 +655,89 @@ function OrgDetail({
   const previousPersonsForOrg = prevPeriod ? item.personHistory.filter((h) => h.period === prevPeriod) : [];
   const previousOrgRate = prevPeriod ? pastRateHistory.find((h) => h.quarter === prevPeriod) ?? null : null;
 
+  // 개인별 과거 이력(법인+주재원)을 하나로 합쳐, 현재 조회 중인 분기를 기준으로
+  // 시간상 이전/이후로 나눈다 — 항상 연도->분기 순으로 표시하기 위해
+  // "과거 이력 표" 다음에 "현재 분기"를 무조건 붙이지 않고, 현재 분기보다 나중 분기가
+  // 이미 있으면 그 이후 이력은 현재 분기 아래에 별도로 보여준다.
+  const personCombinedHistory: PersonHistoryRow[] = [
+    ...pastPersonHistory,
+    ...pastExpatHistory.map((h) => ({
+      name: `(${item.expat!.org.basis})`,
+      period: h.quarter,
+      headcount: 1,
+      rates: h.rates,
+      total: h.total,
+      note: null as string | null,
+      role: "주재원" as PersonRole,
+    })),
+  ];
+  const personQuarterOrder = orderedQuarters(personCombinedHistory.map((h) => h.period), period);
+  const currentQuarterIdx = personQuarterOrder.indexOf(period);
+  const beforeQuarterSet = new Set(personQuarterOrder.slice(0, currentQuarterIdx));
+  const afterQuarterSet = new Set(personQuarterOrder.slice(currentQuarterIdx + 1));
+  const personRowSort = (a: PersonHistoryRow, b: PersonHistoryRow) =>
+    personQuarterOrder.indexOf(a.period) - personQuarterOrder.indexOf(b.period) || a.name.localeCompare(b.name);
+  const beforePersonRows = personCombinedHistory.filter((r) => beforeQuarterSet.has(r.period)).sort(personRowSort);
+  const afterPersonRows = personCombinedHistory.filter((r) => afterQuarterSet.has(r.period)).sort(personRowSort);
+
+  function renderPersonHistoryTable(rows: PersonHistoryRow[]) {
+    if (rows.length === 0) return null;
+    let lastPeriod: string | null = null;
+    return (
+      <div className="tbl-scroll" style={{ marginBottom: 12 }}>
+        <table className="rate-tbl">
+          <thead>
+            <tr>
+              <th style={{ textAlign: "left" }}>이름</th>
+              <th>인원수</th>
+              {hasExpat && <th>구분</th>}
+              {TARGETS.map((t) => (
+                <th key={t.key} className={t.group === "humax" ? "grp-humax" : "grp-affiliate"}>
+                  {t.label}
+                </th>
+              ))}
+              <th>TOTAL</th>
+              <th>코멘트</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((p) => {
+              const newPeriod = p.period !== lastPeriod;
+              lastPeriod = p.period;
+              return (
+                <Fragment key={`${p.name}-${p.period}-${p.role}`}>
+                  {newPeriod && (
+                    <tr className="ro-row">
+                      <td colSpan={PERSON_COLS - (hasExpat ? 0 : 1)} style={{ textAlign: "left", fontWeight: 700 }}>
+                        {p.period}
+                      </td>
+                    </tr>
+                  )}
+                  <tr className="ro-row">
+                    <td style={{ textAlign: "left" }}>{p.name}</td>
+                    <td>{p.headcount ?? "-"}</td>
+                    {hasExpat && <td>{p.role}</td>}
+                    {TARGETS.map((t) => (
+                      <td key={t.key}>{((p.rates[t.key] || 0) * 100).toFixed(1)}%</td>
+                    ))}
+                    <td className="total-col">{(p.total * 100).toFixed(1)}%</td>
+                    <td>
+                      {p.note && (
+                        <button className="av-note-btn" type="button">
+                          i<span className="tip">{p.note}</span>
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                </Fragment>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    );
+  }
+
   function loadPreviousPersons() {
     setPersons(
       previousPersonsForOrg.map((p, i) => ({
@@ -921,76 +1014,7 @@ function OrgDetail({
             ■ 개인별 리소스 배부율{hasExpat ? " (법인/주재원 함께)" : ""}
           </div>
 
-          {(pastPersonHistory.length > 0 || pastExpatHistory.length > 0) && (
-            <div className="tbl-scroll" style={{ marginBottom: 12 }}>
-              <table className="rate-tbl">
-                <thead>
-                  <tr>
-                    <th style={{ textAlign: "left" }}>이름</th>
-                    <th>인원수</th>
-                    {hasExpat && <th>구분</th>}
-                    {TARGETS.map((t) => (
-                      <th key={t.key} className={t.group === "humax" ? "grp-humax" : "grp-affiliate"}>
-                        {t.label}
-                      </th>
-                    ))}
-                    <th>TOTAL</th>
-                    <th>코멘트</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {(() => {
-                    type Row = { name: string; period: string; headcount: number | null; rates: Record<TargetKey, number>; total: number; note: string | null; role: PersonRole };
-                    const combined: Row[] = [
-                      ...pastPersonHistory,
-                      ...pastExpatHistory.map((h) => ({
-                        name: `(${item.expat!.org.basis})`,
-                        period: h.quarter,
-                        headcount: 1,
-                        rates: h.rates,
-                        total: h.total,
-                        note: null,
-                        role: "주재원" as PersonRole,
-                      })),
-                    ].sort((a, b) => a.period.localeCompare(b.period) || a.name.localeCompare(b.name));
-
-                    let lastPeriod: string | null = null;
-                    return combined.map((p) => {
-                      const newPeriod = p.period !== lastPeriod;
-                      lastPeriod = p.period;
-                      return (
-                        <Fragment key={`${p.name}-${p.period}-${p.role}`}>
-                          {newPeriod && (
-                            <tr className="ro-row">
-                              <td colSpan={PERSON_COLS - (hasExpat ? 0 : 1)} style={{ textAlign: "left", fontWeight: 700 }}>
-                                {p.period}
-                              </td>
-                            </tr>
-                          )}
-                          <tr className="ro-row">
-                            <td style={{ textAlign: "left" }}>{p.name}</td>
-                            <td>{p.headcount ?? "-"}</td>
-                            {hasExpat && <td>{p.role}</td>}
-                            {TARGETS.map((t) => (
-                              <td key={t.key}>{((p.rates[t.key] || 0) * 100).toFixed(1)}%</td>
-                            ))}
-                            <td className="total-col">{(p.total * 100).toFixed(1)}%</td>
-                            <td>
-                              {p.note && (
-                                <button className="av-note-btn" type="button">
-                                  i<span className="tip">{p.note}</span>
-                                </button>
-                              )}
-                            </td>
-                          </tr>
-                        </Fragment>
-                      );
-                    });
-                  })()}
-                </tbody>
-              </table>
-            </div>
-          )}
+          {renderPersonHistoryTable(beforePersonRows)}
 
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8, marginBottom: 8 }}>
             <div className="field-hint" style={{ fontWeight: 700, color: personsEditable ? "#2563eb" : "#1a202c", margin: 0 }}>
@@ -1151,6 +1175,7 @@ function OrgDetail({
               </table>
             </div>
           )}
+          {renderPersonHistoryTable(afterPersonRows)}
         </>
       )}
 
