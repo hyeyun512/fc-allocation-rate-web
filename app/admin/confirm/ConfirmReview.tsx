@@ -489,7 +489,7 @@ function ParentOrgDetail({ item, period, version }: { item: OrgReviewData; perio
 
       {error && <div className="callout alert" style={{ marginBottom: 12 }}>{error}</div>}
       <button className="btn btn-primary btn-sm" disabled={confirming} onClick={handleConfirm}>
-        {confirming ? "반영 중..." : "확정 (allocation_rate 반영)"}
+        {confirming ? "저장 중..." : "저장 (allocation_rate 반영)"}
       </button>
 
       <div className="panel-sub" style={{ fontWeight: 700, color: "#1a202c", margin: "20px 0 12px" }}>
@@ -621,7 +621,7 @@ function HkrAutoPanel({
 
       {error && <div className="callout alert" style={{ marginBottom: 12 }}>{error}</div>}
       <button className="btn btn-primary btn-sm" disabled={confirming} onClick={handleConfirm}>
-        {confirming ? "반영 중..." : "확정 (allocation_rate 반영)"}
+        {confirming ? "저장 중..." : "저장 (allocation_rate 반영)"}
       </button>
     </div>
   );
@@ -680,40 +680,43 @@ function OrgDetail({
   const beforePersonRows = personCombinedHistory.filter((r) => beforeQuarterSet.has(r.period)).sort(personRowSort);
   const afterPersonRows = personCombinedHistory.filter((r) => afterQuarterSet.has(r.period)).sort(personRowSort);
 
-  function renderPersonHistoryTable(rows: PersonHistoryRow[]) {
-    if (rows.length === 0) return null;
-    let lastPeriod: string | null = null;
-    return (
-      <div className="tbl-scroll" style={{ marginBottom: 12 }}>
-        <table className="rate-tbl">
-          <thead>
-            <tr>
-              <th style={{ textAlign: "left" }}>이름</th>
-              <th>인원수</th>
-              {hasExpat && <th>구분</th>}
-              {TARGETS.map((t) => (
-                <th key={t.key} className={t.group === "humax" ? "grp-humax" : "grp-affiliate"}>
-                  {t.label}
-                </th>
-              ))}
-              <th>TOTAL</th>
-              <th>코멘트</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((p) => {
-              const newPeriod = p.period !== lastPeriod;
-              lastPeriod = p.period;
-              return (
-                <Fragment key={`${p.name}-${p.period}-${p.role}`}>
-                  {newPeriod && (
-                    <tr className="ro-row">
-                      <td colSpan={PERSON_COLS - (hasExpat ? 0 : 1)} style={{ textAlign: "left", fontWeight: 700 }}>
-                        {p.period}
-                      </td>
-                    </tr>
-                  )}
-                  <tr className="ro-row">
+  // 분기별로 하나씩 "{분기} (확정됨)" 헤더 + 표를 렌더링한다.
+  // (예전에는 여러 분기를 표 하나에 몰아넣고 분기 라벨을 표 안의 행으로 넣었는데,
+  // 현재 분기 섹션만 표 위에 별도 텍스트가 있어서 스타일이 서로 달라 보였다.)
+  function renderPersonHistoryBlocks(rows: PersonHistoryRow[]) {
+    const byQuarter = new Map<string, PersonHistoryRow[]>();
+    rows.forEach((p) => {
+      const list = byQuarter.get(p.period) ?? [];
+      list.push(p);
+      byQuarter.set(p.period, list);
+    });
+    const quarters = personQuarterOrder.filter((q) => byQuarter.has(q));
+    return quarters.map((q) => {
+      const qRows = byQuarter.get(q)!;
+      return (
+        <div key={q}>
+          <div className="field-hint" style={{ fontWeight: 700, color: "#1a202c", margin: "0 0 8px" }}>
+            {q} (확정됨)
+          </div>
+          <div className="tbl-scroll" style={{ marginBottom: 12 }}>
+            <table className="rate-tbl">
+              <thead>
+                <tr>
+                  <th style={{ textAlign: "left" }}>이름</th>
+                  <th>인원수</th>
+                  {hasExpat && <th>구분</th>}
+                  {TARGETS.map((t) => (
+                    <th key={t.key} className={t.group === "humax" ? "grp-humax" : "grp-affiliate"}>
+                      {t.label}
+                    </th>
+                  ))}
+                  <th>TOTAL</th>
+                  <th>코멘트</th>
+                </tr>
+              </thead>
+              <tbody>
+                {qRows.map((p) => (
+                  <tr key={`${p.name}-${p.role}`} className="ro-row">
                     <td style={{ textAlign: "left" }}>{p.name}</td>
                     <td>{p.headcount ?? "-"}</td>
                     {hasExpat && <td>{p.role}</td>}
@@ -729,13 +732,13 @@ function OrgDetail({
                       )}
                     </td>
                   </tr>
-                </Fragment>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
-    );
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      );
+    });
   }
 
   function loadPreviousPersons() {
@@ -884,6 +887,23 @@ function OrgDetail({
   const expatTotal = computedExpatRates ? totalOf(computedExpatRates) : 0;
   const expatTotalOk = !computedExpatRates || expatTotal === 0 || Math.abs(expatTotal - 1) < 0.005;
 
+  const actionButton = (
+    <div style={{ marginTop: 14 }}>
+      {confirmed && !(usesPersonTable ? personsUnlocked : orgUnlocked) ? (
+        <button
+          className="btn btn-secondary btn-sm"
+          onClick={() => (usesPersonTable ? setPersonsUnlocked(true) : setOrgUnlocked(true))}
+        >
+          재수정
+        </button>
+      ) : (
+        <button className="btn btn-primary btn-sm" disabled={confirming} onClick={handleConfirm}>
+          {confirming ? "저장 중..." : "저장 (allocation_rate 반영)"}
+        </button>
+      )}
+    </div>
+  );
+
   return (
     <div className="panel">
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 10, marginBottom: 14 }}>
@@ -1014,7 +1034,7 @@ function OrgDetail({
             ■ 개인별 리소스 배부율{hasExpat ? " (법인/주재원 함께)" : ""}
           </div>
 
-          {renderPersonHistoryTable(beforePersonRows)}
+          {renderPersonHistoryBlocks(beforePersonRows)}
 
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8, marginBottom: 8 }}>
             <div className="field-hint" style={{ fontWeight: 700, color: personsEditable ? "#2563eb" : "#1a202c", margin: 0 }}>
@@ -1175,26 +1195,18 @@ function OrgDetail({
               </table>
             </div>
           )}
-          {renderPersonHistoryTable(afterPersonRows)}
+          {error && <div className="callout alert" style={{ marginTop: 12, marginBottom: 12 }}>{error}</div>}
+          {actionButton}
+          {renderPersonHistoryBlocks(afterPersonRows)}
         </>
       )}
 
-      {error && <div className="callout alert" style={{ marginTop: 12 }}>{error}</div>}
-
-      <div style={{ marginTop: 14 }}>
-        {confirmed && !(usesPersonTable ? personsUnlocked : orgUnlocked) ? (
-          <button
-            className="btn btn-secondary btn-sm"
-            onClick={() => (usesPersonTable ? setPersonsUnlocked(true) : setOrgUnlocked(true))}
-          >
-            재수정
-          </button>
-        ) : (
-          <button className="btn btn-primary btn-sm" disabled={confirming} onClick={handleConfirm}>
-            {confirming ? "반영 중..." : "확정 (allocation_rate 반영)"}
-          </button>
-        )}
-      </div>
+      {!usesPersonTable && (
+        <>
+          {error && <div className="callout alert" style={{ marginTop: 12, marginBottom: 12 }}>{error}</div>}
+          {actionButton}
+        </>
+      )}
     </div>
   );
 }

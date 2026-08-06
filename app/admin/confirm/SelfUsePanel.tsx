@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { TARGETS, TargetKey, getPreviousPeriod } from "@/lib/targets";
+import { sortQuarters } from "@/lib/quarter";
 import { computeSelfuseRates, SelfuseBasisInput } from "@/lib/selfuseBasis";
 import { RateTableHead, ReadOnlyRateRow } from "./ConfirmReview";
 
@@ -173,37 +174,44 @@ export default function SelfUsePanel({
             </tr>
           </thead>
           <tbody>
-            {pastHistory.map((h) => (
-              <tr key={h.quarter} className="ro-row">
-                <td style={{ textAlign: "left" }}>{h.quarter}</td>
-                <td>{(h.bundang_selfuse_ratio * 100).toFixed(1)}%</td>
-                <td>{(h.yongin_selfuse_ratio * 100).toFixed(1)}%</td>
-                <td>{h.biz_dev_media_headcount}</td>
-                <td>{h.staff_headcount}</td>
-                <td>{h.hq_total_headcount}</td>
-                <td>{(h.material_evcs_domestic_ratio * 100).toFixed(1)}%</td>
-                <td>{(h.material_evcs_overseas_ratio * 100).toFixed(1)}%</td>
-                <td>{h.submitted_by ?? "-"}</td>
-                <td>{fmtDate(h.confirmed_at)}</td>
-              </tr>
-            ))}
-            <tr>
-              <td style={{ textAlign: "left", fontWeight: 700, color: "#2563eb" }}>{quarter} (입력중)</td>
-              {FIELDS.map((f) => (
-                <td key={f.key}>
-                  <input
-                    type="number"
-                    min="0"
-                    value={form[f.key]}
-                    onChange={(e) => setForm((s) => ({ ...s, [f.key]: e.target.value }))}
-                    style={{ width: 80 }}
-                  />
-                </td>
-              ))}
-              <td colSpan={2} className="field-hint">
-                확정 시 기록됨
-              </td>
-            </tr>
+            {sortQuarters(Array.from(new Set([...pastHistory.map((h) => h.quarter), quarter]))).map((q) => {
+              if (q !== quarter) {
+                const h = pastHistory.find((row) => row.quarter === q)!;
+                return (
+                  <tr key={h.quarter} className="ro-row">
+                    <td style={{ textAlign: "left" }}>{h.quarter}</td>
+                    <td>{(h.bundang_selfuse_ratio * 100).toFixed(1)}%</td>
+                    <td>{(h.yongin_selfuse_ratio * 100).toFixed(1)}%</td>
+                    <td>{h.biz_dev_media_headcount}</td>
+                    <td>{h.staff_headcount}</td>
+                    <td>{h.hq_total_headcount}</td>
+                    <td>{(h.material_evcs_domestic_ratio * 100).toFixed(1)}%</td>
+                    <td>{(h.material_evcs_overseas_ratio * 100).toFixed(1)}%</td>
+                    <td>{h.submitted_by ?? "-"}</td>
+                    <td>{fmtDate(h.confirmed_at)}</td>
+                  </tr>
+                );
+              }
+              return (
+                <tr key={q}>
+                  <td style={{ textAlign: "left", fontWeight: 700, color: "#2563eb" }}>{quarter} (입력중)</td>
+                  {FIELDS.map((f) => (
+                    <td key={f.key}>
+                      <input
+                        type="number"
+                        min="0"
+                        value={form[f.key]}
+                        onChange={(e) => setForm((s) => ({ ...s, [f.key]: e.target.value }))}
+                        style={{ width: 80 }}
+                      />
+                    </td>
+                  ))}
+                  <td colSpan={2} className="field-hint">
+                    확정 시 기록됨
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>
@@ -239,7 +247,7 @@ export default function SelfUsePanel({
         </div>
       )}
       <button className="btn btn-primary btn-sm" disabled={confirming} onClick={handleConfirm}>
-        {confirming ? "반영 중..." : "확정 (allocation_rate 반영)"}
+        {confirming ? "저장 중..." : "저장 (allocation_rate 반영)"}
       </button>
 
       {pastHistory.length > 0 && (

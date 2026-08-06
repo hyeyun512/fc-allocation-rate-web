@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { TARGETS, TargetKey, getPreviousPeriod } from "@/lib/targets";
+import { sortQuarters } from "@/lib/quarter";
 import { computeItRates, sumItBasisInput, ItBasisInput } from "@/lib/itBasis";
 import { RateTableHead, ReadOnlyRateRow } from "./ConfirmReview";
 
@@ -104,6 +105,40 @@ function BasisForm({
   pastRows: ItBasisRow[];
 }) {
   const total = sumItBasisInput(toBasisInput(state));
+  const currentRow = (
+    <tr key={quarter}>
+      <td style={{ textAlign: "left", fontWeight: 700, color: "#2563eb" }}>{quarter} (입력중)</td>
+      {FIELDS.map((f) => (
+        <td key={f.key}>
+          <input
+            type="number"
+            min="0"
+            value={state[f.key]}
+            onChange={(e) => onChange(f.key, e.target.value)}
+            style={{ width: 64 }}
+          />
+        </td>
+      ))}
+      <td className="total-col">{total}</td>
+      {withResident && (
+        <td>
+          <input
+            type="number"
+            min="0"
+            value={state.hiparkingResident}
+            onChange={(e) => onChange("hiparkingResident", e.target.value)}
+            style={{ width: 64 }}
+          />
+        </td>
+      )}
+      <td colSpan={2} className="field-hint">
+        확정 시 기록됨
+      </td>
+    </tr>
+  );
+  // 과거 이력 + 현재 분기를 항상 연도->분기 순으로 정렬해서, 현재 분기가 과거 데이터보다
+  // 이전 분기여도(예: 2Q까지 입력된 상태에서 1Q를 다시 열람) 순서가 뒤집히지 않게 한다.
+  const orderedQuarterList = sortQuarters(Array.from(new Set([...pastRows.map((r) => r.quarter), quarter])));
   return (
     <div className="tbl-scroll" style={{ marginBottom: 12 }}>
       <table className="rate-tbl">
@@ -120,7 +155,9 @@ function BasisForm({
           </tr>
         </thead>
         <tbody>
-          {pastRows.map((r) => {
+          {orderedQuarterList.map((q) => {
+            if (q === quarter) return currentRow;
+            const r = pastRows.find((row) => row.quarter === q)!;
             const rTotal = sumItBasisInput({
               headquarters: r.headquarters,
               overseasCorp: r.overseas_corp,
@@ -150,35 +187,6 @@ function BasisForm({
               </tr>
             );
           })}
-          <tr>
-            <td style={{ textAlign: "left", fontWeight: 700, color: "#2563eb" }}>{quarter} (입력중)</td>
-            {FIELDS.map((f) => (
-              <td key={f.key}>
-                <input
-                  type="number"
-                  min="0"
-                  value={state[f.key]}
-                  onChange={(e) => onChange(f.key, e.target.value)}
-                  style={{ width: 64 }}
-                />
-              </td>
-            ))}
-            <td className="total-col">{total}</td>
-            {withResident && (
-              <td>
-                <input
-                  type="number"
-                  min="0"
-                  value={state.hiparkingResident}
-                  onChange={(e) => onChange("hiparkingResident", e.target.value)}
-                  style={{ width: 64 }}
-                />
-              </td>
-            )}
-            <td colSpan={2} className="field-hint">
-              확정 시 기록됨
-            </td>
-          </tr>
         </tbody>
       </table>
     </div>
@@ -328,7 +336,7 @@ export default function ItPanel({
         </div>
       )}
       <button className="btn btn-primary btn-sm" disabled={confirming} onClick={handleConfirm}>
-        {confirming ? "반영 중..." : "확정 (allocation_rate 반영)"}
+        {confirming ? "저장 중..." : "저장 (allocation_rate 반영)"}
       </button>
 
       {historyByQuarter.length > 0 && (
