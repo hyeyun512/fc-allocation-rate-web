@@ -9,6 +9,7 @@ import {
   percentInputToFraction,
   getPreviousPeriod,
 } from "@/lib/targets";
+import { sortQuarters } from "@/lib/quarter";
 
 export type PersonRole = "법인" | "주재원";
 
@@ -113,6 +114,13 @@ function isMultiCellPaste(text: string): boolean {
 function totalIsValid(rates: RateMap): boolean {
   const total = totalOf(rates);
   return total === 0 || Math.abs(total - 1) < 0.005;
+}
+
+// 과거 이력 분기 + 현재 입력/조회 중인 분기를 합쳐 항상 연도->분기 순으로 정렬한다.
+// 현재 분기가 과거 데이터보다 이전 분기일 수도 있으므로(예: 2Q까지 입력된 상태에서 1Q를 다시 열람),
+// 단순히 표 맨 아래에 이어붙이면 순서가 뒤집혀 보인다.
+function orderedQuarters(pastQuarters: string[], current: string): string[] {
+  return sortQuarters(Array.from(new Set([...pastQuarters, current])));
 }
 
 // 확정 API로 보낼 개인별 페이로드: 이름이 있는 행만, DB의 sub_team 컬럼 형태(주재원/null)로 변환.
@@ -453,10 +461,13 @@ function ParentOrgDetail({ item, period, version }: { item: OrgReviewData; perio
         <table className="rate-tbl">
           <RateTableHead />
           <tbody>
-            {pastRateHistory.map((h) => (
-              <ReadOnlyRateRow key={h.quarter} label={h.quarter} rec={h.rates} />
-            ))}
-            <ReadOnlyRateRow label={`${period} (자동계산)`} rec={toNumRec(computed)} headcount={computedHeadcount} />
+            {orderedQuarters(pastRateHistory.map((h) => h.quarter), period).map((q) =>
+              q === period ? (
+                <ReadOnlyRateRow key={q} label={`${period} (자동계산)`} rec={toNumRec(computed)} headcount={computedHeadcount} />
+              ) : (
+                <ReadOnlyRateRow key={q} label={q} rec={pastRateHistory.find((h) => h.quarter === q)!.rates} />
+              )
+            )}
           </tbody>
         </table>
       </div>
@@ -563,10 +574,13 @@ function HkrAutoPanel({
         <table className="rate-tbl">
           <RateTableHead />
           <tbody>
-            {pastHistory.map((h) => (
-              <ReadOnlyRateRow key={h.quarter} label={h.quarter} rec={h.rates} />
-            ))}
-            <ReadOnlyRateRow label={`${period} (자동계산)`} rec={toNumRec(computed)} headcount={computedHeadcount} />
+            {orderedQuarters(pastHistory.map((h) => h.quarter), period).map((q) =>
+              q === period ? (
+                <ReadOnlyRateRow key={q} label={`${period} (자동계산)`} rec={toNumRec(computed)} headcount={computedHeadcount} />
+              ) : (
+                <ReadOnlyRateRow key={q} label={q} rec={pastHistory.find((h) => h.quarter === q)!.rates} />
+              )
+            )}
           </tbody>
         </table>
       </div>
@@ -814,40 +828,47 @@ function OrgDetail({
         <table className="rate-tbl">
           <RateTableHead withClear={orgEditable} withNote={!usesPersonTable} />
           <tbody>
-            {pastRateHistory.map((h) => (
-              <ReadOnlyRateRow
-                key={h.quarter}
-                label={h.quarter}
-                rec={h.rates}
-                headcount={usesPersonTable ? personHeadcountForQuarter(item.personHistory, h.quarter, true) : h.headcount}
-                showClearSlot={orgEditable}
-                withNote={!usesPersonTable}
-                note={h.note}
-              />
-            ))}
-            {orgEditable ? (
-              <EditableRateRow
-                label={`${period} (입력중)`}
-                rates={usesPersonTable ? computedOrgRates : orgRates}
-                onChange={updateOrgRate}
-                headcount={currentOrgHeadcount}
-                onClear={() => setOrgRates(emptyRates())}
-                headcountEditable={!usesPersonTable}
-                headcountValue={orgHeadcountInput}
-                onHeadcountChange={setOrgHeadcountInput}
-                withNote={!usesPersonTable}
-                noteValue={orgNoteInput}
-                onNoteChange={setOrgNoteInput}
-              />
-            ) : (
-              <ReadOnlyRateRow
-                label={`${period}${usesPersonTable ? " (자동계산)" : ""}`}
-                rec={toNumRec(displayOrgRates)}
-                headcount={currentOrgHeadcount}
-                withNote={!usesPersonTable}
-                note={orgNoteInput || null}
-              />
-            )}
+            {orderedQuarters(pastRateHistory.map((h) => h.quarter), period).map((q) => {
+              if (q !== period) {
+                const h = pastRateHistory.find((x) => x.quarter === q)!;
+                return (
+                  <ReadOnlyRateRow
+                    key={q}
+                    label={h.quarter}
+                    rec={h.rates}
+                    headcount={usesPersonTable ? personHeadcountForQuarter(item.personHistory, h.quarter, true) : h.headcount}
+                    showClearSlot={orgEditable}
+                    withNote={!usesPersonTable}
+                    note={h.note}
+                  />
+                );
+              }
+              return orgEditable ? (
+                <EditableRateRow
+                  key={q}
+                  label={`${period} (입력중)`}
+                  rates={usesPersonTable ? computedOrgRates : orgRates}
+                  onChange={updateOrgRate}
+                  headcount={currentOrgHeadcount}
+                  onClear={() => setOrgRates(emptyRates())}
+                  headcountEditable={!usesPersonTable}
+                  headcountValue={orgHeadcountInput}
+                  onHeadcountChange={setOrgHeadcountInput}
+                  withNote={!usesPersonTable}
+                  noteValue={orgNoteInput}
+                  onNoteChange={setOrgNoteInput}
+                />
+              ) : (
+                <ReadOnlyRateRow
+                  key={q}
+                  label={`${period}${usesPersonTable ? " (자동계산)" : ""}`}
+                  rec={toNumRec(displayOrgRates)}
+                  headcount={currentOrgHeadcount}
+                  withNote={!usesPersonTable}
+                  note={orgNoteInput || null}
+                />
+              );
+            })}
           </tbody>
         </table>
       </div>
@@ -866,10 +887,23 @@ function OrgDetail({
             <table className="rate-tbl">
               <RateTableHead />
               <tbody>
-                {pastExpatHistory.map((h) => (
-                  <ReadOnlyRateRow key={h.quarter} label={h.quarter} rec={h.rates} headcount={personHeadcountForQuarter(item.personHistory, h.quarter, false)} />
-                ))}
-                <ReadOnlyRateRow label={`${period} (자동계산)`} rec={toNumRec(computedExpatRates ?? emptyRates())} headcount={currentExpatHeadcount} />
+                {orderedQuarters(pastExpatHistory.map((h) => h.quarter), period).map((q) =>
+                  q === period ? (
+                    <ReadOnlyRateRow
+                      key={q}
+                      label={`${period} (자동계산)`}
+                      rec={toNumRec(computedExpatRates ?? emptyRates())}
+                      headcount={currentExpatHeadcount}
+                    />
+                  ) : (
+                    <ReadOnlyRateRow
+                      key={q}
+                      label={q}
+                      rec={pastExpatHistory.find((h) => h.quarter === q)!.rates}
+                      headcount={personHeadcountForQuarter(item.personHistory, q, false)}
+                    />
+                  )
+                )}
               </tbody>
             </table>
           </div>
