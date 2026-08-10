@@ -5,6 +5,7 @@ import { TARGETS, TargetKey, getPreviousPeriod } from "@/lib/targets";
 import { sortQuarters } from "@/lib/quarter";
 import { computeItRates, sumItBasisInput, ItBasisInput } from "@/lib/itBasis";
 import { RateTableHead, ReadOnlyRateRow } from "./ConfirmReview";
+import { readPasteGrid, shouldHandlePaste } from "@/lib/paste";
 
 export interface ItBasisRow {
   quarter: string;
@@ -106,6 +107,8 @@ function BasisForm({
   onBillingBasisChange,
   note,
   onNoteChange,
+  submittedBy,
+  onSubmittedByChange,
 }: {
   quarter: string;
   state: FormState;
@@ -116,6 +119,8 @@ function BasisForm({
   onBillingBasisChange: (v: string) => void;
   note: string;
   onNoteChange: (v: string) => void;
+  submittedBy: string;
+  onSubmittedByChange: (v: string) => void;
 }) {
   // 목록에 없는 값이 저장돼 있으면 '직접 입력'으로 열어둔다.
   // (선택 직후에는 값이 비어 있어 값만으로는 판단할 수 없어 별도 상태로 둔다.)
@@ -154,7 +159,7 @@ function BasisForm({
           />
         )}
       </td>
-      {FIELDS.map((f) => (
+      {FIELDS.map((f, i) => (
         <td key={f.key}>
           <input
             type="number"
@@ -162,6 +167,16 @@ function BasisForm({
             value={state[f.key]}
             onChange={(e) => onChange(f.key, e.target.value)}
             style={{ width: 64 }}
+            onPaste={(e) => {
+              // 엑셀에서 여러 칸을 복사해 붙여넣으면 그 칸부터 순서대로 채운다.
+              if (!shouldHandlePaste(e.clipboardData)) return;
+              e.preventDefault();
+              const row = readPasteGrid(e.clipboardData)[0] ?? [];
+              row.forEach((tok, offset) => {
+                const target = FIELDS[i + offset];
+                if (target) onChange(target.key, tok);
+              });
+            }}
           />
         </td>
       ))}
@@ -177,9 +192,15 @@ function BasisForm({
           />
         </td>
       )}
-      <td colSpan={2} className="field-hint">
-        확정 시 기록됨
+      <td>
+        <input
+          value={submittedBy}
+          onChange={(e) => onSubmittedByChange(e.target.value)}
+          placeholder="이름"
+          style={{ width: 84, textAlign: "left" }}
+        />
       </td>
+      <td className="field-hint">확정 시 기록됨</td>
       <td>
         <input
           value={note}
@@ -356,20 +377,11 @@ export default function ItPanel({
         <div className="panel-sub" style={{ fontWeight: 700, color: "#1a202c", margin: 0 }}>
           ■ 인원수 (명) — 분기별 이력
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 8, marginLeft: "auto" }}>
-          <label className="field-hint">입력자</label>
-          <input
-            value={headcountBy}
-            onChange={(e) => setHeadcountBy(e.target.value)}
-            placeholder="이름"
-            style={{ width: 110, textAlign: "left" }}
-          />
-          {prevHeadcountRow && (
-            <button className="btn btn-secondary btn-sm" onClick={() => setHeadcountForm(fromRow(prevHeadcountRow))}>
-              전분기 데이터 끌고오기
-            </button>
-          )}
-        </div>
+        {prevHeadcountRow && (
+          <button className="btn btn-secondary btn-sm" onClick={() => setHeadcountForm(fromRow(prevHeadcountRow))}>
+            전분기 데이터 끌고오기
+          </button>
+        )}
       </div>
       <BasisForm
         quarter={quarter}
@@ -381,25 +393,18 @@ export default function ItPanel({
         onBillingBasisChange={setHeadcountBasis}
         note={headcountNote}
         onNoteChange={setHeadcountNote}
+        submittedBy={headcountBy}
+        onSubmittedByChange={setHeadcountBy}
       />
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8, margin: "16px 0 8px" }}>
         <div className="panel-sub" style={{ fontWeight: 700, color: "#1a202c", margin: 0 }}>
           ■ SAP ID 개수 (Ea) — 분기별 이력
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 8, marginLeft: "auto" }}>
-          <label className="field-hint">입력자</label>
-          <input
-            value={sapBy}
-            onChange={(e) => setSapBy(e.target.value)}
-            placeholder="이름"
-            style={{ width: 110, textAlign: "left" }}
-          />
-          {prevSapRow && (
-            <button className="btn btn-secondary btn-sm" onClick={() => setSapForm(fromRow(prevSapRow))}>
-              전분기 데이터 끌고오기
-            </button>
-          )}
-        </div>
+        {prevSapRow && (
+          <button className="btn btn-secondary btn-sm" onClick={() => setSapForm(fromRow(prevSapRow))}>
+            전분기 데이터 끌고오기
+          </button>
+        )}
       </div>
       <BasisForm
         quarter={quarter}
@@ -410,6 +415,8 @@ export default function ItPanel({
         onBillingBasisChange={setSapBasis}
         note={sapNote}
         onNoteChange={setSapNote}
+        submittedBy={sapBy}
+        onSubmittedByChange={setSapBy}
       />
 
       <div className="panel-sub" style={{ fontWeight: 700, color: "#1a202c", margin: "12px 0 8px" }}>

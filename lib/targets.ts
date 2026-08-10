@@ -44,10 +44,18 @@ export function sumTargets(row: Partial<Record<TargetKey, number | null | undefi
 }
 
 // 화면 입력/표시는 항상 %(예: 30) 단위를 쓰고, 내부 상태·DB 저장은 항상 0~1 소수(fraction)로 통일한다.
+/**
+ * 저장값(분수) → 입력칸에 보여줄 퍼센트 문자열.
+ *
+ * 예전에는 소수점 4자리로 반올림해서, 엑셀에서 3.4559688500%를 붙여넣어도 화면에 3.456으로 보였다.
+ * (값 자체는 온전했지만 그 칸을 한 번이라도 건드리면 반올림된 값으로 덮여 실제로 정밀도가 날아갔다.)
+ * 곱셈에서 생기는 부동소수점 찌꺼기(3.4559688500000003)만 걷어낼 만큼만 자르고 원래 자릿수는 살린다.
+ * 입력칸에서만 쓰는 함수라 읽기 전용 표의 표기(소수점 1자리)에는 영향이 없다.
+ */
 export function fractionToPercentInput(fraction: string | number | null | undefined): string {
   const n = Number(fraction);
   if (!Number.isFinite(n) || n === 0) return "";
-  return String(Math.round(n * 100 * 10000) / 10000);
+  return String(Math.round(n * 100 * 1e10) / 1e10);
 }
 
 export function percentInputToFraction(percentStr: string): string {

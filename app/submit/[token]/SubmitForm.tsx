@@ -8,6 +8,7 @@ import {
   fractionToPercentInput,
   percentInputToFraction,
 } from "@/lib/targets";
+import { readPasteGrid, shouldHandlePaste } from "@/lib/paste";
 
 type RateMap = Record<TargetKey, string>;
 
@@ -117,7 +118,7 @@ function RateTable({
         <tbody>
           <tr>
             <td>비율</td>
-            {TARGETS.map((t) => (
+            {TARGETS.map((t, i) => (
               <td key={t.key}>
                 <div className="pct-input">
                   <input
@@ -128,6 +129,17 @@ function RateTable({
                     disabled={readOnly}
                     value={fractionToPercentInput(rates[t.key])}
                     onChange={(e) => onChange(t.key, percentInputToFraction(e.target.value))}
+                    onPaste={(e) => {
+                      // 엑셀에서 여러 칸을 복사해 붙여넣으면 그 칸부터 순서대로 채운다.
+                      // (일반 텍스트는 화면에 보이는 값만 담겨 소수점이 잘리므로 원본값을 우선 쓴다.)
+                      if (readOnly || !shouldHandlePaste(e.clipboardData)) return;
+                      e.preventDefault();
+                      const row = readPasteGrid(e.clipboardData)[0] ?? [];
+                      row.forEach((tok, offset) => {
+                        const target = TARGETS[i + offset];
+                        if (target) onChange(target.key, tok === "" ? "0" : percentInputToFraction(tok));
+                      });
+                    }}
                   />
                   <span>%</span>
                 </div>

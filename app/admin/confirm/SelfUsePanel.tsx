@@ -5,6 +5,7 @@ import { TARGETS, TargetKey, getPreviousPeriod } from "@/lib/targets";
 import { sortQuarters } from "@/lib/quarter";
 import { computeSelfuseRates, SelfuseBasisInput } from "@/lib/selfuseBasis";
 import { RateTableHead, ReadOnlyRateRow } from "./ConfirmReview";
+import { readPasteGrid, shouldHandlePaste } from "@/lib/paste";
 
 export interface SelfuseBasisRow {
   quarter: string;
@@ -195,7 +196,7 @@ export default function SelfUsePanel({
               return (
                 <tr key={q}>
                   <td style={{ textAlign: "left", fontWeight: 700, color: "#2563eb" }}>{quarter} (입력중)</td>
-                  {FIELDS.map((f) => (
+                  {FIELDS.map((f, i) => (
                     <td key={f.key}>
                       <input
                         type="number"
@@ -203,6 +204,20 @@ export default function SelfUsePanel({
                         value={form[f.key]}
                         onChange={(e) => setForm((s) => ({ ...s, [f.key]: e.target.value }))}
                         style={{ width: 80 }}
+                        onPaste={(e) => {
+                          // 엑셀에서 여러 칸을 복사해 붙여넣으면 그 칸부터 순서대로 채운다.
+                          if (!shouldHandlePaste(e.clipboardData)) return;
+                          e.preventDefault();
+                          const row = readPasteGrid(e.clipboardData)[0] ?? [];
+                          setForm((s) => {
+                            const next = { ...s };
+                            row.forEach((tok, offset) => {
+                              const target = FIELDS[i + offset];
+                              if (target) next[target.key] = tok;
+                            });
+                            return next;
+                          });
+                        }}
                       />
                     </td>
                   ))}
