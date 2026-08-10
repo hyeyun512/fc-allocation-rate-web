@@ -296,11 +296,6 @@ export default function SelfUsePanel({
       </div>
 
       {error && <div className="callout alert" style={{ marginBottom: 12 }}>{error}</div>}
-      {confirmed && (
-        <div className="status-badge status-confirmed" style={{ marginBottom: 12 }}>
-          확정 완료
-        </div>
-      )}
       {/* 확정된 분기에는 저장 버튼을 감춘다 — 다시 열려면 기준정보 표 아래의 '수정'을 누른다. */}
       {editable && (
         <button className="btn btn-primary btn-sm" disabled={confirming} onClick={handleConfirm}>

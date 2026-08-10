@@ -14,6 +14,7 @@ import {
 import { sortQuarters } from "@/lib/quarter";
 import { readPasteGrid, shouldHandlePaste } from "@/lib/paste";
 import { HIDDEN_IN_CONFIRM, MIRROR_HEADCOUNT, MIRROR_RULES, mirrorSourceOf } from "@/lib/autoAggregate";
+import { isOrgActiveIn } from "@/lib/orgLifespan";
 
 export type PersonRole = "법인" | "주재원";
 
@@ -827,7 +828,9 @@ function HkrAutoPanel({
    */
   function honsaRowsFor(quarter: string) {
     const isCurrent = quarter === period;
-    return leaderFirst(honsaOrgs).map((c) => {
+    // 그 분기에 없던 조직은 그 분기 표에 나오면 안 된다
+    // (예: 사업협력팀은 2026-Q2에만 있으므로 1Q 표에는 빠진다).
+    return leaderFirst(honsaOrgs.filter((c) => isOrgActiveIn(c.org.basis, quarter))).map((c) => {
       const rec =
         isCurrent && c.hasSubmission
           ? c.rollup
@@ -928,11 +931,12 @@ function HkrAutoPanel({
             <div className="panel-sub" style={{ fontWeight: 700, color: "#1a202c", margin: "0 0 4px" }}>
               ■ {q} 본사 조직 현황 (가중치 산정 대상)
             </div>
-            <div className="field-hint" style={{ marginBottom: 8 }}>
-              {q === period
-                ? `위 ${period} (자동계산) 값은 이 표의 행들만으로 계산됩니다. 값이 없는 조직은 계산에서 빠집니다.`
-                : `${q}에 확정된 값입니다. 그 분기에 확정되지 않은 조직은 값이 없습니다.`}
-            </div>
+            {/* 계산 근거만 한 줄로 남긴다 — 과거 분기 표는 제목만으로 충분하다. */}
+            {q === period && (
+              <div className="field-hint" style={{ marginBottom: 8 }}>
+                위 {period} (자동계산) 값은 이 표의 행들만으로 계산됩니다. 값이 없는 조직은 계산에서 빠집니다.
+              </div>
+            )}
             <div className="tbl-scroll" style={{ marginBottom: 12 }}>
               <table className="rate-tbl">
                 <RateTableHead />
@@ -940,10 +944,8 @@ function HkrAutoPanel({
                   {rows.map(({ c, rec, weight, empty }) => (
                     <ReadOnlyRateRow
                       key={c.org.id}
-                      // 집계 조직(하위 조직을 가진 조직)은 직접 제출하는 곳이 아니라 자동계산 결과를 쓴다.
-                      label={`${c.org.basis}${
-                        empty ? (q === period ? " · 미입력" : " · 미확정") : c.children.length > 0 ? " · 집계값" : ""
-                      }`}
+                      // 어떻게 만들어진 값인지는 인원수·합계로 이미 드러나므로 조직명만 적는다.
+                      label={c.org.basis}
                       rec={rec}
                       headcount={weight > 0 ? weight : null}
                     />

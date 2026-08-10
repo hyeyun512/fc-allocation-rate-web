@@ -113,6 +113,8 @@ function BasisForm({
   onSave,
   saving,
   noteDirty,
+  editable,
+  confirmedAt,
 }: {
   quarter: string;
   state: FormState;
@@ -127,6 +129,9 @@ function BasisForm({
   onSubmittedByChange: (v: string) => void;
   onSave: () => void;
   saving: boolean;
+  /** 확정된 분기는 읽기 전용으로 보여준다 ('입력중'으로 두면 아직 안 한 것처럼 보인다). */
+  editable: boolean;
+  confirmedAt: string | null;
   /** 저장하지 않은 코멘트 변경이 있으면 버튼을 짙게 칠해 눈에 띄게 한다. */
   noteDirty: boolean;
 }) {
@@ -137,7 +142,21 @@ function BasisForm({
   );
   const isCustomBasis = customBasis;
   const total = sumItBasisInput(toBasisInput(state));
-  const currentRow = (
+  const currentRow = !editable ? (
+    // 확정된 분기 — 과거 분기 행과 같은 읽기 전용 모양.
+    <tr key={quarter} className="ro-row">
+      <td style={{ textAlign: "left" }}>{quarter}</td>
+      <td>{billingBasis || "-"}</td>
+      {FIELDS.map((f) => (
+        <td key={f.key}>{state[f.key] === "" ? 0 : Number(state[f.key])}</td>
+      ))}
+      <td className="total-col">{total}</td>
+      {withResident && <td>{state.hiparkingResident === "" ? "-" : Number(state.hiparkingResident)}</td>}
+      <td>{submittedBy || "-"}</td>
+      <td>{fmtDate(confirmedAt)}</td>
+      <td>{note ? <NoteTip text={note} /> : null}</td>
+    </tr>
+  ) : (
     <tr key={quarter}>
       <td style={{ textAlign: "left", fontWeight: 700, color: "#2563eb" }}>{quarter} (입력중)</td>
       <td>
@@ -328,6 +347,13 @@ export default function ItPanel({
   const [savedSapNote, setSavedSapNote] = useState(initialSap?.note ?? "");
   const router = useRouter();
   const [confirming, setConfirming] = useState(false);
+  // 이미 확정된 분기를 '입력중'으로 보여주면 아직 안 한 것처럼 보인다 —
+  // 확정 상태면 읽기 전용으로 두고 '수정'을 눌렀을 때만 다시 입력할 수 있게 한다.
+  const [savedConfirmedAt, setSavedConfirmedAt] = useState(
+    initialHeadcount?.confirmed_at ?? initialSap?.confirmed_at ?? null
+  );
+  const [unlocked, setUnlocked] = useState(false);
+  const editable = !savedConfirmedAt || unlocked;
   const [confirmed, setConfirmed] = useState(false);
   const [error, setError] = useState("");
 
@@ -468,6 +494,8 @@ export default function ItPanel({
       setConfirmed(true);
       setSavedHeadcountNote(headcountNote);
       setSavedSapNote(sapNote);
+      setSavedConfirmedAt(new Date().toISOString());
+      setUnlocked(false);
       // 서버 컴포넌트는 진입 시 한 번만 조회한다 — 새로고침하지 않으면
       // 탭을 옮겼다 돌아왔을 때 저장 전 값으로 다시 그려진다.
       router.refresh();
@@ -517,6 +545,8 @@ export default function ItPanel({
         onSave={handleConfirm}
         saving={confirming}
         noteDirty={headcountNote !== savedHeadcountNote}
+        editable={editable}
+        confirmedAt={savedConfirmedAt}
       />
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8, margin: "16px 0 8px" }}>
         <div className="panel-sub" style={{ fontWeight: 700, color: "#1a202c", margin: 0 }}>
@@ -542,7 +572,19 @@ export default function ItPanel({
         onSave={handleConfirm}
         saving={confirming}
         noteDirty={sapNote !== savedSapNote}
+        editable={editable}
+        confirmedAt={savedConfirmedAt}
       />
+
+      {/* 확정된 분기는 잠가두고, 고칠 때만 연다. 고칠 대상이 위 두 표이므로 버튼도 그 아래에 둔다. */}
+      {!editable && (
+        <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", margin: "4px 0 12px" }}>
+          <span className="status-badge status-confirmed">확정됨 ({quarter})</span>
+          <button className="btn btn-secondary btn-sm" onClick={() => setUnlocked(true)}>
+            수정
+          </button>
+        </div>
+      )}
 
       <div className="panel-sub" style={{ fontWeight: 700, color: "#1a202c", margin: "12px 0 8px" }}>
         {/* 어떤 청구기준으로 만들어진 비율인지 함께 밝힌다 (인원수·SAP의 기준이 다를 수 있다). */}
@@ -564,14 +606,12 @@ export default function ItPanel({
       </div>
 
       {error && <div className="callout alert" style={{ marginBottom: 12 }}>{error}</div>}
-      {confirmed && (
-        <div className="status-badge status-confirmed" style={{ marginBottom: 12 }}>
-          확정 완료
-        </div>
+      {/* 확정된 분기에는 저장 버튼을 감춘다 — 다시 열려면 위 기준정보 표 아래의 '수정'을 누른다. */}
+      {editable && (
+        <button className="btn btn-primary btn-sm" disabled={confirming} onClick={handleConfirm}>
+          {confirming ? "저장 중..." : "저장 (allocation_rate 반영)"}
+        </button>
       )}
-      <button className="btn btn-primary btn-sm" disabled={confirming} onClick={handleConfirm}>
-        {confirming ? "저장 중..." : "저장 (allocation_rate 반영)"}
-      </button>
 
       {historyByQuarter.length > 0 && (
         <>
