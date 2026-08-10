@@ -112,6 +112,7 @@ function BasisForm({
   onSubmittedByChange,
   onSave,
   saving,
+  noteDirty,
 }: {
   quarter: string;
   state: FormState;
@@ -126,6 +127,8 @@ function BasisForm({
   onSubmittedByChange: (v: string) => void;
   onSave: () => void;
   saving: boolean;
+  /** 저장하지 않은 코멘트 변경이 있으면 버튼을 짙게 칠해 눈에 띄게 한다. */
+  noteDirty: boolean;
 }) {
   // 목록에 없는 값이 저장돼 있으면 '직접 입력'으로 열어둔다.
   // (선택 직후에는 값이 비어 있어 값만으로는 판단할 수 없어 별도 상태로 둔다.)
@@ -222,7 +225,14 @@ function BasisForm({
             }}
           />
           {/* 아래 저장 버튼까지 내려가지 않고 여기서 바로 저장한다. */}
-          <button type="button" className="note-save-btn" title="저장" aria-label="저장" disabled={saving} onClick={onSave}>
+          <button
+            type="button"
+            className={`note-save-btn${noteDirty ? " is-dirty" : ""}`}
+            title={noteDirty ? "저장하지 않은 변경이 있습니다 — 눌러서 저장" : "저장"}
+            aria-label="저장"
+            disabled={saving}
+            onClick={onSave}
+          >
             ✓
           </button>
         </div>
@@ -313,6 +323,9 @@ export default function ItPanel({
   const [sapBasis, setSapBasis] = useState(initialSap?.billing_basis ?? "");
   const [headcountNote, setHeadcountNote] = useState(initialHeadcount?.note ?? "");
   const [sapNote, setSapNote] = useState(initialSap?.note ?? "");
+  // 마지막으로 저장된 코멘트. 지금 값과 다르면 아직 저장 전이라 버튼을 짙게 칠한다.
+  const [savedHeadcountNote, setSavedHeadcountNote] = useState(initialHeadcount?.note ?? "");
+  const [savedSapNote, setSavedSapNote] = useState(initialSap?.note ?? "");
   const router = useRouter();
   const [confirming, setConfirming] = useState(false);
   const [confirmed, setConfirmed] = useState(false);
@@ -438,6 +451,8 @@ export default function ItPanel({
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || "확정 처리 중 오류가 발생했습니다.");
       setConfirmed(true);
+      setSavedHeadcountNote(headcountNote);
+      setSavedSapNote(sapNote);
       // 서버 컴포넌트는 진입 시 한 번만 조회한다 — 새로고침하지 않으면
       // 탭을 옮겼다 돌아왔을 때 저장 전 값으로 다시 그려진다.
       router.refresh();
@@ -486,6 +501,7 @@ export default function ItPanel({
         onSubmittedByChange={setHeadcountBy}
         onSave={handleConfirm}
         saving={confirming}
+        noteDirty={headcountNote !== savedHeadcountNote}
       />
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8, margin: "16px 0 8px" }}>
         <div className="panel-sub" style={{ fontWeight: 700, color: "#1a202c", margin: 0 }}>
@@ -510,6 +526,7 @@ export default function ItPanel({
         onSubmittedByChange={setSapBy}
         onSave={handleConfirm}
         saving={confirming}
+        noteDirty={sapNote !== savedSapNote}
       />
 
       <div className="panel-sub" style={{ fontWeight: 700, color: "#1a202c", margin: "12px 0 8px" }}>

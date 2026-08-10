@@ -412,6 +412,7 @@ export function ReadOnlyRateRow({
   onNoteChange,
   onNoteCommit,
   noteSaveState,
+  noteDirty,
 }: {
   label: string;
   rec: Record<TargetKey, number>;
@@ -425,6 +426,8 @@ export function ReadOnlyRateRow({
   onNoteChange?: (v: string) => void;
   onNoteCommit?: () => void;
   noteSaveState?: "idle" | "saving" | "saved" | "error";
+  /** 저장하지 않은 변경이 있으면 버튼을 짙게 칠해 눈에 띄게 한다. */
+  noteDirty?: boolean;
 }) {
   const total = recTotal(rec);
   return (
@@ -458,8 +461,8 @@ export function ReadOnlyRateRow({
               {/* 커서를 옮겨야 저장되는 게 불편해 눌러서 저장하는 버튼을 둔다. */}
               <button
                 type="button"
-                className="note-save-btn"
-                title="코멘트 저장"
+                className={`note-save-btn${noteDirty ? " is-dirty" : ""}`}
+                title={noteDirty ? "저장하지 않은 변경이 있습니다 — 눌러서 저장" : "코멘트 저장"}
                 aria-label="코멘트 저장"
                 disabled={noteSaveState === "saving"}
                 onClick={() => onNoteCommit?.()}
@@ -649,7 +652,10 @@ function useOrgNote(args: {
     }
   }
 
-  return { value, setValue, state, commit };
+  // 저장 버튼을 눈에 띄게 할지 판단할 값 — 마지막으로 저장한 것과 다르면 아직 저장 전이다.
+  const dirty = value !== savedRef.current;
+
+  return { value, setValue, state, commit, dirty };
 }
 
 // 이번 분기 조직 단위 코멘트(자동계산 조직도 여기에 저장된다).
@@ -747,6 +753,7 @@ function ParentOrgDetail({ item, period, version }: { item: OrgReviewData; perio
                   onNoteChange={note.setValue}
                   onNoteCommit={note.commit}
                   noteSaveState={note.state}
+                  noteDirty={note.dirty}
                 />
               ) : (
                 <ReadOnlyRateRow
@@ -1338,6 +1345,7 @@ function OrgDetail({
                   onNoteChange={autoNote.setValue}
                   onNoteCommit={autoNote.commit}
                   noteSaveState={autoNote.state}
+                  noteDirty={autoNote.dirty}
                   note={orgNoteInput || null}
                 />
               );
