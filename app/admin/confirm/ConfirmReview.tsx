@@ -586,6 +586,7 @@ function useOrgNote(args: {
   const [value, setValue] = useState(initial ?? "");
   const [state, setState] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const savedRef = useRef(initial ?? "");
+  const router = useRouter();
 
   async function commit() {
     if (value === savedRef.current) return;
@@ -606,6 +607,9 @@ function useOrgNote(args: {
       if (!res.ok) throw new Error((await res.json()).error ?? "저장 실패");
       savedRef.current = value;
       setState("saved");
+      // 서버 컴포넌트는 페이지 진입 시 한 번만 조회한다. 새로고침하지 않으면 다른 조직으로 옮겼다
+      // 돌아왔을 때 낡은 초기값(코멘트 저장 전 상태)으로 다시 그려져 방금 쓴 코멘트가 사라져 보인다.
+      router.refresh();
     } catch {
       setState("error");
     }
