@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { TARGETS, TargetKey, getPreviousPeriod } from "@/lib/targets";
 import { sortQuarters } from "@/lib/quarter";
 import { computeItRates, sumItBasisInput, ItBasisInput } from "@/lib/itBasis";
-import { RateTableHead, ReadOnlyRateRow } from "./ConfirmReview";
+import { RateTableHead, ReadOnlyRateRow, NoteTip } from "./ConfirmReview";
 import { readPasteGrid, shouldHandlePaste } from "@/lib/paste";
 
 export interface ItBasisRow {
@@ -281,7 +281,7 @@ function BasisForm({
                 {withResident && <td>{r.hiparking_resident ?? "-"}</td>}
                 <td>{r.submitted_by ?? "-"}</td>
                 <td>{fmtDate(r.confirmed_at)}</td>
-                <td style={{ textAlign: "left" }}>{r.note ?? ""}</td>
+                <td>{r.note ? <NoteTip text={r.note} /> : null}</td>
               </tr>
             );
           })}
@@ -410,7 +410,8 @@ export default function ItPanel({
         span = 1;
         while (i + span < flat.length && flat[i + span].billing === r.billing) span++;
       }
-      return { ...r, spanStart: isStart, span };
+      const groupEnd = i === flat.length - 1 || flat[i + 1].billing !== r.billing;
+      return { ...r, spanStart: isStart, span, groupEnd };
     });
   }, [historyByQuarter]);
 
@@ -563,7 +564,10 @@ export default function ItPanel({
               </thead>
               <tbody>
                 {historyRows.map((r, i) => (
-                  <tr key={r.key} className={`ro-row${r.spanStart ? " basis-group-start" : ""}`}>
+                  <tr
+                    key={r.key}
+                    className={`ro-row${r.spanStart ? " basis-group-start" : ""}${r.groupEnd ? " basis-group-end" : ""}`}
+                  >
                     {/* 같은 청구기준이 이어지면 첫 행에만 적고 아래로 합친다. */}
                     {r.spanStart && (
                       <td rowSpan={r.span} className="basis-cell">

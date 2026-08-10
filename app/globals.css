@@ -65,12 +65,15 @@ a{color:inherit}
 
 /* 청구기준처럼 여러 행에 걸쳐 하나로 합친 칸 — 세로 가운데 정렬하고 오른쪽에 경계선을 둔다. */
 .rate-tbl td.basis-cell{
-  vertical-align:middle;font-weight:700;color:#334155;background:#f8fafc;
-  white-space:nowrap;border-right:0.5px solid #e2e8f0
+  vertical-align:middle;font-weight:700;font-size:13px;color:#1e293b;background:#eef2f7;
+  white-space:nowrap;border-right:1.5px solid #94a3b8
 }
-/* 묶음이 바뀌는 첫 행 위에 굵은 구분선을 그어 그룹을 눈으로 나눈다. */
-.rate-tbl tr.basis-group-start > td{border-top:1px solid #cbd5e1}
+/* 묶음이 바뀌는 첫 행 위에 굵은 구분선을 그어 그룹이 한눈에 나뉘게 한다.
+   행 배경색이 옅어 가는 선은 묻히므로 두께와 색을 확실히 준다. */
+.rate-tbl tr.basis-group-start > td{border-top:2px solid #64748b}
 .rate-tbl tr.basis-group-start:first-child > td{border-top:none}
+/* 묶음의 마지막 행 아래도 살짝 띄워 경계를 분명히 한다. */
+.rate-tbl tr.basis-group-end > td{border-bottom:2px solid #64748b}
 
 .tbl-scroll{overflow-x:auto;overflow-y:visible}
 

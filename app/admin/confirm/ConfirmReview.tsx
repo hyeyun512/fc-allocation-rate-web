@@ -103,7 +103,8 @@ const NOTE_TIP_FADE_MS = 450; // 그 뒤 서서히 사라지는 시간 (globals.
 const NOTE_TIP_WIDTH = 320;
 const NOTE_TIP_SHIFT_LEFT = 140; // 아이콘보다 왼쪽으로 당겨 코멘트가 왼쪽에 치우쳐 보이게 한다
 
-function NoteTip({ text }: { text: string }) {
+// 코멘트는 표 어디서나 같은 방식으로 보여준다 — 원 안의 i에 커서를 대면 말풍선이 뜬다.
+export function NoteTip({ text }: { text: string }) {
   const [pos, setPos] = useState<{ left: number; top: number } | null>(null);
   const [fading, setFading] = useState(false);
   const linger = useRef<ReturnType<typeof setTimeout> | null>(null);
