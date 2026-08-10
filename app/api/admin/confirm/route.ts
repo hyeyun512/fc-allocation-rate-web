@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { TARGETS, TargetKey, sumTargets } from "@/lib/targets";
 import { recomputeAggregates } from "@/lib/autoAggregate";
+import { buildDeletionTombstones } from "@/lib/personTombstones";
+import { DELETED_STATUS } from "@/lib/rollup";
 
 interface PersonPayload {
   name: string;
@@ -81,8 +83,18 @@ export async function POST(req: NextRequest) {
         };
       });
 
-    if (personRows.length > 0) {
-      const { error: personError } = await supabase.from("allocation_submissions").insert(personRows);
+    // 화면에서 X로 지운 사람은 새 행이 안 들어올 뿐이라 예전 행이 그대로 살아난다 — 삭제 표식을 남긴다.
+    const tombstones = await buildDeletionTombstones(supabase, {
+      orgId,
+      period,
+      version,
+      keptNames: personRows.map((r) => r.person_name),
+      submittedBy: "관리자 확정 (검토및확정)",
+    });
+
+    const rowsToInsert = [...personRows, ...tombstones];
+    if (rowsToInsert.length > 0) {
+      const { error: personError } = await supabase.from("allocation_submissions").insert(rowsToInsert);
       if (personError) {
         return NextResponse.json({ error: personError.message }, { status: 500 });
       }
@@ -111,11 +123,13 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  // 삭제 표식 행은 그대로 둬야 한다 (confirmed로 바꾸면 지운 사람이 다시 살아난다).
   await supabase
     .from("allocation_submissions")
     .update({ status: "confirmed" })
     .eq("org_id", orgId)
-    .eq("period", period);
+    .eq("period", period)
+    .or(`status.is.null,status.neq.${DELETED_STATUS}`);
 
   // 상위 집계 조직·HKR·사업총괄대표는 이 조직 값에서 파생되므로 여기서 같이 갱신한다
   // (예전에는 화면의 별도 '저장' 버튼을 눌러야 반영돼 누락되기 쉬웠다).

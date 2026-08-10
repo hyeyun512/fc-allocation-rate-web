@@ -1,5 +1,5 @@
 import { TARGETS, TargetKey, sumTargets } from "./targets";
-import { latestByPerson, computeRollup, SubmissionRow } from "./rollup";
+import { latestByPerson, computeRollup, countedPersonRows, SubmissionRow } from "./rollup";
 
 /**
  * 자동계산 조직(상위 집계 조직 · HKR)의 배부율을 서버에서 다시 계산해 allocation_rate에 반영한다.
@@ -66,8 +66,8 @@ function buildOrgState(org: any, subs: SubmissionRow[], rateRows: any[]): OrgSta
 
   const rate = hasSubmission ? (computeRollup(orgLevelRow, personRows) as Rec) : toRec(lastRate);
   // 가중치는 실제 입력된 인원수 (팀 수가 아니라 인원 비율로 가중해야 한다).
-  // 개인별 입력 조직은 개인 인원수 합, 조직 단위 입력 조직은 조직 인원수 값을 쓴다.
-  const fromPersons = personRows.reduce((s, p) => s + (Number(p.headcount) || 0), 0);
+  // 개인별 입력 조직은 값이 채워진 개인 행 수(한 행 = 한 명), 조직 단위 입력 조직은 조직 인원수 값을 쓴다.
+  const fromPersons = countedPersonRows(personRows).length;
   const weight = fromPersons > 0 ? fromPersons : Number(orgLevelRow?.headcount) || 0;
 
   return { rate, weight, hasSubmission };

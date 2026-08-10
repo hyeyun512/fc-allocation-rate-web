@@ -216,8 +216,8 @@ function toPersonPayload(list: PersonEditRow[]) {
     .filter((p) => p.name.trim())
     .map((p) => ({
       name: p.name,
-      // 인원수를 따로 적지 않으면 0명으로 저장한다.
-      headcount: Number(p.headcount) || 0,
+      // 개인별 입력은 한 행 = 한 명이므로 항상 1로 저장한다.
+      headcount: 1,
       note: p.note || null,
       subTeam: p.role === "주재원" ? "주재원" : null,
       rates: p.rates,
@@ -234,33 +234,34 @@ function toNumRec(rates: RateMap): Record<TargetKey, number> {
   return r;
 }
 
+/**
+ * 개인별 표에서 '한 명'으로 세는 행 = 이름이 있고 배부율이 0%가 아닌 행.
+ * 개인별 입력은 한 행이 곧 한 명이라 인원수를 따로 받지 않으므로, 인원수는 이 행 수로 센다.
+ */
+function countedPersons(persons: PersonEditRow[]): PersonEditRow[] {
+  return persons.filter((p) => p.name.trim() && totalOf(p.rates) > 0);
+}
+
+// 개인별 입력은 한 행이 한 명이므로 모두 같은 가중치(1명)로 단순 평균한다.
 function averageFromPersons(persons: PersonEditRow[]): RateMap {
-  const named = persons.filter((p) => p.name.trim());
+  const counted = countedPersons(persons);
   const r = emptyRates();
-  if (named.length === 0) return r;
-  // 인원수 기본값이 0이라 아무도 인원수를 적지 않으면 가중치 합이 0이 된다.
-  // 그 경우 배부율이 통째로 0%가 되어버리므로, 인원수 없이 입력한 행들은 균등 가중으로 평균낸다.
-  const totalHc = named.reduce((sum, p) => sum + (Number(p.headcount) || 0), 0);
-  const useWeights = totalHc > 0;
-  const divisor = useWeights ? totalHc : named.length;
+  if (counted.length === 0) return r;
   TARGETS.forEach((t) => {
-    const weighted = named.reduce((sum, p) => {
-      const hc = useWeights ? Number(p.headcount) || 0 : 1;
-      return sum + (Number(p.rates[t.key]) || 0) * hc;
-    }, 0);
-    r[t.key] = String(divisor > 0 ? weighted / divisor : 0);
+    const sum = counted.reduce((acc, p) => acc + (Number(p.rates[t.key]) || 0), 0);
+    r[t.key] = String(sum / counted.length);
   });
   return r;
 }
 
 /**
  * 조직 가중치 = 그 조직에 실제로 입력된 인원수.
- * 개인별로 입력한 조직은 개인 인원수의 합, 조직 단위로 입력한 조직은 조직 인원수 값을 쓴다.
+ * 개인별로 입력한 조직은 값이 채워진 개인 행 수(한 행 = 한 명), 조직 단위로 입력한 조직은 조직 인원수 값을 쓴다.
  * (예전에는 인원수가 없으면 1로 세서 'HW팀 6명 : SW팀 2명'이 1:1로 잡혔다 — 팀 수가 아니라
  *  실제 인원 비율로 가중해야 한다.)
  */
 function orgWeight(c: OrgReviewData): number {
-  const fromPersons = c.currentPersons.reduce((s, p) => s + (Number(p.headcount) || 0), 0);
+  const fromPersons = c.currentPersons.filter((p) => recTotal(p.rates) > 0).length;
   if (fromPersons > 0) return fromPersons;
   return Number(c.submittedHeadcount) || 0;
 }
@@ -275,11 +276,29 @@ function orgHeadcountDisplay(c: OrgReviewData): number | null {
   return w > 0 ? w : null;
 }
 
-// 개인별 이력(personHistory)에서 특정 분기의 인원수 합계 (legalOnly=true면 법인분, false면 주재원분).
+// 개인별 이력(personHistory)에서 특정 분기의 인원수 (legalOnly=true면 법인분, false면 주재원분).
+// 한 행이 한 명이므로 값이 채워진 행 수를 센다.
 function personHeadcountForQuarter(history: PersonHistoryEntry[], quarter: string, legalOnly: boolean): number | null {
-  const rows = history.filter((h) => h.period === quarter && (legalOnly ? h.role !== "주재원" : h.role === "주재원"));
-  if (rows.length === 0) return null;
-  return rows.reduce((s, h) => s + (h.headcount ?? 1), 0);
+  const rows = history.filter(
+    (h) => h.period === quarter && h.total > 0 && (legalOnly ? h.role !== "주재원" : h.role === "주재원")
+  );
+  return rows.length > 0 ? rows.length : null;
+}
+
+/**
+ * 특정 분기의 조직 인원수 — 과거 분기 행 표시용.
+ * 상위 집계 조직은 자기 인원수를 따로 갖지 않아 하위 조직 인원수를 합쳐야 하는데,
+ * 과거 분기 행은 지금 화면의 입력값(현재 분기)이 아니라 그 분기 이력에서 세야 한다.
+ */
+function orgWeightForQuarter(c: OrgReviewData, quarter: string): number {
+  const fromPersons = personHeadcountForQuarter(c.personHistory, quarter, true);
+  if (fromPersons && fromPersons > 0) return fromPersons;
+  return Number(c.rateHistory.find((h) => h.quarter === quarter)?.headcount) || 0;
+}
+
+function sumOrgWeightsForQuarter(items: OrgReviewData[], quarter: string): number | null {
+  const sum = items.reduce((s, c) => s + orgWeightForQuarter(c, quarter), 0);
+  return sum > 0 ? sum : null;
 }
 
 // 상위 집계 조직(예: 경영지원실)의 값 = 하위 조직들(예: 재무팀, Staff(경영지원))의 인원수 가중평균.
@@ -466,13 +485,11 @@ function EditableRateRow({
   );
 }
 
-const PERSON_COLS = TARGETS.length + 5; // 이름/인원수/구분/TOTAL/코멘트
-
 function personRowFromCurrent(p: CurrentPerson, i: number): PersonEditRow {
   return {
     key: `${i}-${p.name}`,
     name: p.name,
-    headcount: p.headcount != null ? String(p.headcount) : "0",
+    headcount: "1",
     note: p.note ?? "",
     role: p.role,
     rates: toRateMap(p.rates),
@@ -490,7 +507,7 @@ function initialPersons(item: OrgReviewData): PersonEditRow[] {
       {
         key: "seed-org",
         name: item.submittedBy ?? "법인 전체",
-        headcount: "0",
+        headcount: "1",
         note: "",
         role: "법인",
         rates: toRateMap(item.currentOrgSubmission ?? item.currentRate),
@@ -568,7 +585,12 @@ function ParentOrgDetail({ item, period, version }: { item: OrgReviewData; perio
               q === period ? (
                 <ReadOnlyRateRow key={q} label={`${period} (자동계산)`} rec={toNumRec(computed)} headcount={computedHeadcount} />
               ) : (
-                <ReadOnlyRateRow key={q} label={q} rec={pastRateHistory.find((h) => h.quarter === q)!.rates} />
+                <ReadOnlyRateRow
+                  key={q}
+                  label={q}
+                  rec={pastRateHistory.find((h) => h.quarter === q)!.rates}
+                  headcount={sumOrgWeightsForQuarter(item.children, q)}
+                />
               )
             )}
           </tbody>
@@ -682,7 +704,12 @@ function HkrAutoPanel({
               q === period ? (
                 <ReadOnlyRateRow key={q} label={`${period} (자동계산)`} rec={toNumRec(computed)} headcount={computedHeadcount} />
               ) : (
-                <ReadOnlyRateRow key={q} label={q} rec={pastHistory.find((h) => h.quarter === q)!.rates} />
+                <ReadOnlyRateRow
+                  key={q}
+                  label={q}
+                  rec={pastHistory.find((h) => h.quarter === q)!.rates}
+                  headcount={sumOrgWeightsForQuarter(honsaOrgs, q)}
+                />
               )
             )}
           </tbody>
@@ -795,8 +822,7 @@ function OrgDetail({
             <table className="rate-tbl">
               <thead>
                 <tr>
-                  <th style={{ textAlign: "left" }}>이름</th>
-                  <th>인원수</th>
+                  <th>이름</th>
                   {hasExpat && <th>구분</th>}
                   {TARGETS.map((t) => (
                     <th key={t.key} className={t.group === "humax" ? "grp-humax" : "grp-affiliate"}>
@@ -810,8 +836,7 @@ function OrgDetail({
               <tbody>
                 {qRows.map((p) => (
                   <tr key={`${p.name}-${p.role}`} className="ro-row">
-                    <td style={{ textAlign: "left" }}>{p.name}</td>
-                    <td>{p.headcount ?? "-"}</td>
+                    <td>{p.name}</td>
                     {hasExpat && <td>{p.role}</td>}
                     {TARGETS.map((t) => (
                       <td key={t.key}>{((p.rates[t.key] || 0) * 100).toFixed(1)}%</td>
@@ -861,11 +886,10 @@ function OrgDetail({
   const computedExpatRates = hasExpat ? averageFromPersons(expatPersons) : null;
   const displayOrgRates = computedOrgRates;
 
+  // 개인별 입력은 한 행 = 한 명이므로, 이름이 있고 배부율이 0%가 아닌 행 수가 곧 인원수다.
   function namedHeadcountSum(list: PersonEditRow[]): number | null {
-    const named = list.filter((p) => p.name.trim());
-    if (named.length === 0) return null;
-    // 입력된 인원수 그대로 합산한다 (안 적었으면 0명).
-    return named.reduce((s, p) => s + (Number(p.headcount) || 0), 0);
+    const counted = countedPersons(list);
+    return counted.length === 0 ? null : counted.length;
   }
   const currentOrgHeadcount = usesPersonTable ? namedHeadcountSum(legalPersons) : Number(orgHeadcountInput) || 0;
   const currentExpatHeadcount = hasExpat ? namedHeadcountSum(expatPersons) : null;
@@ -880,17 +904,17 @@ function OrgDetail({
     setPersons((list) => list.map((p) => (p.key === key ? { ...p, ...patch } : p)));
   }
   function addPerson() {
-    setPersons((list) => [...list, { key: `${Date.now()}`, name: "", headcount: "0", note: "", role: "법인", rates: emptyRates() }]);
+    setPersons((list) => [...list, { key: `${Date.now()}`, name: "", headcount: "1", note: "", role: "법인", rates: emptyRates() }]);
   }
   function removePerson(key: string) {
     setPersons((list) => list.filter((p) => p.key !== key));
   }
-  // 개인별 표 붙여넣기: 열 순서를 [이름, 인원수, ...13개 배부대상]으로 보고, 시작 셀부터 채운다.
+  // 개인별 표 붙여넣기: 열 순서를 [이름, ...13개 배부대상]으로 보고, 시작 셀부터 채운다.
+  // (인원수 열은 화면에 없다 — 한 행이 곧 한 명이다.)
   // 여러 행(사람)에 걸쳐 붙여넣으면 아래 행이 부족한 경우 자동으로 행을 추가한다.
   function applyPasteToken(person: PersonEditRow, colIdx: number, token: string): PersonEditRow {
     if (colIdx === 0) return { ...person, name: token };
-    if (colIdx === 1) return { ...person, headcount: token || "1" };
-    const target = TARGETS[colIdx - 2];
+    const target = TARGETS[colIdx - 1];
     if (!target) return person;
     return { ...person, rates: { ...person.rates, [target.key]: percentInputToFraction(token) } };
   }
@@ -901,7 +925,7 @@ function OrgDetail({
       grid.forEach((rowTokens, ri) => {
         const idx = personIdx + ri;
         while (next.length <= idx) {
-          next.push({ key: `paste-${Date.now()}-${next.length}`, name: "", headcount: "0", note: "", role: "법인", rates: emptyRates() });
+          next.push({ key: `paste-${Date.now()}-${next.length}`, name: "", headcount: "1", note: "", role: "법인", rates: emptyRates() });
         }
         let person = next[idx];
         rowTokens.forEach((tok, ci) => {
@@ -944,7 +968,10 @@ function OrgDetail({
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || "확정 처리 중 오류가 발생했습니다.");
 
-      if (hasExpat && computedExpatRates && totalOf(computedExpatRates) > 0) {
+      // 주재원 행을 전부 지운 경우에도(합계 0) 예전 주재원 조직 데이터를 지워야 하므로,
+      // 값이 0이라도 '전에 주재원 데이터가 있었다면' 호출한다.
+      const expatHadData = (item.expat?.currentPersons.length ?? 0) > 0 || (item.expat?.hasSubmission ?? false);
+      if (hasExpat && computedExpatRates && (totalOf(computedExpatRates) > 0 || expatHadData)) {
         const res2 = await fetch("/api/admin/confirm", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -960,7 +987,8 @@ function OrgDetail({
         if (!res2.ok) throw new Error(json2.error || "주재원 확정 처리 중 오류가 발생했습니다.");
       }
 
-      setConfirmed(true);
+      // 값이 없는 저장(행을 전부 지웠거나 배부율이 0%)은 확정으로 보지 않는다 — 화면 배지도 그대로 둔다.
+      setConfirmed(totalOf(computedOrgRates) > 0);
       setOrgUnlocked(false);
       setPersonsUnlocked(false);
       router.refresh();
@@ -1142,8 +1170,8 @@ function OrgDetail({
                   <thead>
                     <tr>
                       <th></th>
-                      <th style={{ textAlign: "left" }}>이름</th>
-                      <th>인원수</th>
+                      {/* 개인별 입력은 한 행 = 한 명이라 인원수 열을 두지 않는다 (이름+배부율이 있으면 1명으로 센다). */}
+                      <th>이름</th>
                       {hasExpat && <th>구분</th>}
                       {TARGETS.map((t) => (
                         <th key={t.key} className={t.group === "humax" ? "grp-humax" : "grp-affiliate"}>
@@ -1165,32 +1193,17 @@ function OrgDetail({
                               ✕
                             </button>
                           </td>
-                          <td style={{ textAlign: "left" }}>
+                          <td>
                             <input
                               value={p.name}
                               onChange={(e) => updatePerson(p.key, { name: e.target.value })}
                               placeholder="이름"
-                              style={{ width: 100 }}
+                              style={{ width: 100, textAlign: "center" }}
                               onPaste={(e) => {
                                 const text = e.clipboardData.getData("text");
                                 if (!isMultiCellPaste(text)) return;
                                 e.preventDefault();
                                 handlePersonCellPaste(pIdx, 0, text);
-                              }}
-                            />
-                          </td>
-                          <td>
-                            <input
-                              type="number"
-                              min="0"
-                              value={p.headcount}
-                              onChange={(e) => updatePerson(p.key, { headcount: e.target.value })}
-                              style={{ width: 44 }}
-                              onPaste={(e) => {
-                                const text = e.clipboardData.getData("text");
-                                if (!isMultiCellPaste(text)) return;
-                                e.preventDefault();
-                                handlePersonCellPaste(pIdx, 1, text);
                               }}
                             />
                           </td>
@@ -1216,7 +1229,7 @@ function OrgDetail({
                                     const text = e.clipboardData.getData("text");
                                     if (!isMultiCellPaste(text)) return;
                                     e.preventDefault();
-                                    handlePersonCellPaste(pIdx, 2 + tIdx, text);
+                                    handlePersonCellPaste(pIdx, 1 + tIdx, text);
                                   }}
                                 />
                                 <span>%</span>
@@ -1249,8 +1262,7 @@ function OrgDetail({
               <table className="rate-tbl">
                 <thead>
                   <tr>
-                    <th style={{ textAlign: "left" }}>이름</th>
-                    <th>인원수</th>
+                    <th>이름</th>
                     {hasExpat && <th>구분</th>}
                     {TARGETS.map((t) => (
                       <th key={t.key} className={t.group === "humax" ? "grp-humax" : "grp-affiliate"}>
@@ -1264,8 +1276,7 @@ function OrgDetail({
                 <tbody>
                   {persons.map((p) => (
                     <tr key={p.key} className="ro-row">
-                      <td style={{ textAlign: "left" }}>{p.name}</td>
-                      <td>{p.headcount ?? "-"}</td>
+                      <td>{p.name}</td>
                       {hasExpat && <td>{p.role}</td>}
                       {TARGETS.map((t) => (
                         <td key={t.key}>{(Number(p.rates[t.key] || 0) * 100).toFixed(1)}%</td>

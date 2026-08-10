@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { TARGETS, TargetKey, sumTargets } from "@/lib/targets";
 import { recomputeAggregates } from "@/lib/autoAggregate";
+import { buildDeletionTombstones } from "@/lib/personTombstones";
 
 function parseRates(rates: Record<string, string>) {
   const out = {} as Record<TargetKey, number>;
@@ -90,7 +91,8 @@ export async function POST(req: NextRequest) {
         person_name: p.name,
         // 주재원 전용 조직은 화면에 '구분' 열이 없어 값이 안 넘어온다 — 전원 주재원으로 채운다.
         sub_team: p.subTeam || (org.division === "주재원" || String(org.basis).endsWith("_주재원") ? "주재원" : null),
-        headcount: p.headcount ?? null,
+        // 개인별 입력은 한 행 = 한 명이다.
+        headcount: 1,
         ...parsed,
         total: sumTargets(parsed),
         note: p.note || null,
@@ -98,6 +100,16 @@ export async function POST(req: NextRequest) {
         status: "pending",
       });
     }
+
+    // 이전 제출에 있었지만 이번 명단에서 지워진 사람은 삭제 표식을 남긴다 (append-only라 안 그러면 되살아난다).
+    const tombstones = await buildDeletionTombstones(supabase, {
+      orgId: org.id,
+      period,
+      version,
+      keptNames: persons.filter((p: any) => p?.name && String(p.name).trim()).map((p: any) => String(p.name)),
+      submittedBy,
+    });
+    rows.push(...tombstones);
   }
 
   const { error } = await supabase.from("allocation_submissions").insert(rows);

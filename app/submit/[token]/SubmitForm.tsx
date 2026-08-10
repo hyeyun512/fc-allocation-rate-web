@@ -72,18 +72,19 @@ function totalIsValid(rates: RateMap): boolean {
   return total === 0 || Math.abs(total - 1) < 0.005;
 }
 
-// 팀 구성원별 비율의 인원수 가중평균 -> 조직 단위 배부율(읽기 전용 표시값)
+// 개인별 표에서 '한 명'으로 세는 행 = 이름이 있고 배부율이 0%가 아닌 행 (한 행 = 한 명).
+function countedPersons(persons: PersonRow[]): PersonRow[] {
+  return persons.filter((p) => p.name.trim() && totalOf(p.rates) > 0);
+}
+
+// 팀 구성원별 비율의 평균 -> 조직 단위 배부율(읽기 전용 표시값). 한 행이 한 명이라 단순 평균이다.
 function averageFromPersons(persons: PersonRow[]): RateMap {
-  const named = persons.filter((p) => p.name.trim());
+  const counted = countedPersons(persons);
   const r = emptyRates();
-  if (named.length === 0) return r;
-  const totalHc = named.reduce((sum, p) => sum + (Number(p.headcount) || 1), 0) || named.length;
+  if (counted.length === 0) return r;
   TARGETS.forEach((t) => {
-    const weighted = named.reduce((sum, p) => {
-      const hc = Number(p.headcount) || 1;
-      return sum + (Number(p.rates[t.key]) || 0) * hc;
-    }, 0);
-    r[t.key] = String(totalHc > 0 ? weighted / totalHc : 0);
+    const sum = counted.reduce((acc, p) => acc + (Number(p.rates[t.key]) || 0), 0);
+    r[t.key] = String(sum / counted.length);
   });
   return r;
 }
@@ -194,8 +195,8 @@ export default function SubmitForm({
   const expatPersons = persons.filter((p) => p.role === "주재원");
   const displayOrgRates = usesPersonTable ? averageFromPersons(legalPersons) : orgRates;
   const displayExpatRates = hasExpat ? averageFromPersons(expatPersons) : null;
-  // 개인별 조사 조직은 인원수를 별도로 입력받지 않고 입력된 행 수(법인분)로 자동 계산한다.
-  const autoHeadcount = legalPersons.filter((p) => p.name.trim()).length;
+  // 개인별 조사 조직은 인원수를 별도로 입력받지 않고 값이 채워진 행 수(법인분)로 자동 계산한다.
+  const autoHeadcount = countedPersons(legalPersons).length;
 
   function updateOrgRate(key: TargetKey, value: string) {
     setOrgRates((r) => ({ ...r, [key]: value }));
@@ -379,14 +380,16 @@ export default function SubmitForm({
           </div>
           {persons.map((p) => (
             <div key={p.key} style={{ marginBottom: 14, paddingBottom: 14, borderBottom: "0.5px solid #f1f5f9" }}>
-              <div className="field-row" style={{ gridTemplateColumns: hasExpat ? "1.3fr 1fr 1fr 1.7fr auto" : "1.5fr 1fr 2fr auto", alignItems: "end" }}>
+              {/* 개인별 입력은 한 행 = 한 명이라 인원수 칸을 두지 않는다 (이름+배부율이 있으면 1명으로 센다). */}
+              <div className="field-row" style={{ gridTemplateColumns: hasExpat ? "1.3fr 1fr 1.7fr auto" : "1.5fr 2fr auto", alignItems: "end" }}>
                 <div className="field">
                   <label>이름</label>
-                  <input value={p.name} onChange={(e) => updatePerson(p.key, { name: e.target.value })} placeholder="이름" />
-                </div>
-                <div className="field">
-                  <label>인원수</label>
-                  <input type="number" min="0" value={p.headcount} onChange={(e) => updatePerson(p.key, { headcount: e.target.value })} />
+                  <input
+                    value={p.name}
+                    onChange={(e) => updatePerson(p.key, { name: e.target.value })}
+                    placeholder="이름"
+                    style={{ textAlign: "center" }}
+                  />
                 </div>
                 {hasExpat && (
                   <div className="field">
