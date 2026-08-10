@@ -12,7 +12,7 @@ import {
   getPreviousPeriod,
 } from "@/lib/targets";
 import { sortQuarters } from "@/lib/quarter";
-import { HIDDEN_IN_CONFIRM } from "@/lib/autoAggregate";
+import { HIDDEN_IN_CONFIRM, MIRROR_HEADCOUNT, MIRROR_RULES, mirrorSourceOf } from "@/lib/autoAggregate";
 
 export type PersonRole = "법인" | "주재원";
 
@@ -270,8 +270,20 @@ function orgWeight(c: OrgReviewData): number {
   return Number(c.submittedHeadcount) || 0;
 }
 
+/**
+ * 상위 조직 평균에 참여할 때의 하위 조직 값과 인원수.
+ * 사업총괄대표처럼 다른 조직 값을 따라가는 자리는 배부율을 원본 조직(사업그룹장)에서 가져오고
+ * 인원수는 1명으로 센다 — 실제로 한 사람이 앉는 자리라 평균에서 빠지면 안 된다.
+ */
+function effectiveChild(c: OrgReviewData, siblings: OrgReviewData[]): { rec: Record<TargetKey, number>; weight: number } {
+  const srcBasis = mirrorSourceOf(c.org.basis);
+  const from = srcBasis ? siblings.find((s) => s.org.basis === srcBasis) ?? c : c;
+  const rec = from.hasSubmission ? from.rollup : from.currentRate ?? toNumRec(emptyRates());
+  return { rec, weight: srcBasis ? MIRROR_HEADCOUNT : orgWeight(c) };
+}
+
 function sumOrgWeights(items: OrgReviewData[]): number {
-  return items.reduce((s, c) => s + orgWeight(c), 0);
+  return items.reduce((s, c) => s + effectiveChild(c, items).weight, 0);
 }
 
 // 표시용 인원수(인원수가 입력된 조직만 숫자를 보여주고, 없으면 "-").
@@ -309,16 +321,13 @@ function sumOrgWeightsForQuarter(items: OrgReviewData[], quarter: string): numbe
 function weightedAvgFromChildren(children: OrgReviewData[]): RateMap {
   const r = emptyRates();
   if (children.length === 0) return r;
-  const weights = children.map(orgWeight);
-  const totalW = weights.reduce((a, b) => a + b, 0);
+  const eff = children.map((c) => effectiveChild(c, children));
+  const totalW = eff.reduce((a, e) => a + e.weight, 0);
   // 아무 조직도 인원수를 적지 않았으면 가중치를 못 쓰므로 균등 평균으로 물러난다.
   const useWeights = totalW > 0;
   const divisor = useWeights ? totalW : children.length;
   TARGETS.forEach((t) => {
-    const weighted = children.reduce((sum, c, i) => {
-      const rate = c.hasSubmission ? c.rollup[t.key] : c.currentRate ? c.currentRate[t.key] : 0;
-      return sum + (Number(rate) || 0) * (useWeights ? weights[i] : 1);
-    }, 0);
+    const weighted = eff.reduce((sum, e) => sum + (Number(e.rec[t.key]) || 0) * (useWeights ? e.weight : 1), 0);
     r[t.key] = String(divisor > 0 ? weighted / divisor : 0);
   });
   return r;
@@ -368,6 +377,11 @@ export function ReadOnlyRateRow({
   showClearSlot,
   withNote,
   note,
+  noteEditable,
+  noteValue,
+  onNoteChange,
+  onNoteCommit,
+  noteSaveState,
 }: {
   label: string;
   rec: Record<TargetKey, number>;
@@ -375,6 +389,12 @@ export function ReadOnlyRateRow({
   showClearSlot?: boolean;
   withNote?: boolean;
   note?: string | null;
+  /** 배부율은 자동계산이라 못 고치지만 코멘트만은 적을 수 있게 한다. */
+  noteEditable?: boolean;
+  noteValue?: string;
+  onNoteChange?: (v: string) => void;
+  onNoteCommit?: () => void;
+  noteSaveState?: "idle" | "saving" | "saved" | "error";
 }) {
   const total = recTotal(rec);
   return (
@@ -388,8 +408,22 @@ export function ReadOnlyRateRow({
       <td className="total-col">{(total * 100).toFixed(1)}%</td>
       {withNote && (
         <td>
-          {note && (
-            <NoteTip text={note} />
+          {noteEditable ? (
+            <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+              <input
+                value={noteValue ?? ""}
+                onChange={(e) => onNoteChange?.(e.target.value)}
+                onBlur={() => onNoteCommit?.()}
+                placeholder="코멘트"
+                // 숫자 칸은 오른쪽 정렬이 기본이지만 코멘트는 글이라 왼쪽부터 읽는다.
+                style={{ width: 120, textAlign: "left" }}
+              />
+              <span style={{ fontSize: 11, color: noteSaveState === "error" ? "#dc2626" : "#94a3b8", whiteSpace: "nowrap" }}>
+                {noteSaveState === "saving" ? "저장중" : noteSaveState === "saved" ? "저장됨" : noteSaveState === "error" ? "실패" : ""}
+              </span>
+            </div>
+          ) : (
+            note && <NoteTip text={note} />
           )}
         </td>
       )}
@@ -522,6 +556,55 @@ function initialPersons(item: OrgReviewData): PersonEditRow[] {
   return [];
 }
 
+/**
+ * 자동계산 표의 코멘트 입력 상태 + 자동저장.
+ * 배부율은 못 고치는 표라 별도 저장 버튼을 두지 않고, 입력칸에서 포커스가 빠질 때 저장한다.
+ */
+function useOrgNote(args: {
+  orgId: number;
+  period: string;
+  version: string;
+  initial: string | null;
+  rates: () => RateMap;
+  headcount: () => number | null;
+}) {
+  const { orgId, period, version, initial } = args;
+  const [value, setValue] = useState(initial ?? "");
+  const [state, setState] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  const savedRef = useRef(initial ?? "");
+
+  async function commit() {
+    if (value === savedRef.current) return;
+    setState("saving");
+    try {
+      const res = await fetch("/api/admin/org-note", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          orgId,
+          period,
+          version,
+          note: value,
+          rates: toNumRec(args.rates()),
+          headcount: args.headcount(),
+        }),
+      });
+      if (!res.ok) throw new Error((await res.json()).error ?? "저장 실패");
+      savedRef.current = value;
+      setState("saved");
+    } catch {
+      setState("error");
+    }
+  }
+
+  return { value, setValue, state, commit };
+}
+
+// 이번 분기 조직 단위 코멘트(자동계산 조직도 여기에 저장된다).
+function currentNoteOf(item: OrgReviewData, period: string): string | null {
+  return item.rateHistory.find((h) => h.quarter === period)?.note ?? item.submittedNote ?? null;
+}
+
 // ---------- 상위 집계 조직 (경영지원실 등) : 하위 조직 인원수 가중평균, 읽기 전용 + 확정 스냅샷 ----------
 function ParentOrgDetail({ item, period, version }: { item: OrgReviewData; period: string; version: string }) {
   const [confirming, setConfirming] = useState(false);
@@ -534,6 +617,19 @@ function ParentOrgDetail({ item, period, version }: { item: OrgReviewData; perio
   const computedHeadcount = sumOrgWeights(item.children);
   const total = totalOf(computed);
   const totalOk = Math.abs(total - 1) < 0.005 || total === 0;
+
+  // 입력란은 감추지만 가중평균에는 들어가는 자리(사업총괄대표)는 각주로만 알린다.
+  const mirroredChildren = item.children.filter((c) => mirrorSourceOf(c.org.basis));
+  const editableChildren = item.children.filter((c) => !mirrorSourceOf(c.org.basis));
+
+  const note = useOrgNote({
+    orgId: item.org.id,
+    period,
+    version,
+    initial: currentNoteOf(item, period),
+    rates: () => computed,
+    headcount: () => computedHeadcount || null,
+  });
 
   async function handleConfirm() {
     setError("");
@@ -584,23 +680,42 @@ function ParentOrgDetail({ item, period, version }: { item: OrgReviewData; perio
 
       <div className="tbl-scroll" style={{ marginBottom: 12 }}>
         <table className="rate-tbl">
-          <RateTableHead />
+          <RateTableHead withNote />
           <tbody>
             {orderedQuarters(pastRateHistory.map((h) => h.quarter), period).map((q) =>
               q === period ? (
-                <ReadOnlyRateRow key={q} label={`${period} (자동계산)`} rec={toNumRec(computed)} headcount={computedHeadcount} />
+                <ReadOnlyRateRow
+                  key={q}
+                  label={`${period} (자동계산)`}
+                  rec={toNumRec(computed)}
+                  headcount={computedHeadcount}
+                  withNote
+                  noteEditable
+                  noteValue={note.value}
+                  onNoteChange={note.setValue}
+                  onNoteCommit={note.commit}
+                  noteSaveState={note.state}
+                />
               ) : (
                 <ReadOnlyRateRow
                   key={q}
                   label={q}
                   rec={pastRateHistory.find((h) => h.quarter === q)!.rates}
                   headcount={sumOrgWeightsForQuarter(item.children, q)}
+                  withNote
+                  note={pastRateHistory.find((h) => h.quarter === q)!.note}
                 />
               )
             )}
           </tbody>
         </table>
       </div>
+      {mirroredChildren.map((c) => (
+        <div key={c.org.id} className="field-hint" style={{ marginBottom: 6 }}>
+          ※ {c.org.basis}은(는) {mirrorSourceOf(c.org.basis)}과(와) 동일한 배부율을 적용하며, 인원수 {MIRROR_HEADCOUNT}명으로
+          위 가중평균에 포함됩니다. 별도 입력란은 두지 않습니다 (View에서 조회 가능).
+        </div>
+      ))}
       {!totalOk && (
         <div className="field-hint" style={{ color: "#dc2626", marginBottom: 12 }}>
           ⚠ {period} 합계가 100%가 아닙니다 — 하위 조직 입력을 확인해주세요.
@@ -608,14 +723,14 @@ function ParentOrgDetail({ item, period, version }: { item: OrgReviewData; perio
       )}
 
       <div className="field-hint" style={{ marginBottom: 12 }}>
-        아래 하위 조직을 저장하면 이 값도 자동으로 다시 계산되어 반영됩니다.
+        아래 하위 조직을 저장하면 이 값도 자동으로 다시 계산되어 반영됩니다. (코멘트는 입력칸에서 벗어나면 자동 저장됩니다.)
       </div>
 
       <div className="panel-sub" style={{ fontWeight: 700, color: "#1a202c", margin: "20px 0 12px" }}>
-        ■ 하위 조직 개별 입력 ({item.children.length}개)
+        ■ 하위 조직 개별 입력 ({editableChildren.length}개)
       </div>
       <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-        {leaderFirst(item.children).map((c) => (
+        {leaderFirst(editableChildren).map((c) => (
           <OrgDetail key={`${c.org.id}-${period}`} item={c} period={period} version={version} />
         ))}
       </div>
@@ -902,6 +1017,17 @@ function OrgDetail({
   const currentOrgHeadcount = usesPersonTable ? namedHeadcountSum(legalPersons) : Number(orgHeadcountInput) || 0;
   const currentExpatHeadcount = hasExpat ? namedHeadcountSum(expatPersons) : null;
 
+  // 개인별 조직은 조직 단위 표가 자동계산이라 값을 못 고친다 — 코멘트만 따로 적고 자동 저장한다.
+  // (조직 단위 입력 조직은 아래 EditableRateRow의 코멘트 칸을 그대로 쓰고 확정할 때 함께 저장된다.)
+  const autoNote = useOrgNote({
+    orgId: item.org.id,
+    period,
+    version,
+    initial: currentNoteOf(item, period),
+    rates: () => displayOrgRates,
+    headcount: () => currentOrgHeadcount,
+  });
+
   function updateOrgRate(key: TargetKey, value: string) {
     setOrgRates((r) => ({ ...r, [key]: value }));
   }
@@ -1069,7 +1195,7 @@ function OrgDetail({
       </div>
       <div className="tbl-scroll" style={{ marginBottom: 12 }}>
         <table className="rate-tbl">
-          <RateTableHead withClear={orgEditable} withNote={!usesPersonTable} />
+          <RateTableHead withClear={orgEditable} withNote />
           <tbody>
             {orderedQuarters(pastRateHistory.map((h) => h.quarter), period).map((q) => {
               if (q !== period) {
@@ -1081,7 +1207,7 @@ function OrgDetail({
                     rec={h.rates}
                     headcount={usesPersonTable ? personHeadcountForQuarter(item.personHistory, h.quarter, true) : h.headcount}
                     showClearSlot={orgEditable}
-                    withNote={!usesPersonTable}
+                    withNote
                     note={h.note}
                   />
                 );
@@ -1097,7 +1223,7 @@ function OrgDetail({
                   headcountEditable={!usesPersonTable}
                   headcountValue={orgHeadcountInput}
                   onHeadcountChange={setOrgHeadcountInput}
-                  withNote={!usesPersonTable}
+                  withNote
                   noteValue={orgNoteInput}
                   onNoteChange={setOrgNoteInput}
                 />
@@ -1107,7 +1233,13 @@ function OrgDetail({
                   label={`${period}${usesPersonTable ? " (자동계산)" : ""}`}
                   rec={toNumRec(displayOrgRates)}
                   headcount={currentOrgHeadcount}
-                  withNote={!usesPersonTable}
+                  withNote
+                  // 자동계산 조직은 배부율은 못 고쳐도 코멘트는 적을 수 있게 한다.
+                  noteEditable={usesPersonTable}
+                  noteValue={autoNote.value}
+                  onNoteChange={autoNote.setValue}
+                  onNoteCommit={autoNote.commit}
+                  noteSaveState={autoNote.state}
                   note={orgNoteInput || null}
                 />
               );
@@ -1343,7 +1475,8 @@ function orgOrderIndex(basis: string): number {
 }
 
 // 조직장(그룹장·실장)은 목록에서 항상 맨 위에 보여준다. 표기에 띄어쓰기가 섞여 있어 공백은 무시하고 비교한다.
-const LEADER_FIRST = ["개발그룹장", "사업그룹장", "경영지원실장"];
+// 경영지원실장은 재무팀 팀장으로 기재하기로 해 별도 조직을 두지 않는다.
+const LEADER_FIRST = ["개발그룹장", "사업그룹장"];
 function isLeaderOrg(basis: string): boolean {
   return LEADER_FIRST.includes(String(basis).replace(/\s/g, ""));
 }

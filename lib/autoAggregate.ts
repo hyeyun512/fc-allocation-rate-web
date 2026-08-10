@@ -27,8 +27,19 @@ const AFFILIATE_KEYS: TargetKey[] = [
  */
 export const MIRROR_RULES: { from: string; to: string }[] = [{ from: "사업그룹장", to: "사업총괄대표" }];
 
-/** 검토·확정 화면에서는 감추고 View에서만 보여줄 조직 (값이 자동으로 채워지는 조직). */
+/**
+ * 검토·확정 화면에서 **입력란만** 감출 조직 (값이 자동으로 채워지므로).
+ * 상위 조직 가중평균에는 그대로 포함된다 — 실제로 존재하는 자리이기 때문이다.
+ */
 export const HIDDEN_IN_CONFIRM = MIRROR_RULES.map((r) => r.to);
+
+/** 미러 조직은 한 사람이 앉는 자리라 인원수를 항상 1명으로 센다. */
+export const MIRROR_HEADCOUNT = 1;
+
+/** basis가 다른 조직 값을 따라가는 자리라면 그 원본 조직명을 돌려준다. */
+export function mirrorSourceOf(basis: string): string | null {
+  return MIRROR_RULES.find((r) => r.to === basis)?.from ?? null;
+}
 
 type Rec = Record<TargetKey, number>;
 
@@ -162,13 +173,23 @@ export async function recomputeAggregates(
   const stateById = new Map<number, OrgState>();
   orgs.forEach((o: any) => stateById.set(o.id, buildOrgState(o, submissions, rates)));
 
+  // 미러 조직(사업총괄대표)은 직접 입력받지 않으므로 원본 조직(사업그룹장) 값을 그대로 쓰고,
+  // 인원수는 1명으로 잡는다. 아래 상위 조직 가중평균에도 이 상태로 참여한다.
+  for (const rule of MIRROR_RULES) {
+    const src = orgs.find((o: any) => o.basis === rule.from);
+    const dst = orgs.find((o: any) => o.basis === rule.to);
+    const srcState = src ? stateById.get(src.id) : null;
+    if (!dst || !srcState) continue;
+    stateById.set(dst.id, {
+      rate: srcState.rate,
+      weight: MIRROR_HEADCOUNT,
+      hasSubmission: srcState.hasSubmission,
+    });
+  }
+
   // 1) 하위 조직을 가진 상위 집계 조직 (예: 경영지원실 = 재무팀 + Staff(경영지원))
-  //    사업총괄대표처럼 다른 조직 값을 복사해 오는 조직은 평균에서 뺀다 —
-  //    사업그룹장 값을 그대로 쓰는 것이라 같이 세면 그룹장이 두 번 반영된다.
   for (const parent of orgs) {
-    const children = orgs.filter(
-      (o: any) => o.parent_basis === parent.basis && !HIDDEN_IN_CONFIRM.includes(o.basis)
-    );
+    const children = orgs.filter((o: any) => o.parent_basis === parent.basis);
     if (children.length === 0) continue;
     const childStates: OrgState[] = children.map((c: any) => stateById.get(c.id)!).filter(Boolean);
     // 이번 분기에 아무 하위 조직도 입력하지 않았으면 계산할 근거가 없다.
@@ -187,21 +208,19 @@ export async function recomputeAggregates(
     if (err) problems.push(`${parent.basis}: ${err.message}`);
   }
 
-  // 2) 다른 조직 값을 그대로 따라가는 조직 (사업총괄대표 ← 사업그룹장)
+  // 2) 다른 조직 값을 그대로 따라가는 조직의 배부율을 기록 (사업총괄대표 ← 사업그룹장)
   for (const rule of MIRROR_RULES) {
-    const src = orgs.find((o: any) => o.basis === rule.from);
     const dst = orgs.find((o: any) => o.basis === rule.to);
-    if (!src || !dst) continue;
-    const srcState = stateById.get(src.id);
+    const dstState = dst ? stateById.get(dst.id) : null;
     // 원본 조직이 이번 분기에 입력하지 않았으면 복사할 값이 없다
     // (지난 분기 확정값이 이번 분기 값으로 둔갑하는 걸 막는다).
-    if (!srcState?.hasSubmission) continue;
+    if (!dst || !dstState?.hasSubmission) continue;
     const err = await upsertRate(supabase, {
       quarter: period,
       type: dst.type,
       division: dst.division,
       basis: dst.basis,
-      rates: srcState.rate,
+      rates: dstState.rate,
       version,
     });
     if (err) problems.push(`${dst.basis}: ${err.message}`);

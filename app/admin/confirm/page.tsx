@@ -1,7 +1,6 @@
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { TARGETS, TargetKey } from "@/lib/targets";
 import { latestByPerson, latestByPersonAndPeriod, latestOrgByPeriod, computeRollup, SubmissionRow } from "@/lib/rollup";
-import { HIDDEN_IN_CONFIRM } from "@/lib/autoAggregate";
 import { OrgReviewData } from "./ConfirmReview";
 import { SurveyOrgData } from "../SurveyOverview";
 import ConfirmTabs from "./ConfirmTabs";
@@ -171,12 +170,12 @@ export default async function AdminConfirmPage() {
   // 배부율조사 로직 정의(엑셀) 기준: 법인과 주재원은 '1차. 조직 표기'에 각각 별도 행으로 존재하는
   // 독립된 조직이며 구분하여 조사한다. 더 이상 '{basis}_주재원'을 법인 조직 안에 묶어 넣지 않고
   // 그대로 독립된 조직으로 노출한다 (예: HSZ와 HSZ_주재원은 각각 별도로 선택/확정).
+  // 사업총괄대표처럼 다른 조직 값을 따라가는 자리도 하위 조직 목록에 그대로 넣는다.
+  // 상위 조직 가중평균에는 인원수 1명으로 참여해야 하고(실제 존재하는 자리이므로),
+  // 화면에서 입력란만 감춘다 (ConfirmReview 쪽에서 처리).
   const childrenByParentBasis = new Map<string, OrgReviewData[]>();
   orgList.forEach((org, i) => {
-    // 사업총괄대표처럼 다른 조직 값을 그대로 따라가는 조직은 검토·확정 화면에서 빼둔다.
-    // 화면에 감추는 것뿐 아니라, 상위 조직(사업 그룹) 가중평균에도 들어가면 안 된다 —
-    // 사업그룹장 값을 복사한 것이라 같이 세면 그룹장 한 명이 두 번 반영된다. (View에는 그대로 보인다.)
-    if (org.parent_basis && !HIDDEN_IN_CONFIRM.includes(org.basis)) {
+    if (org.parent_basis) {
       const list = childrenByParentBasis.get(org.parent_basis) ?? [];
       list.push(reviewData[i]);
       childrenByParentBasis.set(org.parent_basis, list);
