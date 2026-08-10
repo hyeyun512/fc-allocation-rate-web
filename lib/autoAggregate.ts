@@ -57,7 +57,9 @@ function buildOrgState(org: any, subs: SubmissionRow[], rateRows: any[]): OrgSta
   const deduped = latestByPerson(orgSubs);
   const orgLevelRow = deduped.find((r) => r.person_name === null) ?? null;
   const personRows = deduped.filter((r) => r.person_name !== null);
-  const hasSubmission = !!orgLevelRow || personRows.length > 0;
+  // 값이 전부 0인 저장(행을 다 지웠거나 0%)은 제출로 보지 않는다 — 화면 판정과 같은 기준.
+  const hasSubmission =
+    (Number(orgLevelRow?.total) || 0) > 0 || personRows.some((p) => (Number(p.total) || 0) > 0);
 
   // 전 항목 0%인 행은 '지우고 저장한' 흔적이라 마지막 확정값으로 쓰지 않는다.
   const own = rateRows.filter(
@@ -168,7 +170,12 @@ export async function recomputeAggregates(
       (o: any) => o.parent_basis === parent.basis && !HIDDEN_IN_CONFIRM.includes(o.basis)
     );
     if (children.length === 0) continue;
-    const avg = weightedAvg(children.map((c: any) => stateById.get(c.id)!).filter(Boolean));
+    const childStates: OrgState[] = children.map((c: any) => stateById.get(c.id)!).filter(Boolean);
+    // 이번 분기에 아무 하위 조직도 입력하지 않았으면 계산할 근거가 없다.
+    // (입력이 없는 조직은 지난 분기 확정값으로 대체되므로, 그대로 두면 아무도 입력 안 한 분기에
+    //  지난 분기 값이 그 분기 확정값처럼 기록된다.)
+    if (!childStates.some((s) => s.hasSubmission)) continue;
+    const avg = weightedAvg(childStates);
     const err = await upsertRate(supabase, {
       quarter: period,
       type: parent.type,
@@ -186,7 +193,9 @@ export async function recomputeAggregates(
     const dst = orgs.find((o: any) => o.basis === rule.to);
     if (!src || !dst) continue;
     const srcState = stateById.get(src.id);
-    if (!srcState) continue;
+    // 원본 조직이 이번 분기에 입력하지 않았으면 복사할 값이 없다
+    // (지난 분기 확정값이 이번 분기 값으로 둔갑하는 걸 막는다).
+    if (!srcState?.hasSubmission) continue;
     const err = await upsertRate(supabase, {
       quarter: period,
       type: dst.type,
@@ -200,10 +209,10 @@ export async function recomputeAggregates(
 
   // 3) HKR(관계사제외) = 본사 최상위 조직들의 가중평균 → 계열사 제외 재정규화
   const honsa = orgs.filter((o: any) => o.division === "본사" && !o.parent_basis);
-  if (honsa.length) {
-    const hkr = renormalizeExcludingAffiliates(
-      weightedAvg(honsa.map((o: any) => stateById.get(o.id)!).filter(Boolean))
-    );
+  const honsaStates: OrgState[] = honsa.map((o: any) => stateById.get(o.id)!).filter(Boolean);
+  // 상위 집계 조직과 같은 기준 — 이번 분기에 입력한 본사 조직이 하나도 없으면 기록하지 않는다.
+  if (honsaStates.some((s) => s.hasSubmission)) {
+    const hkr = renormalizeExcludingAffiliates(weightedAvg(honsaStates));
     const err = await upsertRate(supabase, {
       quarter: period,
       type: "리소스배부율",

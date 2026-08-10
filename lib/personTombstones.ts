@@ -12,37 +12,55 @@ import { latestByPerson, DELETED_STATUS, SubmissionRow } from "./rollup";
  */
 export async function buildDeletionTombstones(
   supabase: any,
-  args: { orgId: number; period: string; version: string; keptNames: string[]; submittedBy: string }
+  args: {
+    orgId: number;
+    period: string;
+    version: string;
+    keptNames: string[];
+    submittedBy: string;
+    /**
+     * 명단을 통째로 비웠을 때 조직 단위 제출 행(person_name=null)까지 무효화할지.
+     * 개인별 입력 조직은 조직 값이 개인 행에서 파생되므로, 개인이 한 명도 없는데
+     * 예전 조직 단위 행이 살아 있으면 '제출됨'으로 계속 조회된다.
+     */
+    clearOrgLevelWhenEmpty?: boolean;
+  }
 ): Promise<Record<string, any>[]> {
-  const { orgId, period, version, keptNames, submittedBy } = args;
+  const { orgId, period, version, keptNames, submittedBy, clearOrgLevelWhenEmpty } = args;
 
   const { data: existing } = await supabase
     .from("allocation_submissions")
     .select("*")
     .eq("org_id", orgId)
-    .eq("period", period)
-    .not("person_name", "is", null);
+    .eq("period", period);
 
-  // latestByPerson이 이미 지워진(표식이 최신인) 사람은 걸러주므로, 남은 건 '살아 있는' 명단이다.
+  // latestByPerson이 이미 지워진(표식이 최신인) 행은 걸러주므로, 남은 건 '살아 있는' 것들이다.
   const alive = latestByPerson((existing ?? []) as SubmissionRow[]);
   const kept = new Set(keptNames.map((n) => String(n).trim()));
 
   const zeroRates = {} as Record<TargetKey, number>;
   TARGETS.forEach((t) => (zeroRates[t.key] = 0));
 
-  return alive
-    .filter((r) => r.person_name && !kept.has(String(r.person_name).trim()))
-    .map((r) => ({
-      org_id: orgId,
-      period,
-      version,
-      person_name: r.person_name,
-      sub_team: r.sub_team ?? null,
-      headcount: 0,
-      ...zeroRates,
-      total: 0,
-      note: "행 삭제",
-      submitted_by: submittedBy,
-      status: DELETED_STATUS,
-    }));
+  const tombstone = (r: SubmissionRow) => ({
+    org_id: orgId,
+    period,
+    version,
+    person_name: r.person_name,
+    sub_team: r.sub_team ?? null,
+    headcount: 0,
+    ...zeroRates,
+    total: 0,
+    note: "행 삭제",
+    submitted_by: submittedBy,
+    status: DELETED_STATUS,
+  });
+
+  const removedPersons = alive.filter((r) => r.person_name && !kept.has(String(r.person_name).trim()));
+
+  const orgLevel =
+    clearOrgLevelWhenEmpty && kept.size === 0
+      ? alive.filter((r) => r.person_name === null && (Number(r.total) || 0) > 0)
+      : [];
+
+  return [...removedPersons, ...orgLevel].map(tombstone);
 }

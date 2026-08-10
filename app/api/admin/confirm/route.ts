@@ -90,6 +90,9 @@ export async function POST(req: NextRequest) {
       version,
       keptNames: personRows.map((r) => r.person_name),
       submittedBy: "관리자 확정 (검토및확정)",
+      // 개인별 조직에서 명단을 통째로 비웠으면 예전 조직 단위 제출 행도 무효화한다
+      // (안 그러면 개인 행이 하나도 없는데 그 행 때문에 계속 '제출됨'으로 조회된다).
+      clearOrgLevelWhenEmpty: true,
     });
 
     const rowsToInsert = [...personRows, ...tombstones];

@@ -186,11 +186,15 @@ function totalOf(rates: RateMap): number {
 
 // 엑셀에서 여러 셀을 복사해 붙여넣었을 때 탭(열)/줄바꿈(행) 기준으로 표로 분리한다.
 // %, 콤마, 공백은 제거해 "30%"·"1,234" 같은 엑셀 표시 형식도 그대로 받아들인다.
+//
+// 중간의 빈 줄(값이 비었거나 0%인 행)은 반드시 살려둬야 한다. 예전에는 빈 줄을 걸러냈는데,
+// 5명 중 2번째가 빈칸이면 그 행이 통째로 사라져 3번째 사람 값이 2번째 행에 들어가 버렸다.
+// 끝에 붙는 줄바꿈만 제거한다.
 function parsePasteGrid(text: string): string[][] {
-  return text
-    .replace(/\r/g, "")
+  const body = text.replace(/\r/g, "").replace(/\n+$/, "");
+  if (body === "") return [];
+  return body
     .split("\n")
-    .filter((line) => line.length > 0)
     .map((line) => line.split("\t").map((cell) => cell.trim().replace(/%$/, "").replace(/,/g, "")));
 }
 
@@ -913,14 +917,20 @@ function OrgDetail({
   function removePerson(key: string) {
     setPersons((list) => list.filter((p) => p.key !== key));
   }
-  // 개인별 표 붙여넣기: 열 순서를 [이름, ...13개 배부대상]으로 보고, 시작 셀부터 채운다.
+  // 개인별 표 붙여넣기: 열 순서를 [이름, ...13개 배부대상, 코멘트]로 보고, 시작 셀부터 채운다.
   // (인원수 열은 화면에 없다 — 한 행이 곧 한 명이다.)
   // 여러 행(사람)에 걸쳐 붙여넣으면 아래 행이 부족한 경우 자동으로 행을 추가한다.
+  const PASTE_NOTE_COL = TARGETS.length + 1;
   function applyPasteToken(person: PersonEditRow, colIdx: number, token: string): PersonEditRow {
     if (colIdx === 0) return { ...person, name: token };
+    if (colIdx === PASTE_NOTE_COL) return { ...person, note: token };
     const target = TARGETS[colIdx - 1];
     if (!target) return person;
-    return { ...person, rates: { ...person.rates, [target.key]: percentInputToFraction(token) } };
+    // 빈 칸은 건너뛰지 않고 0%로 채운다 — 건너뛰면 그 사람 값이 예전 값 그대로 남아버린다.
+    return {
+      ...person,
+      rates: { ...person.rates, [target.key]: token === "" ? "0" : percentInputToFraction(token) },
+    };
   }
   function handlePersonCellPaste(personIdx: number, startColIdx: number, text: string) {
     const grid = parsePasteGrid(text);
@@ -933,7 +943,6 @@ function OrgDetail({
         }
         let person = next[idx];
         rowTokens.forEach((tok, ci) => {
-          if (tok === "") return;
           person = applyPasteToken(person, startColIdx + ci, tok);
         });
         next[idx] = person;
@@ -1248,6 +1257,12 @@ function OrgDetail({
                               placeholder="코멘트"
                               // 숫자 칸은 오른쪽 정렬이 기본이지만 코멘트는 글이라 왼쪽부터 읽는다.
                               style={{ width: 120, textAlign: "left" }}
+                              onPaste={(e) => {
+                                const text = e.clipboardData.getData("text");
+                                if (!isMultiCellPaste(text)) return;
+                                e.preventDefault();
+                                handlePersonCellPaste(pIdx, PASTE_NOTE_COL, text);
+                              }}
                             />
                           </td>
                         </tr>
