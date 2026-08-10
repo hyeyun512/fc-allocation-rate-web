@@ -1,6 +1,7 @@
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { TARGETS, TargetKey } from "@/lib/targets";
 import { latestByPerson, latestByPersonAndPeriod, latestOrgByPeriod, computeRollup, SubmissionRow } from "@/lib/rollup";
+import { HIDDEN_IN_CONFIRM } from "@/lib/autoAggregate";
 import { OrgReviewData } from "./ConfirmReview";
 import { SurveyOrgData } from "../SurveyOverview";
 import ConfirmTabs from "./ConfirmTabs";
@@ -262,7 +263,17 @@ export default async function AdminConfirmPage() {
   const selfuse = selfuseHistory.find((r) => r.quarter === period) ?? null;
 
   // '조사' 탭 데이터 — 이미 불러온 orgList/subList를 그대로 재사용한다.
-  const surveyData: SurveyOrgData[] = orgList.map((org) => {
+  //
+  // 직접 제출받지 않는 조직은 조사 대상이 아니므로 목록에서 뺀다. 안 그러면 값이 멀쩡히 채워져
+  // 있는데도(리소스배부율 칩은 초록) 조사 현황에서만 '미제출'로 떠서 누락된 것처럼 보인다.
+  //   - 집계 조직(개발 그룹·HR실 등): 하위 조직 값에서 자동계산된다
+  //   - 미러 조직(사업총괄대표): 다른 조직 값을 그대로 따라간다
+  const aggregateBases = new Set(orgList.filter((o) => o.parent_basis).map((o) => o.parent_basis as string));
+  const surveyTargets = orgList.filter(
+    (org) => !aggregateBases.has(org.basis) && !HIDDEN_IN_CONFIRM.includes(org.basis)
+  );
+
+  const surveyData: SurveyOrgData[] = surveyTargets.map((org) => {
     const orgSubs = subList.filter((s) => s.org_id === org.id);
     const deduped = latestByPerson(orgSubs);
     // 값이 전부 0인 저장은 제출로 보지 않는다 (조사 현황의 '제출됨' 표기 기준).

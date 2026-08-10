@@ -372,10 +372,10 @@ export default function AllocationView({
               {TARGETS.map((t) => (
                 <th key={t.key}>{t.label}</th>
               ))}
+              {/* update(반영 여부)는 검토 및 확정 > 조사 탭에서 확인하는 내용이라 여기서는 빼둔다. */}
               {isDelta ? <th>상태</th> : (
                 <>
                   <th>TOTAL</th>
-                  <th>update</th>
                   <th>비고</th>
                 </>
               )}
@@ -384,7 +384,7 @@ export default function AllocationView({
           <tbody>
             {visibleRows.length === 0 && (
               <tr>
-                <td colSpan={TARGETS.length + (isDelta ? 2 : 4)}>
+                <td colSpan={TARGETS.length + (isDelta ? 2 : 3)}>
                   <div className="av-empty">조건에 맞는 배부기준이 없습니다.</div>
                 </td>
               </tr>
@@ -402,7 +402,7 @@ export default function AllocationView({
                             <td className="col-basis">
                               {divisionLabel(row.division)} <span className="grp-count">· {count}건</span>
                             </td>
-                            <td colSpan={TARGETS.length + (isDelta ? 1 : 3)}></td>
+                            <td colSpan={TARGETS.length + (isDelta ? 1 : 2)}></td>
                           </tr>
                         );
                       })()
@@ -494,9 +494,6 @@ export default function AllocationView({
                       })}
                       <td className={`col-total ${totalOk ? "av-total-ok" : "av-total-excl"}`}>
                         {totalOk ? fmtPct(r.total, 0) : r.total === 0 ? "제외" : fmtPct(r.total, 0)}
-                      </td>
-                      <td className="col-update">
-                        {r.update_flag ? <span className="pill">● 반영</span> : <span className="pill off">–</span>}
                       </td>
                       <td className="col-note">
                         {r.note && (
