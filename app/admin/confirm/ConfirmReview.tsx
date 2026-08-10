@@ -477,7 +477,8 @@ function EditableRateRow({
             value={noteValue ?? ""}
             onChange={(e) => onNoteChange?.(e.target.value)}
             placeholder="코멘트"
-            style={{ width: 120 }}
+            // 숫자 칸은 오른쪽 정렬이 기본이지만 코멘트는 글이라 왼쪽부터 읽는다.
+            style={{ width: 120, textAlign: "left" }}
           />
         </td>
       )}
@@ -1242,7 +1243,8 @@ function OrgDetail({
                               value={p.note}
                               onChange={(e) => updatePerson(p.key, { note: e.target.value })}
                               placeholder="코멘트"
-                              style={{ width: 120 }}
+                              // 숫자 칸은 오른쪽 정렬이 기본이지만 코멘트는 글이라 왼쪽부터 읽는다.
+                              style={{ width: 120, textAlign: "left" }}
                             />
                           </td>
                         </tr>
