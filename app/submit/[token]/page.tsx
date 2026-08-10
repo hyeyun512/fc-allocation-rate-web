@@ -54,7 +54,8 @@ async function getData(token: string) {
         .eq("period", prevPeriod)
         .not("person_name", "is", null)
         .order("submitted_at", { ascending: false });
-      previousPersons = latestByPerson((prevSubs ?? []) as SubmissionRow[]);
+      // 이름순이 아니라 저장한 순서대로 불러온다 (한 번에 insert되므로 id 오름차순이 곧 입력 순서).
+      previousPersons = latestByPerson((prevSubs ?? []) as SubmissionRow[]).sort((a, b) => a.id - b.id);
     }
   }
 

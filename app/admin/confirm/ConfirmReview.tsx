@@ -796,8 +796,11 @@ function OrgDetail({
   const currentQuarterIdx = personQuarterOrder.indexOf(period);
   const beforeQuarterSet = new Set(personQuarterOrder.slice(0, currentQuarterIdx));
   const afterQuarterSet = new Set(personQuarterOrder.slice(currentQuarterIdx + 1));
+  // 분기 순으로만 묶는다. 같은 분기 안에서는 저장한 순서를 그대로 둔다
+  // (서버에서 이미 저장 순서(id)로 정렬해 내려준다 — 여기서 이름순으로 다시 정렬하면 안 된다).
+  // Array.prototype.sort는 안정 정렬이라 분기가 같으면 원래 순서가 유지된다.
   const personRowSort = (a: PersonHistoryRow, b: PersonHistoryRow) =>
-    personQuarterOrder.indexOf(a.period) - personQuarterOrder.indexOf(b.period) || a.name.localeCompare(b.name);
+    personQuarterOrder.indexOf(a.period) - personQuarterOrder.indexOf(b.period);
   const beforePersonRows = personCombinedHistory.filter((r) => beforeQuarterSet.has(r.period)).sort(personRowSort);
   const afterPersonRows = personCombinedHistory.filter((r) => afterQuarterSet.has(r.period)).sort(personRowSort);
 
