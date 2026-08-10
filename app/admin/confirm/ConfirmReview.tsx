@@ -12,6 +12,7 @@ import {
   getPreviousPeriod,
 } from "@/lib/targets";
 import { sortQuarters } from "@/lib/quarter";
+import { HIDDEN_IN_CONFIRM } from "@/lib/autoAggregate";
 
 export type PersonRole = "법인" | "주재원";
 
@@ -252,20 +253,26 @@ function averageFromPersons(persons: PersonEditRow[]): RateMap {
   return r;
 }
 
-// 가중평균에 쓰는 조직 가중치(실제 인원수, 없으면 1로 간주).
+/**
+ * 조직 가중치 = 그 조직에 실제로 입력된 인원수.
+ * 개인별로 입력한 조직은 개인 인원수의 합, 조직 단위로 입력한 조직은 조직 인원수 값을 쓴다.
+ * (예전에는 인원수가 없으면 1로 세서 'HW팀 6명 : SW팀 2명'이 1:1로 잡혔다 — 팀 수가 아니라
+ *  실제 인원 비율로 가중해야 한다.)
+ */
 function orgWeight(c: OrgReviewData): number {
-  const hc = c.currentPersons.reduce((s, p) => s + (Number(p.headcount) || 1), 0);
-  return hc > 0 ? hc : 1;
+  const fromPersons = c.currentPersons.reduce((s, p) => s + (Number(p.headcount) || 0), 0);
+  if (fromPersons > 0) return fromPersons;
+  return Number(c.submittedHeadcount) || 0;
 }
 
 function sumOrgWeights(items: OrgReviewData[]): number {
   return items.reduce((s, c) => s + orgWeight(c), 0);
 }
 
-// 표시용 인원수(실제로 인원수가 조사된 조직만 숫자를 보여주고, 없으면 "-").
+// 표시용 인원수(인원수가 입력된 조직만 숫자를 보여주고, 없으면 "-").
 function orgHeadcountDisplay(c: OrgReviewData): number | null {
-  if (c.currentPersons.length === 0) return null;
-  return c.currentPersons.reduce((s, p) => s + (Number(p.headcount) || 1), 0);
+  const w = orgWeight(c);
+  return w > 0 ? w : null;
 }
 
 // 개인별 이력(personHistory)에서 특정 분기의 인원수 합계 (legalOnly=true면 법인분, false면 주재원분).
@@ -280,13 +287,16 @@ function weightedAvgFromChildren(children: OrgReviewData[]): RateMap {
   const r = emptyRates();
   if (children.length === 0) return r;
   const weights = children.map(orgWeight);
-  const totalW = weights.reduce((a, b) => a + b, 0) || children.length;
+  const totalW = weights.reduce((a, b) => a + b, 0);
+  // 아무 조직도 인원수를 적지 않았으면 가중치를 못 쓰므로 균등 평균으로 물러난다.
+  const useWeights = totalW > 0;
+  const divisor = useWeights ? totalW : children.length;
   TARGETS.forEach((t) => {
     const weighted = children.reduce((sum, c, i) => {
       const rate = c.hasSubmission ? c.rollup[t.key] : c.currentRate ? c.currentRate[t.key] : 0;
-      return sum + (Number(rate) || 0) * weights[i];
+      return sum + (Number(rate) || 0) * (useWeights ? weights[i] : 1);
     }, 0);
-    r[t.key] = String(totalW > 0 ? weighted / totalW : 0);
+    r[t.key] = String(divisor > 0 ? weighted / divisor : 0);
   });
   return r;
 }
@@ -570,16 +580,15 @@ function ParentOrgDetail({ item, period, version }: { item: OrgReviewData; perio
         </div>
       )}
 
-      {error && <div className="callout alert" style={{ marginBottom: 12 }}>{error}</div>}
-      <button className="btn btn-primary btn-sm" disabled={confirming} onClick={handleConfirm}>
-        {confirming ? "저장 중..." : "저장 (allocation_rate 반영)"}
-      </button>
+      <div className="field-hint" style={{ marginBottom: 12 }}>
+        아래 하위 조직을 저장하면 이 값도 자동으로 다시 계산되어 반영됩니다.
+      </div>
 
       <div className="panel-sub" style={{ fontWeight: 700, color: "#1a202c", margin: "20px 0 12px" }}>
         ■ 하위 조직 개별 입력 ({item.children.length}개)
       </div>
       <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-        {item.children.map((c) => (
+        {leaderFirst(item.children).map((c) => (
           <OrgDetail key={`${c.org.id}-${period}`} item={c} period={period} version={version} />
         ))}
       </div>
@@ -692,7 +701,7 @@ function HkrAutoPanel({
         <table className="rate-tbl">
           <RateTableHead />
           <tbody>
-            {honsaOrgs.map((c) => (
+            {leaderFirst(honsaOrgs).map((c) => (
               <ReadOnlyRateRow
                 key={c.org.id}
                 label={`${c.org.basis}${c.hasSubmission ? "" : " (미제출)"}`}
@@ -704,10 +713,7 @@ function HkrAutoPanel({
         </table>
       </div>
 
-      {error && <div className="callout alert" style={{ marginBottom: 12 }}>{error}</div>}
-      <button className="btn btn-primary btn-sm" disabled={confirming} onClick={handleConfirm}>
-        {confirming ? "저장 중..." : "저장 (allocation_rate 반영)"}
-      </button>
+      <div className="field-hint">본사 조직을 저장하면 이 값도 자동으로 다시 계산되어 반영됩니다.</div>
     </div>
   );
 }
@@ -724,7 +730,8 @@ function OrgDetail({
   const [orgUnlocked, setOrgUnlocked] = useState(false);
   const [personsUnlocked, setPersonsUnlocked] = useState(false);
   const [orgRates, setOrgRates] = useState<RateMap>(() => toRateMap(item.currentOrgSubmission ?? item.currentRate));
-  const [orgHeadcountInput, setOrgHeadcountInput] = useState(() => (item.submittedHeadcount != null ? String(item.submittedHeadcount) : ""));
+  // 인원수를 비워두고 저장하면 0명으로 남긴다 (빈칸으로 두지 않는다).
+  const [orgHeadcountInput, setOrgHeadcountInput] = useState(() => String(item.submittedHeadcount ?? 0));
   const [orgNoteInput, setOrgNoteInput] = useState(() => item.submittedNote ?? "");
   const [persons, setPersons] = useState<PersonEditRow[]>(() => initialPersons(item));
   const [confirming, setConfirming] = useState(false);
@@ -857,13 +864,10 @@ function OrgDetail({
   function namedHeadcountSum(list: PersonEditRow[]): number | null {
     const named = list.filter((p) => p.name.trim());
     if (named.length === 0) return null;
-    return named.reduce((s, p) => s + (Number(p.headcount) || 1), 0);
+    // 입력된 인원수 그대로 합산한다 (안 적었으면 0명).
+    return named.reduce((s, p) => s + (Number(p.headcount) || 0), 0);
   }
-  const currentOrgHeadcount = usesPersonTable
-    ? namedHeadcountSum(legalPersons)
-    : orgHeadcountInput.trim() !== ""
-    ? Number(orgHeadcountInput)
-    : null;
+  const currentOrgHeadcount = usesPersonTable ? namedHeadcountSum(legalPersons) : Number(orgHeadcountInput) || 0;
   const currentExpatHeadcount = hasExpat ? namedHeadcountSum(expatPersons) : null;
 
   function updateOrgRate(key: TargetKey, value: string) {
@@ -933,7 +937,7 @@ function OrgDetail({
           version,
           rates: computedOrgRates,
           persons: usesPersonTable ? toPersonPayload(legalPersons) : undefined,
-          orgHeadcount: usesPersonTable ? undefined : orgHeadcountInput.trim() ? Number(orgHeadcountInput) : null,
+          orgHeadcount: usesPersonTable ? undefined : Number(orgHeadcountInput) || 0,
           orgNote: usesPersonTable ? undefined : orgNoteInput || null,
         }),
       });
@@ -1307,6 +1311,16 @@ function orgOrderIndex(basis: string): number {
   return i === -1 ? ORG_ORDER.length : i;
 }
 
+// 조직장(그룹장·실장)은 목록에서 항상 맨 위에 보여준다. 표기에 띄어쓰기가 섞여 있어 공백은 무시하고 비교한다.
+const LEADER_FIRST = ["개발그룹장", "사업그룹장", "경영지원실장"];
+function isLeaderOrg(basis: string): boolean {
+  return LEADER_FIRST.includes(String(basis).replace(/\s/g, ""));
+}
+/** 조직장을 맨 위로 올리되, 나머지는 원래 순서를 유지한다. */
+function leaderFirst<T extends { org: { basis: string } }>(items: T[]): T[] {
+  return [...items].sort((a, b) => Number(isLeaderOrg(b.org.basis)) - Number(isLeaderOrg(a.org.basis)));
+}
+
 export default function ConfirmReview({
   period,
   version,
@@ -1325,8 +1339,13 @@ export default function ConfirmReview({
   // 법인/주재원은 엑셀 '1차. 조직 표기'에서 별도 행으로 독립된 조직이므로 구분(division) 그대로 유지하고
   // 순서도 그 표의 No. 순서(ORG_ORDER)를 그대로 따른다.
   const topLevel = data
-    .filter((item) => !item.org.parent_basis)
-    .sort((a, b) => orgOrderIndex(a.org.basis) - orgOrderIndex(b.org.basis));
+    // 사업총괄대표처럼 값이 자동으로 채워지는 조직은 검토·확정 화면에서 감춘다 (View에서는 그대로 보인다).
+    .filter((item) => !item.org.parent_basis && !HIDDEN_IN_CONFIRM.includes(item.org.basis))
+    .sort(
+      (a, b) =>
+        Number(isLeaderOrg(b.org.basis)) - Number(isLeaderOrg(a.org.basis)) ||
+        orgOrderIndex(a.org.basis) - orgOrderIndex(b.org.basis)
+    );
   const [selectedId, setSelectedId] = useState<number | null>(topLevel[0]?.org.id ?? null);
 
   const grouped = topLevel.reduce<Record<string, OrgReviewData[]>>((acc, item) => {

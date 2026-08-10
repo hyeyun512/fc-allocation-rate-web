@@ -91,13 +91,18 @@ export default async function AdminConfirmPage() {
     const currentRateRow = orgRateRows[orgRateRows.length - 1] ?? null;
 
     const rollup = computeRollup(orgLevelRow, personRows);
-    const hasSubmission = !!orgLevelRow || personRows.length > 0;
+    // 값이 전부 0인 저장(행을 모두 지웠거나 배부율이 0%)은 제출로 보지 않는다.
+    const hasAnyValue =
+      (orgLevelRow ? Number(orgLevelRow.total) || 0 : 0) > 0 ||
+      personRows.some((p) => (Number(p.total) || 0) > 0);
+    const hasSubmission = hasAnyValue;
     const latestSubmittedAt = deduped.reduce<string | null>((max, r) => {
       if (!max || new Date(r.submitted_at) > new Date(max)) return r.submitted_at;
       return max;
     }, null);
     const submittedBy = orgLevelRow?.submitted_by ?? personRows[0]?.submitted_by ?? null;
-    const confirmedThisPeriod = orgRateRows.some((r) => r.quarter === period);
+    // 확정도 값이 있어야 확정으로 본다 (0%만 저장된 건 확정 표기하지 않는다).
+    const confirmedThisPeriod = orgRateRows.some((r) => r.quarter === period && (Number(r.total) || 0) > 0);
 
     const orgPersonHistory = latestByPersonAndPeriod(personSubList.filter((s) => s.org_id === org.id))
       // 분기 순으로 묶되, 같은 분기 안에서는 이름순이 아니라 입력한 순서(id)를 유지한다.
@@ -248,7 +253,8 @@ export default async function AdminConfirmPage() {
   const surveyData: SurveyOrgData[] = orgList.map((org) => {
     const orgSubs = subList.filter((s) => s.org_id === org.id);
     const deduped = latestByPerson(orgSubs);
-    const hasSubmission = deduped.length > 0;
+    // 값이 전부 0인 저장은 제출로 보지 않는다 (조사 현황의 '제출됨' 표기 기준).
+    const hasSubmission = deduped.some((r) => (Number(r.total) || 0) > 0);
     const latestSubmittedAt = deduped.reduce<string | null>((max, r) => {
       if (!max || new Date(r.submitted_at) > new Date(max)) return r.submitted_at;
       return max;

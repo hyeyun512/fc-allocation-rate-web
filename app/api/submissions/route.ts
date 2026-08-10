@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { TARGETS, TargetKey, sumTargets } from "@/lib/targets";
+import { recomputeAggregates } from "@/lib/autoAggregate";
 
 function parseRates(rates: Record<string, string>) {
   const out = {} as Record<TargetKey, number>;
@@ -103,6 +104,9 @@ export async function POST(req: NextRequest) {
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
+
+  // 상위 집계 조직·HKR·사업총괄대표 값은 이 제출에서 파생되므로 함께 갱신한다.
+  await recomputeAggregates(supabase, period, version);
 
   return NextResponse.json({ ok: true, count: rows.length });
 }

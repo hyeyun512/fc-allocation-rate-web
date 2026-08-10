@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { TARGETS, TargetKey, sumTargets } from "@/lib/targets";
+import { recomputeAggregates } from "@/lib/autoAggregate";
 
 interface PersonPayload {
   name: string;
@@ -116,5 +117,9 @@ export async function POST(req: NextRequest) {
     .eq("org_id", orgId)
     .eq("period", period);
 
-  return NextResponse.json({ ok: true });
+  // 상위 집계 조직·HKR·사업총괄대표는 이 조직 값에서 파생되므로 여기서 같이 갱신한다
+  // (예전에는 화면의 별도 '저장' 버튼을 눌러야 반영돼 누락되기 쉬웠다).
+  const aggregateProblems = await recomputeAggregates(supabase, period, version);
+
+  return NextResponse.json({ ok: true, aggregateProblems });
 }
