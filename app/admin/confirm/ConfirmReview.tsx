@@ -271,41 +271,38 @@ function orgWeight(c: OrgReviewData): number {
 }
 
 /**
- * 상위 조직 평균에 참여할 때의 하위 조직 값과 인원수.
- * 사업총괄대표처럼 다른 조직 값을 따라가는 자리는 배부율을 원본 조직(사업그룹장)에서 가져오고
- * 인원수는 1명으로 센다 — 실제로 한 사람이 앉는 자리라 평균에서 빠지면 안 된다.
+ * 조직의 이번 분기 인원수. 집계 조직(개발 그룹 등)은 자기 인원을 따로 갖지 않으므로
+ * 하위 조직 인원수를 합쳐 센다 — 안 그러면 인원수 0으로 잡혀 상위 평균에서 통째로 빠진다.
  */
-function effectiveChild(c: OrgReviewData, siblings: OrgReviewData[]): { rec: Record<TargetKey, number>; weight: number } {
-  const srcBasis = mirrorSourceOf(c.org.basis);
-  const from = srcBasis ? siblings.find((s) => s.org.basis === srcBasis) ?? c : c;
-  const rec = from.hasSubmission ? from.rollup : from.currentRate ?? toNumRec(emptyRates());
-  return { rec, weight: srcBasis ? MIRROR_HEADCOUNT : orgWeight(c) };
-}
-
-function sumOrgWeights(items: OrgReviewData[]): number {
-  return items.reduce((s, c) => s + effectiveChild(c, items).weight, 0);
+function headcountForOrg(c: OrgReviewData): number {
+  if (mirrorSourceOf(c.org.basis)) return MIRROR_HEADCOUNT;
+  if (c.children.length > 0) return c.children.reduce((s, ch) => s + headcountForOrg(ch), 0);
+  return orgWeight(c);
 }
 
 /**
- * 그 행의 값이 어디서 온 것인지 알려주는 꼬리표.
- * 이번 분기에 제출이 없으면 마지막 확정값으로 대신 계산하기 때문에, 표 하나에 여러 분기 값이 섞인다.
- * 기준 분기는 표 제목에 이미 있으므로 **그 분기 값을 그대로 쓰는 행에는 아무것도 붙이지 않고**,
- * 예외인 행(다른 분기 값·값 없음·자동 집계)에만 표시한다.
- * 집계 조직(하위 조직을 가진 조직)은 애초에 직접 제출하는 곳이 아니라 자동계산 결과를 쓰므로
- * '미제출'이 아니라 '집계값'으로 적는다.
+ * 상위 조직 평균에 참여할 때의 하위 조직 값과 인원수.
+ *
+ * **그 분기 값만 쓴다.** 예전에는 이번 분기 입력이 없으면 지난 분기 확정값을 끌어다 썼는데,
+ * 그러면 화면의 분기별 표와 자동계산 값이 서로 맞지 않는다(1Q 계산에 2Q 값이 섞여 들어감).
+ * 사업총괄대표처럼 다른 조직 값을 따라가는 자리는 배부율을 원본 조직(사업그룹장)에서 가져오고
+ * 인원수는 1명으로 센다 — 실제로 한 사람이 앉는 자리라 평균에서 빠지면 안 된다.
  */
-function quarterSourceLabel(c: OrgReviewData, period: string): string {
-  if (c.hasSubmission) return "";
-  const isAggregate = c.children.length > 0;
-  if (!c.currentRate || !c.currentQuarter) return isAggregate ? " · 집계값 없음" : " · 미제출 (값 없음)";
-  if (c.currentQuarter === period) return isAggregate ? " · 집계값" : " · 미제출 (확정값)";
-  return isAggregate ? ` · ${c.currentQuarter} 집계값` : ` · 미제출 → ${c.currentQuarter} 값`;
+function effectiveChild(
+  c: OrgReviewData,
+  siblings: OrgReviewData[],
+  period: string
+): { rec: Record<TargetKey, number>; weight: number } {
+  const srcBasis = mirrorSourceOf(c.org.basis);
+  const from = srcBasis ? siblings.find((s) => s.org.basis === srcBasis) ?? c : c;
+  const rec = from.hasSubmission
+    ? from.rollup
+    : from.rateHistory.find((h) => h.quarter === period)?.rates ?? toNumRec(emptyRates());
+  return { rec, weight: headcountForOrg(c) };
 }
 
-// 표시용 인원수(인원수가 입력된 조직만 숫자를 보여주고, 없으면 "-").
-function orgHeadcountDisplay(c: OrgReviewData): number | null {
-  const w = orgWeight(c);
-  return w > 0 ? w : null;
+function sumOrgWeights(items: OrgReviewData[], period: string): number {
+  return items.reduce((s, c) => s + effectiveChild(c, items, period).weight, 0);
 }
 
 /**
@@ -348,16 +345,23 @@ function orgWeightForQuarter(c: OrgReviewData, quarter: string): number {
   return Number(c.rateHistory.find((h) => h.quarter === quarter)?.headcount) || 0;
 }
 
+// 특정 분기 기준 조직 인원수. 집계 조직은 하위 조직 인원수를 합쳐 센다 (headcountForOrg의 과거분기판).
+function headcountForOrgIn(c: OrgReviewData, quarter: string): number {
+  if (mirrorSourceOf(c.org.basis)) return MIRROR_HEADCOUNT;
+  if (c.children.length > 0) return c.children.reduce((s, ch) => s + headcountForOrgIn(ch, quarter), 0);
+  return orgWeightForQuarter(c, quarter);
+}
+
 function sumOrgWeightsForQuarter(items: OrgReviewData[], quarter: string): number | null {
-  const sum = items.reduce((s, c) => s + orgWeightForQuarter(c, quarter), 0);
+  const sum = items.reduce((s, c) => s + headcountForOrgIn(c, quarter), 0);
   return sum > 0 ? sum : null;
 }
 
 // 상위 집계 조직(예: 경영지원실)의 값 = 하위 조직들(예: 재무팀, Staff(경영지원))의 인원수 가중평균.
-function weightedAvgFromChildren(children: OrgReviewData[]): RateMap {
+function weightedAvgFromChildren(children: OrgReviewData[], period: string): RateMap {
   const r = emptyRates();
   if (children.length === 0) return r;
-  const eff = children.map((c) => effectiveChild(c, children));
+  const eff = children.map((c) => effectiveChild(c, children, period));
   const totalW = eff.reduce((a, e) => a + e.weight, 0);
   // 아무 조직도 인원수를 적지 않았으면 가중치를 못 쓰므로 균등 평균으로 물러난다.
   const useWeights = totalW > 0;
@@ -373,8 +377,8 @@ const AFFILIATE_KEYS: TargetKey[] = ["h_mobility", "h_ev", "hiparking", "peoplec
 
 // HKR(관계사 제외) = 본사 조직들의 인원수 가중평균(weightedAvgFromChildren과 동일 로직) 이후,
 // 계열사 배부분을 제외하고 나머지(Humax 내부) 컬럼만으로 재정규화한 값.
-function computeHkr(honsaOrgs: OrgReviewData[]): RateMap {
-  const avg = toNumRec(weightedAvgFromChildren(honsaOrgs));
+function computeHkr(honsaOrgs: OrgReviewData[], period: string): RateMap {
+  const avg = toNumRec(weightedAvgFromChildren(honsaOrgs, period));
   const humaxSum = TARGETS.reduce((sum, t) => (AFFILIATE_KEYS.includes(t.key) ? sum : sum + (avg[t.key] || 0)), 0);
   const r = emptyRates();
   TARGETS.forEach((t) => {
@@ -653,8 +657,8 @@ function ParentOrgDetail({ item, period, version }: { item: OrgReviewData; perio
   const router = useRouter();
 
   const pastRateHistory = item.rateHistory.filter((h) => h.quarter !== period);
-  const computed = weightedAvgFromChildren(item.children);
-  const computedHeadcount = sumOrgWeights(item.children);
+  const computed = weightedAvgFromChildren(item.children, period);
+  const computedHeadcount = sumOrgWeights(item.children, period);
   const total = totalOf(computed);
   const totalOk = Math.abs(total - 1) < 0.005 || total === 0;
 
@@ -799,8 +803,24 @@ function HkrAutoPanel({
   const router = useRouter();
 
   const pastHistory = history.filter((h) => h.quarter !== period);
-  const computed = computeHkr(honsaOrgs);
-  const computedHeadcount = sumOrgWeights(honsaOrgs);
+  const computed = computeHkr(honsaOrgs, period);
+  const computedHeadcount = sumOrgWeights(honsaOrgs, period);
+
+  /**
+   * 특정 분기의 '본사 조직 현황' 행. 그 분기 값만 쓴다 — 다른 분기 값을 끌어오지 않는다.
+   * 이번 분기는 아직 확정 전일 수 있으므로 제출 롤업을 먼저 본다.
+   */
+  function honsaRowsFor(quarter: string) {
+    const isCurrent = quarter === period;
+    return leaderFirst(honsaOrgs).map((c) => {
+      const rec =
+        isCurrent && c.hasSubmission
+          ? c.rollup
+          : c.rateHistory.find((h) => h.quarter === quarter)?.rates ?? toNumRec(emptyRates());
+      const weight = isCurrent ? headcountForOrg(c) : headcountForOrgIn(c, quarter);
+      return { c, rec, weight, empty: recTotal(rec) <= 0 };
+    });
+  }
   const total = totalOf(computed);
   const totalOk = Math.abs(total - 1) < 0.005 || total === 0;
 
@@ -885,31 +905,40 @@ function HkrAutoPanel({
         </div>
       )}
 
-      <div className="panel-sub" style={{ fontWeight: 700, color: "#1a202c", margin: "0 0 4px" }}>
-        ■ {period} 본사 조직 현황 (가중치 산정 대상)
-      </div>
-      <div className="field-hint" style={{ marginBottom: 8 }}>
-        {period}에 제출한 조직은 그 값을, 아직 제출하지 않은 조직은 마지막 확정값을 대신 넣어 계산합니다 —
-        {period} 값이 아닌 행에만 출처를 표시했습니다.
-      </div>
-      <div className="tbl-scroll" style={{ marginBottom: 12 }}>
-        <table className="rate-tbl">
-          <RateTableHead />
-          <tbody>
-            {leaderFirst(honsaOrgs).map((c) => (
-              <ReadOnlyRateRow
-                key={c.org.id}
-                // 값이 어느 분기 것인지 행마다 밝힌다.
-                // 집계 조직(하위 조직을 가진 조직)은 직접 제출하는 곳이 아니라 자동계산 결과를 쓰므로
-                // '미제출'이 아니라 '집계값'으로 표기한다.
-                label={`${c.org.basis}${quarterSourceLabel(c, period)}`}
-                rec={c.hasSubmission ? c.rollup : c.currentRate ?? toNumRec(emptyRates())}
-                headcount={orgHeadcountDisplay(c)}
-              />
-            ))}
-          </tbody>
-        </table>
-      </div>
+      {/* 분기마다 별도 표로 나눈다 — 한 표에 여러 분기 값이 섞이면 무엇으로 계산됐는지 알 수 없다. */}
+      {orderedQuarters(pastHistory.map((h) => h.quarter), period).map((q) => {
+        const rows = honsaRowsFor(q);
+        return (
+          <div key={q}>
+            <div className="panel-sub" style={{ fontWeight: 700, color: "#1a202c", margin: "0 0 4px" }}>
+              ■ {q} 본사 조직 현황 (가중치 산정 대상)
+            </div>
+            <div className="field-hint" style={{ marginBottom: 8 }}>
+              {q === period
+                ? `위 ${period} (자동계산) 값은 이 표의 행들만으로 계산됩니다. 값이 없는 조직은 계산에서 빠집니다.`
+                : `${q}에 확정된 값입니다. 그 분기에 확정되지 않은 조직은 값이 없습니다.`}
+            </div>
+            <div className="tbl-scroll" style={{ marginBottom: 12 }}>
+              <table className="rate-tbl">
+                <RateTableHead />
+                <tbody>
+                  {rows.map(({ c, rec, weight, empty }) => (
+                    <ReadOnlyRateRow
+                      key={c.org.id}
+                      // 집계 조직(하위 조직을 가진 조직)은 직접 제출하는 곳이 아니라 자동계산 결과를 쓴다.
+                      label={`${c.org.basis}${
+                        empty ? (q === period ? " · 미입력" : " · 미확정") : c.children.length > 0 ? " · 집계값" : ""
+                      }`}
+                      rec={rec}
+                      headcount={weight > 0 ? weight : null}
+                    />
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        );
+      })}
 
       <div className="field-hint">본사 조직을 저장하면 이 값도 자동으로 다시 계산되어 반영됩니다.</div>
     </div>

@@ -62,8 +62,14 @@ interface OrgState {
   hasSubmission: boolean;
 }
 
-/** 조직 하나의 이번 분기 값(제출이 있으면 롤업, 없으면 마지막 확정값)과 인원 가중치. */
-function buildOrgState(org: any, subs: SubmissionRow[], rateRows: any[]): OrgState {
+/**
+ * 조직 하나의 **이번 분기** 값과 인원 가중치.
+ *
+ * 예전에는 이번 분기 입력이 없으면 지난 분기 확정값을 끌어다 썼는데, 그러면 화면의 분기별 표와
+ * 자동계산 값이 서로 맞지 않았다(1Q 계산에 2Q 값이 섞여 들어감). 이번 분기 값만 쓴다 —
+ * 제출이 있으면 그 롤업, 없으면 이번 분기 확정값(집계 조직처럼 파생된 값), 그것도 없으면 0.
+ */
+function buildOrgState(org: any, subs: SubmissionRow[], rateRows: any[], period: string): OrgState {
   const orgSubs = subs.filter((s) => s.org_id === org.id);
   const deduped = latestByPerson(orgSubs);
   const orgLevelRow = deduped.find((r) => r.person_name === null) ?? null;
@@ -72,17 +78,18 @@ function buildOrgState(org: any, subs: SubmissionRow[], rateRows: any[]): OrgSta
   const hasSubmission =
     (Number(orgLevelRow?.total) || 0) > 0 || personRows.some((p) => (Number(p.total) || 0) > 0);
 
-  // 전 항목 0%인 행은 '지우고 저장한' 흔적이라 마지막 확정값으로 쓰지 않는다.
-  const own = rateRows.filter(
-    (r) =>
-      r.basis === org.basis &&
-      r.division === org.division &&
-      r.type === org.type &&
-      (Number(r.total) || 0) > 0
-  );
-  const lastRate = own.length ? own[own.length - 1] : null;
+  // 전 항목 0%인 행은 '지우고 저장한' 흔적이라 값으로 쓰지 않는다.
+  const thisQuarterRate =
+    rateRows.find(
+      (r) =>
+        r.quarter === period &&
+        r.basis === org.basis &&
+        r.division === org.division &&
+        r.type === org.type &&
+        (Number(r.total) || 0) > 0
+    ) ?? null;
 
-  const rate = hasSubmission ? (computeRollup(orgLevelRow, personRows) as Rec) : toRec(lastRate);
+  const rate = hasSubmission ? (computeRollup(orgLevelRow, personRows) as Rec) : toRec(thisQuarterRate);
   // 가중치는 실제 입력된 인원수 (팀 수가 아니라 인원 비율로 가중해야 한다).
   // 개인별 입력 조직은 값이 채워진 개인 행 수(한 행 = 한 명), 조직 단위 입력 조직은 조직 인원수 값을 쓴다.
   const fromPersons = countedPersonRows(personRows).length;
@@ -171,7 +178,7 @@ export async function recomputeAggregates(
   const rates = rateRows ?? [];
 
   const stateById = new Map<number, OrgState>();
-  orgs.forEach((o: any) => stateById.set(o.id, buildOrgState(o, submissions, rates)));
+  orgs.forEach((o: any) => stateById.set(o.id, buildOrgState(o, submissions, rates, period)));
 
   // 미러 조직(사업총괄대표)은 직접 입력받지 않으므로 원본 조직(사업그룹장) 값을 그대로 쓰고,
   // 인원수는 1명으로 잡는다. 아래 상위 조직 가중평균에도 이 상태로 참여한다.
@@ -185,6 +192,19 @@ export async function recomputeAggregates(
       weight: MIRROR_HEADCOUNT,
       hasSubmission: srcState.hasSubmission,
     });
+  }
+
+  // 집계 조직은 자기 인원을 따로 갖지 않으므로 하위 조직 인원수를 합쳐 가중치로 쓴다.
+  // (그대로 두면 인원수 0으로 잡혀 HKR 같은 상위 평균에서 통째로 빠진다 — 화면 계산과 동일하게 맞춘다.)
+  const weightOf = (org: any): number => {
+    const children = orgs.filter((o: any) => o.parent_basis === org.basis);
+    if (children.length === 0) return stateById.get(org.id)?.weight ?? 0;
+    return children.reduce((s: number, ch: any) => s + weightOf(ch), 0);
+  };
+  for (const o of orgs) {
+    if (!orgs.some((x: any) => x.parent_basis === o.basis)) continue;
+    const st = stateById.get(o.id);
+    if (st) stateById.set(o.id, { ...st, weight: weightOf(o) });
   }
 
   // 1) 하위 조직을 가진 상위 집계 조직 (예: 경영지원실 = 재무팀 + Staff(경영지원))
