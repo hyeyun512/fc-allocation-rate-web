@@ -286,6 +286,20 @@ function sumOrgWeights(items: OrgReviewData[]): number {
   return items.reduce((s, c) => s + effectiveChild(c, items).weight, 0);
 }
 
+/**
+ * 그 행의 값이 어느 분기 것인지 알려주는 꼬리표.
+ * 이번 분기에 제출이 없으면 마지막 확정값으로 대신 계산하기 때문에, 표 하나에 여러 분기 값이 섞인다.
+ * 집계 조직(하위 조직을 가진 조직)은 애초에 직접 제출하는 곳이 아니라 자동계산 결과를 쓰므로
+ * '미제출'이 아니라 '집계값'으로 적는다.
+ */
+function quarterSourceLabel(c: OrgReviewData, period: string): string {
+  if (c.hasSubmission) return ` · ${period}`;
+  const isAggregate = c.children.length > 0;
+  if (!c.currentRate || !c.currentQuarter) return isAggregate ? " · 집계값 없음" : " · 미제출 (값 없음)";
+  if (isAggregate) return ` · ${c.currentQuarter} 집계값`;
+  return ` · 미제출 → ${c.currentQuarter} 값`;
+}
+
 // 표시용 인원수(인원수가 입력된 조직만 숫자를 보여주고, 없으면 "-").
 function orgHeadcountDisplay(c: OrgReviewData): number | null {
   const w = orgWeight(c);
@@ -723,6 +737,7 @@ function ParentOrgDetail({ item, period, version }: { item: OrgReviewData; perio
       )}
 
       <div className="field-hint" style={{ marginBottom: 12 }}>
+        {period}에 제출한 하위 조직은 그 값을, 아직 제출하지 않은 조직은 마지막 확정값을 대신 넣어 계산합니다.
         아래 하위 조직을 저장하면 이 값도 자동으로 다시 계산되어 반영됩니다. (코멘트는 입력칸에서 벗어나면 자동 저장됩니다.)
       </div>
 
@@ -816,6 +831,9 @@ function HkrAutoPanel({
         </div>
       </div>
 
+      <div className="panel-sub" style={{ fontWeight: 700, color: "#1a202c", margin: "0 0 8px" }}>
+        ■ 분기별 HKR 배부율
+      </div>
       <div className="tbl-scroll" style={{ marginBottom: 12 }}>
         <table className="rate-tbl">
           <RateTableHead />
@@ -841,8 +859,12 @@ function HkrAutoPanel({
         </div>
       )}
 
-      <div className="panel-sub" style={{ fontWeight: 700, color: "#1a202c", margin: "0 0 8px" }}>
-        ■ 본사 조직 현황 (가중치 산정 대상)
+      <div className="panel-sub" style={{ fontWeight: 700, color: "#1a202c", margin: "0 0 4px" }}>
+        ■ {period} 본사 조직 현황 (가중치 산정 대상)
+      </div>
+      <div className="field-hint" style={{ marginBottom: 8 }}>
+        {period}에 제출한 조직은 그 값을, 아직 제출하지 않은 조직은 마지막 확정값을 대신 넣어 계산합니다 —
+        행마다 어느 분기 값인지 표시했습니다.
       </div>
       <div className="tbl-scroll" style={{ marginBottom: 12 }}>
         <table className="rate-tbl">
@@ -851,7 +873,10 @@ function HkrAutoPanel({
             {leaderFirst(honsaOrgs).map((c) => (
               <ReadOnlyRateRow
                 key={c.org.id}
-                label={`${c.org.basis}${c.hasSubmission ? "" : " (미제출)"}`}
+                // 값이 어느 분기 것인지 행마다 밝힌다.
+                // 집계 조직(하위 조직을 가진 조직)은 직접 제출하는 곳이 아니라 자동계산 결과를 쓰므로
+                // '미제출'이 아니라 '집계값'으로 표기한다.
+                label={`${c.org.basis}${quarterSourceLabel(c, period)}`}
                 rec={c.hasSubmission ? c.rollup : c.currentRate ?? toNumRec(emptyRates())}
                 headcount={orgHeadcountDisplay(c)}
               />
