@@ -190,16 +190,63 @@ function totalOf(rates: RateMap): number {
 // 중간의 빈 줄(값이 비었거나 0%인 행)은 반드시 살려둬야 한다. 예전에는 빈 줄을 걸러냈는데,
 // 5명 중 2번째가 빈칸이면 그 행이 통째로 사라져 3번째 사람 값이 2번째 행에 들어가 버렸다.
 // 끝에 붙는 줄바꿈만 제거한다.
+function normalizePasteCell(cell: string): string {
+  return cell.trim().replace(/%$/, "").replace(/,/g, "");
+}
+
 function parsePasteGrid(text: string): string[][] {
   const body = text.replace(/\r/g, "").replace(/\n+$/, "");
   if (body === "") return [];
-  return body
-    .split("\n")
-    .map((line) => line.split("\t").map((cell) => cell.trim().replace(/%$/, "").replace(/,/g, "")));
+  return body.split("\n").map((line) => line.split("\t").map(normalizePasteCell));
 }
 
-function isMultiCellPaste(text: string): boolean {
-  return text.includes("\t") || text.includes("\n");
+/**
+ * 엑셀에서 복사한 클립보드의 HTML에서 표를 읽는다.
+ *
+ * 붙여넣기의 일반 텍스트에는 **화면에 보이는 값**만 담긴다. 셀 서식이 소수점 둘째 자리면
+ * 3.4559688%가 "3.46%"로 복사돼 정밀도가 잘렸다. 엑셀은 HTML 형식에 셀의 원본 숫자를
+ * x:num 속성으로 같이 넣어주므로, 그 값이 있으면 그걸 쓴다.
+ *
+ * 퍼센트 서식 셀의 x:num은 이미 분수(0.034559688…)라 화면 단위(%)에 맞춰 100을 곱한다.
+ */
+function parseExcelHtmlGrid(html: string): string[][] | null {
+  if (!html || !/<t[rd]\b/i.test(html)) return null;
+  let doc: Document;
+  try {
+    doc = new DOMParser().parseFromString(html, "text/html");
+  } catch {
+    return null;
+  }
+  const rows = Array.from(doc.querySelectorAll("tr"));
+  if (rows.length === 0) return null;
+
+  const grid = rows.map((tr) =>
+    Array.from(tr.querySelectorAll("td,th")).map((cell) => {
+      const text = (cell.textContent ?? "").replace(/ /g, " ").trim();
+      const raw = cell.getAttribute("x:num");
+      const n = raw == null || raw === "" ? NaN : Number(raw);
+      if (!Number.isFinite(n)) return normalizePasteCell(text);
+      return text.includes("%") ? String(n * 100) : String(n);
+    })
+  );
+  return grid.some((r) => r.length > 0) ? grid : null;
+}
+
+/** 붙여넣기 내용을 표로 읽는다 — 엑셀 원본값(x:num)이 있으면 그쪽을 우선한다. */
+function readPasteGrid(clipboard: DataTransfer): string[][] {
+  const fromHtml = parseExcelHtmlGrid(clipboard.getData("text/html"));
+  if (fromHtml) return fromHtml;
+  return parsePasteGrid(clipboard.getData("text"));
+}
+
+/**
+ * 기본 붙여넣기 대신 우리가 처리해야 하는 경우인지.
+ * 여러 칸을 복사했을 때는 물론, 한 칸이라도 엑셀에서 온 것이면(원본값이 잘리므로) 직접 처리한다.
+ */
+function shouldHandlePaste(clipboard: DataTransfer): boolean {
+  const text = clipboard.getData("text");
+  if (text.includes("\t") || text.includes("\n")) return true;
+  return parseExcelHtmlGrid(clipboard.getData("text/html")) !== null;
 }
 
 function totalIsValid(rates: RateMap): boolean {
@@ -534,13 +581,13 @@ function EditableRateRow({
               value={fractionToPercentInput(rates[t.key])}
               onChange={(e) => onChange(t.key, percentInputToFraction(e.target.value))}
               onPaste={(e) => {
-                const text = e.clipboardData.getData("text");
-                if (!isMultiCellPaste(text)) return;
+                if (!shouldHandlePaste(e.clipboardData)) return;
                 e.preventDefault();
-                const row = parsePasteGrid(text)[0] ?? [];
+                const row = readPasteGrid(e.clipboardData)[0] ?? [];
                 row.forEach((tok, offset) => {
                   const target = TARGETS[i + offset];
-                  if (target && tok !== "") onChange(target.key, percentInputToFraction(tok));
+                  // 빈 칸은 건너뛰지 않고 0%로 채운다 — 건너뛰면 예전 값이 그대로 남는다.
+                  if (target) onChange(target.key, tok === "" ? "0" : percentInputToFraction(tok));
                 });
               }}
             />
@@ -1144,8 +1191,8 @@ function OrgDetail({
       rates: { ...person.rates, [target.key]: token === "" ? "0" : percentInputToFraction(token) },
     };
   }
-  function handlePersonCellPaste(personIdx: number, startColIdx: number, text: string) {
-    const grid = parsePasteGrid(text);
+  function handlePersonCellPaste(personIdx: number, startColIdx: number, clipboard: DataTransfer) {
+    const grid = readPasteGrid(clipboard);
     setPersons((list) => {
       const next = [...list];
       grid.forEach((rowTokens, ri) => {
@@ -1435,10 +1482,9 @@ function OrgDetail({
                               placeholder="이름"
                               style={{ width: 100, textAlign: "center" }}
                               onPaste={(e) => {
-                                const text = e.clipboardData.getData("text");
-                                if (!isMultiCellPaste(text)) return;
+                                if (!shouldHandlePaste(e.clipboardData)) return;
                                 e.preventDefault();
-                                handlePersonCellPaste(pIdx, 0, text);
+                                handlePersonCellPaste(pIdx, 0, e.clipboardData);
                               }}
                             />
                           </td>
@@ -1461,10 +1507,9 @@ function OrgDetail({
                                   value={fractionToPercentInput(p.rates[t.key])}
                                   onChange={(e) => updatePersonRate(p.key, t.key, percentInputToFraction(e.target.value))}
                                   onPaste={(e) => {
-                                    const text = e.clipboardData.getData("text");
-                                    if (!isMultiCellPaste(text)) return;
+                                    if (!shouldHandlePaste(e.clipboardData)) return;
                                     e.preventDefault();
-                                    handlePersonCellPaste(pIdx, 1 + tIdx, text);
+                                    handlePersonCellPaste(pIdx, 1 + tIdx, e.clipboardData);
                                   }}
                                 />
                                 <span>%</span>
@@ -1480,10 +1525,9 @@ function OrgDetail({
                               // 숫자 칸은 오른쪽 정렬이 기본이지만 코멘트는 글이라 왼쪽부터 읽는다.
                               style={{ width: 120, textAlign: "left" }}
                               onPaste={(e) => {
-                                const text = e.clipboardData.getData("text");
-                                if (!isMultiCellPaste(text)) return;
+                                if (!shouldHandlePaste(e.clipboardData)) return;
                                 e.preventDefault();
-                                handlePersonCellPaste(pIdx, PASTE_NOTE_COL, text);
+                                handlePersonCellPaste(pIdx, PASTE_NOTE_COL, e.clipboardData);
                               }}
                             />
                           </td>

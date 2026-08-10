@@ -207,7 +207,9 @@ export default function ItPanel({
   const quarter = period;
   const [headcountForm, setHeadcountForm] = useState<FormState>(() => fromRow(initialHeadcount));
   const [sapForm, setSapForm] = useState<FormState>(() => fromRow(initialSap));
-  const [submittedBy, setSubmittedBy] = useState(initialHeadcount?.submitted_by ?? initialSap?.submitted_by ?? "");
+  // 인원수와 SAP ID 개수는 담당자가 달라 입력자를 따로 받는다.
+  const [headcountBy, setHeadcountBy] = useState(initialHeadcount?.submitted_by ?? "");
+  const [sapBy, setSapBy] = useState(initialSap?.submitted_by ?? "");
   const [confirming, setConfirming] = useState(false);
   const [confirmed, setConfirmed] = useState(false);
   const [error, setError] = useState("");
@@ -248,7 +250,15 @@ export default function ItPanel({
       const res = await fetch("/api/admin/it-basis", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ quarter, headcount: toBasisInput(headcountForm), sap: toBasisInput(sapForm), submittedBy: submittedBy || null }),
+        body: JSON.stringify({
+          quarter,
+          headcount: toBasisInput(headcountForm),
+          sap: toBasisInput(sapForm),
+          headcountBy: headcountBy || null,
+          sapBy: sapBy || null,
+          // 예전 형식(단일 입력자)과 호환 — 서버가 개별 값이 없을 때만 쓴다.
+          submittedBy: headcountBy || sapBy || null,
+        }),
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || "확정 처리 중 오류가 발생했습니다.");
@@ -271,23 +281,27 @@ export default function ItPanel({
         <div className="field-hint">
           적용 분기: <b>{quarter}</b> (검토 및 확정 상단의 현재 라운드에서 변경)
         </div>
-        <div>
-          <label className="field-hint" style={{ marginRight: 8 }}>
-            입력자
-          </label>
-          <input value={submittedBy} onChange={(e) => setSubmittedBy(e.target.value)} placeholder="이름" style={{ width: 120 }} />
-        </div>
       </div>
 
+      {/* 인원수와 SAP ID 개수는 담당자가 서로 달라 입력자를 각각 받는다. */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8, marginBottom: 8 }}>
         <div className="panel-sub" style={{ fontWeight: 700, color: "#1a202c", margin: 0 }}>
           ■ 인원수 (명) — 분기별 이력
         </div>
-        {prevHeadcountRow && (
-          <button className="btn btn-secondary btn-sm" onClick={() => setHeadcountForm(fromRow(prevHeadcountRow))}>
-            전분기 데이터 끌고오기
-          </button>
-        )}
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginLeft: "auto" }}>
+          <label className="field-hint">입력자</label>
+          <input
+            value={headcountBy}
+            onChange={(e) => setHeadcountBy(e.target.value)}
+            placeholder="이름"
+            style={{ width: 110, textAlign: "left" }}
+          />
+          {prevHeadcountRow && (
+            <button className="btn btn-secondary btn-sm" onClick={() => setHeadcountForm(fromRow(prevHeadcountRow))}>
+              전분기 데이터 끌고오기
+            </button>
+          )}
+        </div>
       </div>
       <BasisForm
         title="청구기준"
@@ -301,11 +315,20 @@ export default function ItPanel({
         <div className="panel-sub" style={{ fontWeight: 700, color: "#1a202c", margin: 0 }}>
           ■ SAP ID 개수 (Ea) — 분기별 이력
         </div>
-        {prevSapRow && (
-          <button className="btn btn-secondary btn-sm" onClick={() => setSapForm(fromRow(prevSapRow))}>
-            전분기 데이터 끌고오기
-          </button>
-        )}
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginLeft: "auto" }}>
+          <label className="field-hint">입력자</label>
+          <input
+            value={sapBy}
+            onChange={(e) => setSapBy(e.target.value)}
+            placeholder="이름"
+            style={{ width: 110, textAlign: "left" }}
+          />
+          {prevSapRow && (
+            <button className="btn btn-secondary btn-sm" onClick={() => setSapForm(fromRow(prevSapRow))}>
+              전분기 데이터 끌고오기
+            </button>
+          )}
+        </div>
       </div>
       <BasisForm
         title="청구기준"

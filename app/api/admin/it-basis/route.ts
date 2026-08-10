@@ -4,7 +4,12 @@ import { computeItRates } from "@/lib/itBasis";
 import { TARGETS, TargetKey, sumTargets } from "@/lib/targets";
 
 export async function POST(req: NextRequest) {
-  const { quarter, headcount, sap, submittedBy } = await req.json();
+  const { quarter, headcount, sap, submittedBy, headcountBy, sapBy } = await req.json();
+
+  // 인원수와 SAP ID 개수는 담당자가 달라 입력자를 따로 받는다.
+  // (예전 형식으로 들어오면 단일 입력자를 양쪽에 그대로 쓴다.)
+  const headcountSubmitter = headcountBy ?? submittedBy ?? null;
+  const sapSubmitter = sapBy ?? submittedBy ?? null;
   if (!quarter || (!headcount && !sap)) {
     return NextResponse.json({ error: "필수 항목이 누락되었습니다." }, { status: 400 });
   }
@@ -27,7 +32,7 @@ export async function POST(req: NextRequest) {
         holdings: Number(headcount.holdings) || 0,
         hiparking_resident: headcount.hiparkingResident === "" || headcount.hiparkingResident == null ? null : Number(headcount.hiparkingResident),
       },
-      submitted_by: submittedBy ?? null,
+      submitted_by: headcountSubmitter,
       confirmed_at: new Date().toISOString(),
     });
   }
@@ -46,7 +51,7 @@ export async function POST(req: NextRequest) {
         holdings: Number(sap.holdings) || 0,
         hiparking_resident: null,
       },
-      submitted_by: submittedBy ?? null,
+      submitted_by: sapSubmitter,
       confirmed_at: new Date().toISOString(),
     });
   }
