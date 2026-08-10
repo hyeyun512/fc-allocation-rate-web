@@ -79,7 +79,11 @@ export default async function AdminConfirmPage() {
     const orgSubs = subList.filter((s) => s.org_id === org.id);
     const deduped = latestByPerson(orgSubs);
     const orgLevelRow = deduped.find((r) => r.person_name === null) ?? null;
-    const personRows = deduped.filter((r) => r.person_name !== null);
+    // 이름 가나다순이 아니라 입력(저장)한 순서대로 보여준다.
+    // 확정 시 폼에 있던 순서 그대로 한 번에 insert되므로 id 오름차순이 곧 입력 순서다.
+    const personRows = deduped
+      .filter((r) => r.person_name !== null)
+      .sort((a, b) => a.id - b.id);
 
     const orgRateRows = rates.filter(
       (r) => r.basis === org.basis && r.division === org.division && r.type === org.type
@@ -96,6 +100,8 @@ export default async function AdminConfirmPage() {
     const confirmedThisPeriod = orgRateRows.some((r) => r.quarter === period);
 
     const orgPersonHistory = latestByPersonAndPeriod(personSubList.filter((s) => s.org_id === org.id))
+      // 분기 순으로 묶되, 같은 분기 안에서는 이름순이 아니라 입력한 순서(id)를 유지한다.
+      .sort((a, b) => a.period.localeCompare(b.period) || a.id - b.id)
       .map((p) => ({
         name: p.person_name as string,
         period: p.period as string,
@@ -105,8 +111,7 @@ export default async function AdminConfirmPage() {
         submittedAt: p.submitted_at,
         note: p.note ?? null,
         role: (p.sub_team === "주재원" ? "주재원" : "법인") as "법인" | "주재원",
-      }))
-      .sort((a, b) => a.period.localeCompare(b.period) || a.name.localeCompare(b.name));
+      }));
 
     return {
       org: {
