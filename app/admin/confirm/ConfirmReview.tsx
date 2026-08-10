@@ -287,17 +287,19 @@ function sumOrgWeights(items: OrgReviewData[]): number {
 }
 
 /**
- * 그 행의 값이 어느 분기 것인지 알려주는 꼬리표.
+ * 그 행의 값이 어디서 온 것인지 알려주는 꼬리표.
  * 이번 분기에 제출이 없으면 마지막 확정값으로 대신 계산하기 때문에, 표 하나에 여러 분기 값이 섞인다.
+ * 기준 분기는 표 제목에 이미 있으므로 **그 분기 값을 그대로 쓰는 행에는 아무것도 붙이지 않고**,
+ * 예외인 행(다른 분기 값·값 없음·자동 집계)에만 표시한다.
  * 집계 조직(하위 조직을 가진 조직)은 애초에 직접 제출하는 곳이 아니라 자동계산 결과를 쓰므로
  * '미제출'이 아니라 '집계값'으로 적는다.
  */
 function quarterSourceLabel(c: OrgReviewData, period: string): string {
-  if (c.hasSubmission) return ` · ${period}`;
+  if (c.hasSubmission) return "";
   const isAggregate = c.children.length > 0;
   if (!c.currentRate || !c.currentQuarter) return isAggregate ? " · 집계값 없음" : " · 미제출 (값 없음)";
-  if (isAggregate) return ` · ${c.currentQuarter} 집계값`;
-  return ` · 미제출 → ${c.currentQuarter} 값`;
+  if (c.currentQuarter === period) return isAggregate ? " · 집계값" : " · 미제출 (확정값)";
+  return isAggregate ? ` · ${c.currentQuarter} 집계값` : ` · 미제출 → ${c.currentQuarter} 값`;
 }
 
 // 표시용 인원수(인원수가 입력된 조직만 숫자를 보여주고, 없으면 "-").
@@ -306,11 +308,27 @@ function orgHeadcountDisplay(c: OrgReviewData): number | null {
   return w > 0 ? w : null;
 }
 
-// 개인별 이력(personHistory)에서 특정 분기의 인원수 (legalOnly=true면 법인분, false면 주재원분).
-// 한 행이 한 명이므로 값이 채워진 행 수를 센다.
-function personHeadcountForQuarter(history: PersonHistoryEntry[], quarter: string, legalOnly: boolean): number | null {
+/**
+ * 주재원 전용 조직인지 (HSZ_주재원 등). 이런 조직은 소속 인원이 전원 '주재원'으로 저장되므로
+ * 법인분/주재원분으로 나누면 안 된다 — 나누면 아무도 안 남는다.
+ */
+export function isExpatOnly(division: string, basis: string): boolean {
+  return division === "주재원" || String(basis).endsWith("_주재원");
+}
+
+// 개인별 이력(personHistory)에서 특정 분기의 인원수. 한 행이 한 명이므로 값이 채워진 행 수를 센다.
+//   "legal"  = 법인분만 · "expat" = 주재원분만 · "all" = 구분 없이 전부(주재원 전용 조직용)
+type HeadcountScope = "legal" | "expat" | "all";
+function personHeadcountForQuarter(
+  history: PersonHistoryEntry[],
+  quarter: string,
+  scope: HeadcountScope
+): number | null {
   const rows = history.filter(
-    (h) => h.period === quarter && h.total > 0 && (legalOnly ? h.role !== "주재원" : h.role === "주재원")
+    (h) =>
+      h.period === quarter &&
+      h.total > 0 &&
+      (scope === "all" ? true : scope === "legal" ? h.role !== "주재원" : h.role === "주재원")
   );
   return rows.length > 0 ? rows.length : null;
 }
@@ -321,7 +339,11 @@ function personHeadcountForQuarter(history: PersonHistoryEntry[], quarter: strin
  * 과거 분기 행은 지금 화면의 입력값(현재 분기)이 아니라 그 분기 이력에서 세야 한다.
  */
 function orgWeightForQuarter(c: OrgReviewData, quarter: string): number {
-  const fromPersons = personHeadcountForQuarter(c.personHistory, quarter, true);
+  const fromPersons = personHeadcountForQuarter(
+    c.personHistory,
+    quarter,
+    isExpatOnly(c.org.division, c.org.basis) ? "all" : "legal"
+  );
   if (fromPersons && fromPersons > 0) return fromPersons;
   return Number(c.rateHistory.find((h) => h.quarter === quarter)?.headcount) || 0;
 }
@@ -868,7 +890,7 @@ function HkrAutoPanel({
       </div>
       <div className="field-hint" style={{ marginBottom: 8 }}>
         {period}에 제출한 조직은 그 값을, 아직 제출하지 않은 조직은 마지막 확정값을 대신 넣어 계산합니다 —
-        행마다 어느 분기 값인지 표시했습니다.
+        {period} 값이 아닌 행에만 출처를 표시했습니다.
       </div>
       <div className="tbl-scroll" style={{ marginBottom: 12 }}>
         <table className="rate-tbl">
@@ -917,6 +939,8 @@ function OrgDetail({
 
   const hasExpat = !!item.expat;
   const usesPersonTable = item.org.requires_person_detail || hasExpat;
+  // 주재원 전용 조직(HSZ_주재원 등) — 소속 인원이 전원 주재원으로 저장되는 조직.
+  const isExpatOnlyOrg = isExpatOnly(item.org.division, item.org.basis);
   const pastRateHistory = item.rateHistory.filter((h) => h.quarter !== period);
   const pastPersonHistory = item.personHistory.filter((h) => h.period !== period);
   const pastExpatHistory = hasExpat ? item.expat!.rateHistory.filter((h) => h.quarter !== period) : [];
@@ -1032,8 +1056,12 @@ function OrgDetail({
   const orgEditable = usesPersonTable ? false : confirmed ? orgUnlocked : true;
   const personsEditable = usesPersonTable ? (confirmed ? personsUnlocked : true) : false;
 
-  const legalPersons = persons.filter((p) => p.role !== "주재원");
-  const expatPersons = persons.filter((p) => p.role === "주재원");
+  // 법인+주재원을 한 표에서 받는 조직은 '구분' 열로 나누지만,
+  // 주재원 전용 조직(HSZ_주재원 등)은 소속 인원이 전원 주재원으로 저장된다.
+  // 이 조직에서까지 주재원을 걸러내면 아무도 안 남아 인원수·자동계산이 0이 되고,
+  // 그 상태로 저장하면 명단이 통째로 지워진다 — 전체 인원을 그대로 쓴다.
+  const legalPersons = isExpatOnlyOrg ? persons : persons.filter((p) => p.role !== "주재원");
+  const expatPersons = isExpatOnlyOrg ? [] : persons.filter((p) => p.role === "주재원");
   const computedOrgRates = usesPersonTable ? averageFromPersons(legalPersons) : orgRates;
   const computedExpatRates = hasExpat ? averageFromPersons(expatPersons) : null;
   const displayOrgRates = computedOrgRates;
@@ -1234,7 +1262,11 @@ function OrgDetail({
                     key={q}
                     label={h.quarter}
                     rec={h.rates}
-                    headcount={usesPersonTable ? personHeadcountForQuarter(item.personHistory, h.quarter, true) : h.headcount}
+                    headcount={
+                      usesPersonTable
+                        ? personHeadcountForQuarter(item.personHistory, h.quarter, isExpatOnlyOrg ? "all" : "legal")
+                        : h.headcount
+                    }
                     showClearSlot={orgEditable}
                     withNote
                     note={h.note}
@@ -1304,7 +1336,7 @@ function OrgDetail({
                       key={q}
                       label={q}
                       rec={pastExpatHistory.find((h) => h.quarter === q)!.rates}
-                      headcount={personHeadcountForQuarter(item.personHistory, q, false)}
+                      headcount={personHeadcountForQuarter(item.personHistory, q, "expat")}
                     />
                   )
                 )}
@@ -1565,24 +1597,24 @@ export default function ConfirmReview({
               <button
                 key={item.org.id}
                 type="button"
-                className={`av-chip ${selectedId === item.org.id ? "active" : ""}`}
+                // 제출 완료는 체크표시 대신 연한 초록 배경으로 알아본다.
+                className={`av-chip ${item.confirmedThisPeriod ? "submitted" : ""} ${selectedId === item.org.id ? "active" : ""}`}
                 style={{ marginRight: 6, marginBottom: 6 }}
                 onClick={() => setSelectedId(item.org.id)}
               >
                 {item.org.basis}
                 {item.children.length > 0 ? " 📊" : ""}
                 {item.expat ? " 🌐" : ""}
-                {item.confirmedThisPeriod ? " ✓" : ""}
               </button>
             ))}
             {division === "본사" && (
               <button
                 type="button"
-                className={`av-chip ${selectedId === HKR_ID ? "active" : ""}`}
+                className={`av-chip ${hkrConfirmedThisPeriod ? "submitted" : ""} ${selectedId === HKR_ID ? "active" : ""}`}
                 style={{ marginRight: 6, marginBottom: 6 }}
                 onClick={() => setSelectedId(HKR_ID)}
               >
-                HKR(관계사제외) 🧮{hkrConfirmedThisPeriod ? " ✓" : ""}
+                HKR(관계사제외) 🧮
               </button>
             )}
           </div>
