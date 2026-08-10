@@ -237,9 +237,18 @@ export async function recomputeAggregates(
   }
 
   // 1) 하위 조직을 가진 상위 집계 조직 (예: 경영지원실 = 재무팀 + Staff(경영지원))
-  for (const parent of orgs) {
-    const children = orgs.filter((o: any) => o.parent_basis === parent.basis);
-    if (children.length === 0) continue;
+  //
+  // 깊은 조직부터 계산해야 한다. 상위의 상위(HKR ← 사업 그룹 ← 사업그룹장)가 있을 때 순서가 뒤집히면
+  // 상위가 갱신 전 값으로 계산된다. 계산한 값은 stateById에 되돌려 넣어 그 다음 계산이 최신값을 쓰게 한다.
+  const childrenOf = (o: any) => orgs.filter((x: any) => x.parent_basis === o.basis);
+  const depthOf = (o: any): number => {
+    const ch = childrenOf(o);
+    return ch.length === 0 ? 0 : 1 + Math.max(...ch.map(depthOf));
+  };
+  const parentsByDepth = orgs.filter((o: any) => childrenOf(o).length > 0).sort((a: any, b: any) => depthOf(a) - depthOf(b));
+
+  for (const parent of parentsByDepth) {
+    const children = childrenOf(parent);
     const childStates: OrgState[] = children.map((c: any) => stateById.get(c.id)!).filter(Boolean);
     // 이번 분기에 아무 하위 조직도 입력하지 않았으면 계산할 근거가 없다 —
     // 남아 있던 행이 있으면 지운다 (입력한 적 없는 분기가 목록에 남지 않도록).
@@ -253,6 +262,10 @@ export async function recomputeAggregates(
       continue;
     }
     const avg = weightedAvg(childStates);
+    // 방금 계산한 값을 상태에 반영해, 이 조직을 하위로 두는 상위 조직·HKR이 최신값으로 계산되게 한다.
+    const own = stateById.get(parent.id);
+    if (own) stateById.set(parent.id, { ...own, rate: avg, hasSubmission: true });
+
     const err = await upsertRate(supabase, {
       quarter: period,
       type: parent.type,
