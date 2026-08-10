@@ -1,6 +1,7 @@
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { TARGETS, TargetKey } from "@/lib/targets";
 import { latestByPerson, latestByPersonAndPeriod, latestOrgByPeriod, computeRollup, SubmissionRow } from "@/lib/rollup";
+import { HIDDEN_IN_CONFIRM } from "@/lib/autoAggregate";
 import { OrgReviewData } from "./ConfirmReview";
 import { SurveyOrgData } from "../SurveyOverview";
 import ConfirmTabs from "./ConfirmTabs";
@@ -85,8 +86,14 @@ export default async function AdminConfirmPage() {
       .filter((r) => r.person_name !== null)
       .sort((a, b) => a.id - b.id);
 
+    // 전 항목이 0%인 행은 '값을 지우고 저장한' 흔적이지 실제 배부율이 아니다.
+    // (upsert라 행을 지울 수 없어 0으로 덮어쓴다.) 이력·현재값 어디에도 노출하지 않는다.
     const orgRateRows = rates.filter(
-      (r) => r.basis === org.basis && r.division === org.division && r.type === org.type
+      (r) =>
+        r.basis === org.basis &&
+        r.division === org.division &&
+        r.type === org.type &&
+        (Number(r.total) || 0) > 0
     );
     const currentRateRow = orgRateRows[orgRateRows.length - 1] ?? null;
 
@@ -166,7 +173,10 @@ export default async function AdminConfirmPage() {
   // 그대로 독립된 조직으로 노출한다 (예: HSZ와 HSZ_주재원은 각각 별도로 선택/확정).
   const childrenByParentBasis = new Map<string, OrgReviewData[]>();
   orgList.forEach((org, i) => {
-    if (org.parent_basis) {
+    // 사업총괄대표처럼 다른 조직 값을 그대로 따라가는 조직은 검토·확정 화면에서 빼둔다.
+    // 화면에 감추는 것뿐 아니라, 상위 조직(사업 그룹) 가중평균에도 들어가면 안 된다 —
+    // 사업그룹장 값을 복사한 것이라 같이 세면 그룹장 한 명이 두 번 반영된다. (View에는 그대로 보인다.)
+    if (org.parent_basis && !HIDDEN_IN_CONFIRM.includes(org.basis)) {
       const list = childrenByParentBasis.get(org.parent_basis) ?? [];
       list.push(reviewData[i]);
       childrenByParentBasis.set(org.parent_basis, list);
@@ -178,11 +188,14 @@ export default async function AdminConfirmPage() {
     children: childrenByParentBasis.get(item.org.basis) ?? [],
   }));
 
-  const hkrHistory = (hkrRows ?? []).map((r) => ({
-    quarter: r.quarter as string,
-    rates: toRateRecord(r),
-    total: Number(r.total) || 0,
-  }));
+  // 조직별 이력과 같은 기준 — 전 항목 0%인 행은 지운 흔적이라 이력에 넣지 않는다.
+  const hkrHistory = (hkrRows ?? [])
+    .filter((r) => (Number(r.total) || 0) > 0)
+    .map((r) => ({
+      quarter: r.quarter as string,
+      rates: toRateRecord(r),
+      total: Number(r.total) || 0,
+    }));
   const hkrConfirmedThisPeriod = hkrHistory.some((h) => h.quarter === period);
 
   interface ItBasisPayload {

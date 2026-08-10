@@ -59,8 +59,13 @@ function buildOrgState(org: any, subs: SubmissionRow[], rateRows: any[]): OrgSta
   const personRows = deduped.filter((r) => r.person_name !== null);
   const hasSubmission = !!orgLevelRow || personRows.length > 0;
 
+  // 전 항목 0%인 행은 '지우고 저장한' 흔적이라 마지막 확정값으로 쓰지 않는다.
   const own = rateRows.filter(
-    (r) => r.basis === org.basis && r.division === org.division && r.type === org.type
+    (r) =>
+      r.basis === org.basis &&
+      r.division === org.division &&
+      r.type === org.type &&
+      (Number(r.total) || 0) > 0
   );
   const lastRate = own.length ? own[own.length - 1] : null;
 
@@ -156,8 +161,12 @@ export async function recomputeAggregates(
   orgs.forEach((o: any) => stateById.set(o.id, buildOrgState(o, submissions, rates)));
 
   // 1) 하위 조직을 가진 상위 집계 조직 (예: 경영지원실 = 재무팀 + Staff(경영지원))
+  //    사업총괄대표처럼 다른 조직 값을 복사해 오는 조직은 평균에서 뺀다 —
+  //    사업그룹장 값을 그대로 쓰는 것이라 같이 세면 그룹장이 두 번 반영된다.
   for (const parent of orgs) {
-    const children = orgs.filter((o: any) => o.parent_basis === parent.basis);
+    const children = orgs.filter(
+      (o: any) => o.parent_basis === parent.basis && !HIDDEN_IN_CONFIRM.includes(o.basis)
+    );
     if (children.length === 0) continue;
     const avg = weightedAvg(children.map((c: any) => stateById.get(c.id)!).filter(Boolean));
     const err = await upsertRate(supabase, {
