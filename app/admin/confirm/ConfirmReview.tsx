@@ -443,10 +443,28 @@ export function ReadOnlyRateRow({
                 value={noteValue ?? ""}
                 onChange={(e) => onNoteChange?.(e.target.value)}
                 onBlur={() => onNoteCommit?.()}
+                // 엔터로도 저장되게 한다 (표 안이라 폼 제출이 없다).
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    onNoteCommit?.();
+                  }
+                }}
                 placeholder="코멘트"
                 // 숫자 칸은 오른쪽 정렬이 기본이지만 코멘트는 글이라 왼쪽부터 읽는다.
                 style={{ width: 120, textAlign: "left" }}
               />
+              {/* 커서를 옮겨야 저장되는 게 불편해 눌러서 저장하는 버튼을 둔다. */}
+              <button
+                type="button"
+                className="note-save-btn"
+                title="코멘트 저장"
+                aria-label="코멘트 저장"
+                disabled={noteSaveState === "saving"}
+                onClick={() => onNoteCommit?.()}
+              >
+                ✓
+              </button>
               <span style={{ fontSize: 11, color: noteSaveState === "error" ? "#dc2626" : "#94a3b8", whiteSpace: "nowrap" }}>
                 {noteSaveState === "saving" ? "저장중" : noteSaveState === "saved" ? "저장됨" : noteSaveState === "error" ? "실패" : ""}
               </span>

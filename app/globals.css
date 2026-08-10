@@ -53,6 +53,16 @@ a{color:inherit}
 .rate-tbl .total-col{font-weight:700}
 .rate-tbl .total-ok{color:#16a34a}
 .rate-tbl .total-bad{color:#dc2626}
+/* 코멘트 저장 버튼 — 커서를 옮기지 않고 눌러서 바로 저장한다. */
+.note-save-btn{
+  flex:none;width:22px;height:22px;padding:0;line-height:1;cursor:pointer;
+  display:inline-flex;align-items:center;justify-content:center;
+  border-radius:6px;border:0.5px solid #86efac;background:#dcfce7;color:#166534;
+  font-family:inherit;font-size:12px;font-weight:700
+}
+.note-save-btn:hover:not(:disabled){background:#16a34a;border-color:#16a34a;color:#fff}
+.note-save-btn:disabled{opacity:.5;cursor:default}
+
 /* 청구기준처럼 여러 행에 걸쳐 하나로 합친 칸 — 세로 가운데 정렬하고 오른쪽에 경계선을 둔다. */
 .rate-tbl td.basis-cell{
   vertical-align:middle;font-weight:700;color:#334155;background:#f8fafc;

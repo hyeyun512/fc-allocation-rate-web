@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { TARGETS, TargetKey, getPreviousPeriod } from "@/lib/targets";
 import { sortQuarters } from "@/lib/quarter";
 import { computeSelfuseRates, SelfuseBasisInput } from "@/lib/selfuseBasis";
@@ -100,6 +101,7 @@ export default function SelfUsePanel({
   const quarter = period;
   const [form, setForm] = useState<FormState>(() => fromRow(initial));
   const [submittedBy, setSubmittedBy] = useState(initial?.submitted_by ?? "");
+  const router = useRouter();
   const [confirming, setConfirming] = useState(false);
   const [confirmed, setConfirmed] = useState(false);
   const [error, setError] = useState("");
@@ -126,6 +128,9 @@ export default function SelfUsePanel({
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || "확정 처리 중 오류가 발생했습니다.");
       setConfirmed(true);
+      // 서버 컴포넌트는 진입 시 한 번만 조회한다 — 새로고침하지 않으면
+      // 탭을 옮겼다 돌아왔을 때 저장 전 값으로 다시 그려진다.
+      router.refresh();
     } catch (e: any) {
       setError(e.message);
     } finally {
