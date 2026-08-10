@@ -96,28 +96,43 @@ interface PersonEditRow {
  * 그래서 body에 portal로 띄우고 위치를 직접 계산한다(잘림 없음).
  * 커서를 떼도 2초는 남겨두고, 그 사이 말풍선 위로 커서를 옮기면 계속 유지된다.
  */
-const NOTE_TIP_LINGER_MS = 2000;
+const NOTE_TIP_LINGER_MS = 2000; // 커서를 뗀 뒤 남아 있는 시간
+const NOTE_TIP_FADE_MS = 450; // 그 뒤 서서히 사라지는 시간 (globals.css의 transition과 맞춰둔다)
+const NOTE_TIP_WIDTH = 320;
+const NOTE_TIP_SHIFT_LEFT = 140; // 아이콘보다 왼쪽으로 당겨 코멘트가 왼쪽에 치우쳐 보이게 한다
 
 function NoteTip({ text }: { text: string }) {
   const [pos, setPos] = useState<{ left: number; top: number } | null>(null);
-  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [fading, setFading] = useState(false);
+  const linger = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const fade = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  useEffect(() => () => { if (timer.current) clearTimeout(timer.current); }, []);
+  useEffect(
+    () => () => {
+      if (linger.current) clearTimeout(linger.current);
+      if (fade.current) clearTimeout(fade.current);
+    },
+    []
+  );
 
-  function cancelHide() {
-    if (timer.current) { clearTimeout(timer.current); timer.current = null; }
+  function clearTimers() {
+    if (linger.current) { clearTimeout(linger.current); linger.current = null; }
+    if (fade.current) { clearTimeout(fade.current); fade.current = null; }
   }
   function show(e: React.MouseEvent | React.FocusEvent) {
-    cancelHide();
+    clearTimers();
+    setFading(false);
     const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
-    const width = 320;
-    // 화면 오른쪽으로 넘치면 안쪽으로 당긴다 (왼쪽 정렬이 기본).
-    const left = Math.max(8, Math.min(r.left, window.innerWidth - width - 12));
+    // 아이콘 기준 왼쪽으로 당기되, 화면 밖으로는 나가지 않게 가둔다.
+    const left = Math.max(8, Math.min(r.left - NOTE_TIP_SHIFT_LEFT, window.innerWidth - NOTE_TIP_WIDTH - 12));
     setPos({ left, top: r.bottom + 6 });
   }
   function scheduleHide() {
-    cancelHide();
-    timer.current = setTimeout(() => setPos(null), NOTE_TIP_LINGER_MS);
+    clearTimers();
+    linger.current = setTimeout(() => {
+      setFading(true); // 여기서부터 CSS transition으로 서서히 흐려진다
+      fade.current = setTimeout(() => { setPos(null); setFading(false); }, NOTE_TIP_FADE_MS);
+    }, NOTE_TIP_LINGER_MS);
   }
 
   return (
@@ -136,9 +151,9 @@ function NoteTip({ text }: { text: string }) {
         typeof document !== "undefined" &&
         createPortal(
           <div
-            className="av-note-tip"
+            className={`av-note-tip${fading ? " is-fading" : ""}`}
             style={{ left: pos.left, top: pos.top }}
-            onMouseEnter={cancelHide}
+            onMouseEnter={() => { clearTimers(); setFading(false); }}
             onMouseLeave={scheduleHide}
           >
             {text}

@@ -24,6 +24,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "조직을 찾을 수 없습니다." }, { status: 404 });
   }
 
+  // 주재원 전용 조직인지 (division이 '주재원'이거나 basis가 _주재원으로 끝난다)
+  const isExpatOrg = org.division === "주재원" || String(org.basis).endsWith("_주재원");
+
   const parsed = {} as Record<TargetKey, number>;
   TARGETS.forEach((t) => {
     const v = Number(rates[t.key]);
@@ -65,7 +68,9 @@ export async function POST(req: NextRequest) {
           period,
           version,
           person_name: p.name,
-          sub_team: p.subTeam || null,
+          // 주재원 조직(HDG_주재원 등)에는 '구분' 열이 없어 화면에서 값이 안 넘어온다.
+          // 그 조직에 들어온 개인은 모두 주재원이므로 여기서 채워준다.
+          sub_team: p.subTeam || (isExpatOrg ? "주재원" : null),
           headcount: p.headcount ?? null,
           ...personParsed,
           total: sumTargets(personParsed),

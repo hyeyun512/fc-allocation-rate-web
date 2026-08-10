@@ -87,7 +87,8 @@ export async function POST(req: NextRequest) {
         period,
         version,
         person_name: p.name,
-        sub_team: p.subTeam || null,
+        // 주재원 전용 조직은 화면에 '구분' 열이 없어 값이 안 넘어온다 — 전원 주재원으로 채운다.
+        sub_team: p.subTeam || (org.division === "주재원" || String(org.basis).endsWith("_주재원") ? "주재원" : null),
         headcount: p.headcount ?? null,
         ...parsed,
         total: sumTargets(parsed),
