@@ -79,6 +79,10 @@ a{color:inherit}
    선을 진하게 하면 표에서 혼자 튀므로, 옅은 선 + 위쪽 여백으로 묶음을 나눈다. */
 .rate-tbl tr.basis-group-start > td{border-top:0.5px solid #cbd5e1;padding-top:14px}
 .rate-tbl tr.basis-group-start:first-child > td{border-top:none;padding-top:6px}
+/* 같은 청구기준 안에서 분기가 바뀌는 자리 — 행 사이 선(#f1f5f9)보다 한 단계만 진하게. */
+.rate-tbl tr.quarter-group-start > td{border-top:0.5px solid #cbd5e1}
+/* 합쳐진 분기 칸은 청구기준 칸보다 한 톤 옅게 둬서 위계가 보이게 한다. */
+.rate-tbl td.basis-cell.quarter-cell{font-weight:600;color:#64748b;background:#fbfcfe}
 
 .tbl-scroll{overflow-x:auto;overflow-y:visible}
 

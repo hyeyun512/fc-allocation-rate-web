@@ -33,10 +33,11 @@ interface FormState {
   materialEvcsOverseasRatio: string;
 }
 
-const FIELDS: { key: FieldKey; label: string; hint: string; isPercent: boolean }[] = [
+const FIELDS: { key: FieldKey; label: string; hint: string; isPercent: boolean; derived?: boolean }[] = [
   { key: "bundangSelfuseRatio", label: "분당 자가사용비율", hint: "0~100(%)로 입력", isPercent: true },
   { key: "yonginSelfuseRatio", label: "용인 자가사용비율", hint: "0~100(%)로 입력", isPercent: true },
-  { key: "bizDevMediaHeadcount", label: "사업+개발+Media그룹 인원수", hint: "명", isPercent: false },
+  // 본사 총 인원수에서 Staff부문을 뺀 나머지 — 직접 입력받지 않고 계산해서 채운다.
+  { key: "bizDevMediaHeadcount", label: "사업+개발+Media그룹 인원수", hint: "본사 총 - Staff (자동)", isPercent: false, derived: true },
   { key: "staffHeadcount", label: "Staff부문 인원수", hint: "명", isPercent: false },
   { key: "hqTotalHeadcount", label: "본사 총 인원수", hint: "명", isPercent: false },
   { key: "materialEvcsDomesticRatio", label: "재료비 비중(EVCS국내)", hint: "0~100(%)로 입력", isPercent: true },
@@ -103,10 +104,16 @@ export default function SelfUsePanel({
   const [submittedBy, setSubmittedBy] = useState(initial?.submitted_by ?? "");
   const router = useRouter();
   const [confirming, setConfirming] = useState(false);
-  const [confirmed, setConfirmed] = useState(false);
+  // 이미 확정된 분기를 '입력중'으로 보여주면 아직 안 한 것처럼 보인다 — 확정 상태면 읽기 전용으로 두고
+  // '수정'을 눌렀을 때만 다시 입력할 수 있게 한다.
+  const [confirmed, setConfirmed] = useState(!!initial?.confirmed_at);
+  const [unlocked, setUnlocked] = useState(false);
+  const editable = !confirmed || unlocked;
   const [error, setError] = useState("");
 
-  const input = toBasisInput(form);
+  // 사업+개발+Media그룹 인원수 = 본사 총 인원수 - Staff부문 인원수 (음수는 0으로).
+  const derivedBizDevMedia = String(Math.max(0, (Number(form.hqTotalHeadcount) || 0) - (Number(form.staffHeadcount) || 0)));
+  const input = toBasisInput({ ...form, bizDevMediaHeadcount: derivedBizDevMedia });
   const preview = useMemo(() => computeSelfuseRates(input), [JSON.stringify(input)]);
   const evcsShare = input.hqTotalHeadcount > 0 ? input.bizDevMediaHeadcount / input.hqTotalHeadcount / 2 : 0;
   const humaxCommonShare = input.hqTotalHeadcount > 0 ? input.staffHeadcount / input.hqTotalHeadcount : 0;
@@ -128,6 +135,7 @@ export default function SelfUsePanel({
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || "확정 처리 중 오류가 발생했습니다.");
       setConfirmed(true);
+      setUnlocked(false);
       // 서버 컴포넌트는 진입 시 한 번만 조회한다 — 새로고침하지 않으면
       // 탭을 옮겼다 돌아왔을 때 저장 전 값으로 다시 그려진다.
       router.refresh();
@@ -198,32 +206,57 @@ export default function SelfUsePanel({
                   </tr>
                 );
               }
+              // 이미 확정된 분기는 과거 분기와 같은 읽기 전용 모양으로 보여준다.
+              if (!editable) {
+                return (
+                  <tr key={q} className="ro-row">
+                    <td style={{ textAlign: "left" }}>{quarter}</td>
+                    <td>{(input.bundangSelfuseRatio * 100).toFixed(1)}%</td>
+                    <td>{(input.yonginSelfuseRatio * 100).toFixed(1)}%</td>
+                    <td>{input.bizDevMediaHeadcount}</td>
+                    <td>{input.staffHeadcount}</td>
+                    <td>{input.hqTotalHeadcount}</td>
+                    <td>{(input.materialEvcsDomesticRatio * 100).toFixed(1)}%</td>
+                    <td>{(input.materialEvcsOverseasRatio * 100).toFixed(1)}%</td>
+                    <td>{initial?.submitted_by ?? submittedBy ?? "-"}</td>
+                    <td>{fmtDate(initial?.confirmed_at ?? null)}</td>
+                  </tr>
+                );
+              }
               return (
                 <tr key={q}>
                   <td style={{ textAlign: "left", fontWeight: 700, color: "#2563eb" }}>{quarter} (입력중)</td>
                   {FIELDS.map((f, i) => (
                     <td key={f.key}>
-                      <input
-                        type="number"
-                        min="0"
-                        value={form[f.key]}
-                        onChange={(e) => setForm((s) => ({ ...s, [f.key]: e.target.value }))}
-                        style={{ width: 80 }}
-                        onPaste={(e) => {
-                          // 엑셀에서 여러 칸을 복사해 붙여넣으면 그 칸부터 순서대로 채운다.
-                          if (!shouldHandlePaste(e.clipboardData)) return;
-                          e.preventDefault();
-                          const row = readPasteGrid(e.clipboardData)[0] ?? [];
-                          setForm((s) => {
-                            const next = { ...s };
-                            row.forEach((tok, offset) => {
-                              const target = FIELDS[i + offset];
-                              if (target) next[target.key] = tok;
+                      {f.derived ? (
+                        // 본사 총 - Staff 로 계산되는 값이라 직접 고치지 않는다.
+                        <span title="본사 총 인원수 - Staff부문 인원수" style={{ color: "#475569", fontWeight: 600 }}>
+                          {derivedBizDevMedia}
+                        </span>
+                      ) : (
+                        <input
+                          type="number"
+                          min="0"
+                          value={form[f.key]}
+                          onChange={(e) => setForm((s) => ({ ...s, [f.key]: e.target.value }))}
+                          style={{ width: 80 }}
+                          onPaste={(e) => {
+                            // 엑셀에서 여러 칸을 복사해 붙여넣으면 그 칸부터 순서대로 채운다.
+                            // 자동계산 칸은 건너뛰고 다음 입력 칸으로 넘긴다.
+                            if (!shouldHandlePaste(e.clipboardData)) return;
+                            e.preventDefault();
+                            const row = readPasteGrid(e.clipboardData)[0] ?? [];
+                            setForm((s) => {
+                              const next = { ...s };
+                              row.forEach((tok, offset) => {
+                                const target = FIELDS[i + offset];
+                                if (target && !target.derived) next[target.key] = tok;
+                              });
+                              return next;
                             });
-                            return next;
-                          });
-                        }}
-                      />
+                          }}
+                        />
+                      )}
                     </td>
                   ))}
                   <td colSpan={2} className="field-hint">
@@ -266,9 +299,19 @@ export default function SelfUsePanel({
           확정 완료
         </div>
       )}
-      <button className="btn btn-primary btn-sm" disabled={confirming} onClick={handleConfirm}>
-        {confirming ? "저장 중..." : "저장 (allocation_rate 반영)"}
-      </button>
+      {/* 확정된 분기는 잠가두고, 고칠 때만 열어 실수로 덮어쓰는 걸 막는다. */}
+      {editable ? (
+        <button className="btn btn-primary btn-sm" disabled={confirming} onClick={handleConfirm}>
+          {confirming ? "저장 중..." : "저장 (allocation_rate 반영)"}
+        </button>
+      ) : (
+        <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+          <span className="status-badge status-confirmed">확정됨 ({quarter})</span>
+          <button className="btn btn-secondary btn-sm" onClick={() => setUnlocked(true)}>
+            수정
+          </button>
+        </div>
+      )}
 
       {pastHistory.length > 0 && (
         <>

@@ -399,7 +399,8 @@ export default function ItPanel({
         return {
           key: `${q}-${row.basis}`,
           billing: (row.division === "ID수" ? sap?.billing_basis : headcount?.billing_basis) || "미지정",
-          label: `${q} · ${row.basis}`,
+          quarter: q,
+          basisName: row.basis,
           rates,
           total: TARGETS.reduce((a, t) => a + (rates[t.key] || 0), 0),
           headcount: row.headcount ?? null,
@@ -417,13 +418,27 @@ export default function ItPanel({
     );
 
     return flat.map((r, i) => {
-      const isStart = i === 0 || flat[i - 1].billing !== r.billing;
+      const prev = flat[i - 1];
+      // 청구기준 묶음
+      const isStart = i === 0 || prev.billing !== r.billing;
       let span = 0;
       if (isStart) {
         span = 1;
         while (i + span < flat.length && flat[i + span].billing === r.billing) span++;
       }
-      return { ...r, spanStart: isStart, span };
+      // 같은 청구기준 안에서 분기도 한 번만 적는다 (한 묶음에 여러 분기가 들어올 수 있다).
+      const qStart = isStart || prev.quarter !== r.quarter;
+      let qSpan = 0;
+      if (qStart) {
+        qSpan = 1;
+        while (
+          i + qSpan < flat.length &&
+          flat[i + qSpan].billing === r.billing &&
+          flat[i + qSpan].quarter === r.quarter
+        )
+          qSpan++;
+      }
+      return { ...r, spanStart: isStart, span, qStart, qSpan };
     });
   }, [historyByQuarter]);
 
@@ -568,7 +583,8 @@ export default function ItPanel({
               <thead>
                 <tr>
                   <th>청구기준</th>
-                  <th></th>
+                  <th>분기</th>
+                  <th>배부기준</th>
                   <th>인원수</th>
                   {TARGETS.map((t) => (
                     <th key={t.key} className={t.group === "humax" ? "grp-humax" : "grp-affiliate"}>
@@ -582,15 +598,22 @@ export default function ItPanel({
                 {historyRows.map((r, i) => (
                   <tr
                     key={r.key}
-                    className={`ro-row${r.spanStart ? " basis-group-start" : ""}`}
+                    className={`ro-row${r.spanStart ? " basis-group-start" : ""}${
+                      r.qStart && !r.spanStart ? " quarter-group-start" : ""
+                    }`}
                   >
-                    {/* 같은 청구기준이 이어지면 첫 행에만 적고 아래로 합친다. */}
+                    {/* 같은 청구기준·분기가 이어지면 첫 행에만 적고 아래로 합친다. */}
                     {r.spanStart && (
                       <td rowSpan={r.span} className="basis-cell">
                         {r.billing}
                       </td>
                     )}
-                    <td style={{ textAlign: "left" }}>{r.label}</td>
+                    {r.qStart && (
+                      <td rowSpan={r.qSpan} className="basis-cell quarter-cell">
+                        {r.quarter}
+                      </td>
+                    )}
+                    <td style={{ textAlign: "left" }}>{r.basisName}</td>
                     <td>{r.headcount != null ? `${r.headcount}명` : "-"}</td>
                     {TARGETS.map((t) => (
                       <td key={t.key}>{((r.rates[t.key] || 0) * 100).toFixed(1)}%</td>
