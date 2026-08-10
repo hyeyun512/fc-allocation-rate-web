@@ -410,8 +410,7 @@ export default function ItPanel({
         span = 1;
         while (i + span < flat.length && flat[i + span].billing === r.billing) span++;
       }
-      const groupEnd = i === flat.length - 1 || flat[i + 1].billing !== r.billing;
-      return { ...r, spanStart: isStart, span, groupEnd };
+      return { ...r, spanStart: isStart, span };
     });
   }, [historyByQuarter]);
 
@@ -566,7 +565,7 @@ export default function ItPanel({
                 {historyRows.map((r, i) => (
                   <tr
                     key={r.key}
-                    className={`ro-row${r.spanStart ? " basis-group-start" : ""}${r.groupEnd ? " basis-group-end" : ""}`}
+                    className={`ro-row${r.spanStart ? " basis-group-start" : ""}`}
                   >
                     {/* 같은 청구기준이 이어지면 첫 행에만 적고 아래로 합친다. */}
                     {r.spanStart && (
