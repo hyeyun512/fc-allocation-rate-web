@@ -115,8 +115,6 @@ export default function SelfUsePanel({
   const derivedBizDevMedia = String(Math.max(0, (Number(form.hqTotalHeadcount) || 0) - (Number(form.staffHeadcount) || 0)));
   const input = toBasisInput({ ...form, bizDevMediaHeadcount: derivedBizDevMedia });
   const preview = useMemo(() => computeSelfuseRates(input), [JSON.stringify(input)]);
-  const evcsShare = input.hqTotalHeadcount > 0 ? input.bizDevMediaHeadcount / input.hqTotalHeadcount / 2 : 0;
-  const humaxCommonShare = input.hqTotalHeadcount > 0 ? input.staffHeadcount / input.hqTotalHeadcount : 0;
 
   const pastHistory = useMemo(() => history.filter((h) => h.quarter !== quarter).sort((a, b) => a.quarter.localeCompare(b.quarter)), [history, quarter]);
 
@@ -268,15 +266,19 @@ export default function SelfUsePanel({
           </tbody>
         </table>
       </div>
+      {/* 확정된 분기는 잠가두고, 고칠 때만 열어 실수로 덮어쓰는 걸 막는다.
+          고칠 대상이 바로 위 표이므로 버튼도 그 아래에 둔다. */}
+      {!editable && (
+        <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 12 }}>
+          <span className="status-badge status-confirmed">확정됨 ({quarter})</span>
+          <button className="btn btn-secondary btn-sm" onClick={() => setUnlocked(true)}>
+            수정
+          </button>
+        </div>
+      )}
+      {/* 입력 형식·최근 입력자 같은 설명은 표에 이미 드러나므로 빼고, 자동계산 규칙 하나만 각주로 남긴다. */}
       <div className="field-hint" style={{ marginBottom: 12 }}>
-        {FIELDS.map((f) => `${f.label}: ${f.hint}`).join(" · ")}
-      </div>
-
-      <div className="field-hint" style={{ marginBottom: 12 }}>
-        본사 인원수 비중(자동): EVCS(국내)/EVCS(해외) 각 {(evcsShare * 100).toFixed(1)}% · Humax(공통) {(humaxCommonShare * 100).toFixed(1)}%
-      </div>
-      <div className="field-hint" style={{ marginBottom: 12 }}>
-        최근 입력: {initial?.submitted_by ?? "-"} · {fmtDate(initial?.confirmed_at ?? null)}
+        ※ 사업+개발+Media그룹 인원수 = 본사 총 인원수 − Staff부문 인원수
       </div>
 
       <div className="panel-sub" style={{ fontWeight: 700, color: "#1a202c", margin: "0 0 8px" }}>
@@ -299,18 +301,11 @@ export default function SelfUsePanel({
           확정 완료
         </div>
       )}
-      {/* 확정된 분기는 잠가두고, 고칠 때만 열어 실수로 덮어쓰는 걸 막는다. */}
-      {editable ? (
+      {/* 확정된 분기에는 저장 버튼을 감춘다 — 다시 열려면 기준정보 표 아래의 '수정'을 누른다. */}
+      {editable && (
         <button className="btn btn-primary btn-sm" disabled={confirming} onClick={handleConfirm}>
           {confirming ? "저장 중..." : "저장 (allocation_rate 반영)"}
         </button>
-      ) : (
-        <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-          <span className="status-badge status-confirmed">확정됨 ({quarter})</span>
-          <button className="btn btn-secondary btn-sm" onClick={() => setUnlocked(true)}>
-            수정
-          </button>
-        </div>
       )}
 
       {pastHistory.length > 0 && (
