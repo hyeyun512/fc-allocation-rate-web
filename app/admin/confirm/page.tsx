@@ -2,6 +2,7 @@ import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { TARGETS, TargetKey } from "@/lib/targets";
 import { latestByPerson, latestByPersonAndPeriod, latestOrgByPeriod, computeRollup, SubmissionRow } from "@/lib/rollup";
 import { HIDDEN_IN_CONFIRM } from "@/lib/autoAggregate";
+import { isOrgActiveIn } from "@/lib/orgLifespan";
 import { OrgReviewData } from "./ConfirmReview";
 import { SurveyOrgData } from "../SurveyOverview";
 import ConfirmTabs from "./ConfirmTabs";
@@ -66,7 +67,8 @@ export default async function AdminConfirmPage() {
     .select("*")
     .order("quarter", { ascending: true });
 
-  const orgList = orgs ?? [];
+  // 그 분기에 존재하지 않았던 조직(예: 1Q에만 있던 'Staff(CEO) 직속')은 조사·확정 어디에도 띄우지 않는다.
+  const orgList = (orgs ?? []).filter((o) => isOrgActiveIn(o.basis, period));
   const subList = (submissions ?? []) as SubmissionRow[];
   const personSubList = (personSubmissions ?? []) as SubmissionRow[];
   const rates = rateRows ?? [];

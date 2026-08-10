@@ -1,6 +1,7 @@
 import { TARGETS, TargetKey, sumTargets } from "./targets";
 import { latestByPerson, computeRollup, countedPersonRows, SubmissionRow } from "./rollup";
 import { ensureFixedRates } from "./fixedRates";
+import { isOrgActiveIn } from "./orgLifespan";
 
 /**
  * 자동계산 조직(상위 집계 조직 · HKR)의 배부율을 서버에서 다시 계산해 allocation_rate에 반영한다.
@@ -176,8 +177,20 @@ export async function recomputeAggregates(
   // 고정비율은 조사로 받는 값이 아니라 정의상 고정된 비율이라 분기마다 그대로 복제한다.
   problems.push(...(await ensureFixedRates(supabase, period)));
 
-  const { data: orgs } = await supabase.from("allocation_orgs").select("*").eq("active", true);
-  if (!orgs?.length) return problems;
+  const { data: allOrgs } = await supabase.from("allocation_orgs").select("*").eq("active", true);
+  if (!allOrgs?.length) return problems;
+
+  // 그 분기에 존재하지 않았던 조직은 계산에서 빼고, 남아 있던 배부율 행도 지운다.
+  const orgs = allOrgs.filter((o: any) => isOrgActiveIn(o.basis, period));
+  for (const o of allOrgs.filter((o: any) => !isOrgActiveIn(o.basis, period))) {
+    const err = await deleteRate(supabase, {
+      quarter: period,
+      type: o.type,
+      division: o.division,
+      basis: o.basis,
+    });
+    if (err) problems.push(`${o.basis} 정리: ${err.message}`);
+  }
 
   const { data: subs } = await supabase
     .from("allocation_submissions")

@@ -1,6 +1,7 @@
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { sortQuarters } from "@/lib/quarter";
 import AllocationView, { AllocRateRow } from "./AllocationView";
+import { isOrgActiveIn } from "@/lib/orgLifespan";
 
 export const dynamic = "force-dynamic";
 
@@ -26,7 +27,10 @@ export default async function AdminViewPage() {
   selectableBases.add("HKR(관계사제외)");
 
   const allRows = ((rows ?? []) as AllocRateRow[]).filter(
-    (r) => r.type !== "리소스배부율" || selectableBases.has(r.basis)
+    (r) =>
+      (r.type !== "리소스배부율" || selectableBases.has(r.basis)) &&
+      // 그 분기에 존재하지 않았던 조직은 싣지 않는다 (예: 2Q에만 있던 사업협력팀).
+      isOrgActiveIn(r.basis, r.quarter)
   );
   const quarters = sortQuarters(Array.from(new Set(allRows.map((r) => r.quarter))));
 
