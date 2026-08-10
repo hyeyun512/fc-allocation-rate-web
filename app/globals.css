@@ -169,10 +169,19 @@ footer{text-align:center;padding:22px;color:#94a3b8;font-size:11.5px}
 .av-table td.col-status .pill.changed{background:#eff6ff;color:#2563eb}
 .av-table td.col-status .pill.same{background:#f1f5f9;color:#94a3b8}
 
-.av-note-btn{width:20px;height:20px;border-radius:50%;border:0.5px solid #cbd5e1;background:#f1f5f9;color:#475569;font-size:11px;font-weight:700;cursor:pointer;position:relative;font-family:inherit;line-height:1}
+/* 코멘트 아이콘: 원 안 어디를 가리켜도 반응하도록 flex로 중앙 정렬하고 크기를 키웠다. */
+.av-note-btn{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:50%;border:0.5px solid #cbd5e1;background:#f1f5f9;color:#475569;font-size:12px;font-weight:700;cursor:pointer;position:relative;font-family:inherit;line-height:1;padding:0}
 .av-note-btn:hover{background:#2563eb;color:#fff;border-color:#2563eb}
-.av-note-btn .tip{display:none;position:absolute;right:0;top:130%;z-index:10;width:max-content;max-width:240px;text-align:left;white-space:normal;background:#1a202c;color:#fff;font-size:12px;font-weight:400;padding:8px 10px;border-radius:7px;box-shadow:0 6px 18px rgba(0,0,0,.22);line-height:1.4}
-.av-note-btn:hover .tip{display:block}
+
+/* 코멘트 말풍선 — 표가 overflow:auto라 표 안에 그리면 잘린다. body에 portal로 띄우고 위치를 직접 준다.
+   왼쪽 기준 정렬, 길면 줄바꿈, 커서를 떼도 2초 유지(유지 시간은 컴포넌트에서 처리). */
+.av-note-tip{
+  position:fixed;z-index:1000;
+  max-width:320px;
+  text-align:left;white-space:normal;word-break:break-word;overflow-wrap:anywhere;
+  background:#1a202c;color:#fff;font-size:12px;font-weight:400;
+  padding:9px 11px;border-radius:7px;box-shadow:0 6px 18px rgba(0,0,0,.22);line-height:1.5;
+}
 
 .av-empty{padding:40px 20px;text-align:center;color:#94a3b8;font-size:13.5px}
 

@@ -1,6 +1,8 @@
 "use client";
 
-import { Fragment, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
+import { useRouter } from "next/navigation";
 import {
   TARGETS,
   TargetKey,
@@ -88,6 +90,65 @@ interface PersonEditRow {
   rates: RateMap;
 }
 
+/**
+ * 코멘트 말풍선.
+ * 표가 overflow:auto 스크롤 컨테이너라 말풍선을 표 안에 그리면 잘려서 안 보인다.
+ * 그래서 body에 portal로 띄우고 위치를 직접 계산한다(잘림 없음).
+ * 커서를 떼도 2초는 남겨두고, 그 사이 말풍선 위로 커서를 옮기면 계속 유지된다.
+ */
+const NOTE_TIP_LINGER_MS = 2000;
+
+function NoteTip({ text }: { text: string }) {
+  const [pos, setPos] = useState<{ left: number; top: number } | null>(null);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => () => { if (timer.current) clearTimeout(timer.current); }, []);
+
+  function cancelHide() {
+    if (timer.current) { clearTimeout(timer.current); timer.current = null; }
+  }
+  function show(e: React.MouseEvent | React.FocusEvent) {
+    cancelHide();
+    const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    const width = 320;
+    // 화면 오른쪽으로 넘치면 안쪽으로 당긴다 (왼쪽 정렬이 기본).
+    const left = Math.max(8, Math.min(r.left, window.innerWidth - width - 12));
+    setPos({ left, top: r.bottom + 6 });
+  }
+  function scheduleHide() {
+    cancelHide();
+    timer.current = setTimeout(() => setPos(null), NOTE_TIP_LINGER_MS);
+  }
+
+  return (
+    <>
+      <button
+        className="av-note-btn"
+        type="button"
+        onMouseEnter={show}
+        onMouseLeave={scheduleHide}
+        onFocus={show}
+        onBlur={scheduleHide}
+      >
+        i
+      </button>
+      {pos !== null &&
+        typeof document !== "undefined" &&
+        createPortal(
+          <div
+            className="av-note-tip"
+            style={{ left: pos.left, top: pos.top }}
+            onMouseEnter={cancelHide}
+            onMouseLeave={scheduleHide}
+          >
+            {text}
+          </div>,
+          document.body
+        )}
+    </>
+  );
+}
+
 function emptyRates(): RateMap {
   const r = {} as RateMap;
   TARGETS.forEach((t) => (r[t.key] = "0"));
@@ -139,7 +200,8 @@ function toPersonPayload(list: PersonEditRow[]) {
     .filter((p) => p.name.trim())
     .map((p) => ({
       name: p.name,
-      headcount: Number(p.headcount) || 1,
+      // 인원수를 따로 적지 않으면 0명으로 저장한다.
+      headcount: Number(p.headcount) || 0,
       note: p.note || null,
       subTeam: p.role === "주재원" ? "주재원" : null,
       rates: p.rates,
@@ -160,13 +222,17 @@ function averageFromPersons(persons: PersonEditRow[]): RateMap {
   const named = persons.filter((p) => p.name.trim());
   const r = emptyRates();
   if (named.length === 0) return r;
-  const totalHc = named.reduce((sum, p) => sum + (Number(p.headcount) || 1), 0) || named.length;
+  // 인원수 기본값이 0이라 아무도 인원수를 적지 않으면 가중치 합이 0이 된다.
+  // 그 경우 배부율이 통째로 0%가 되어버리므로, 인원수 없이 입력한 행들은 균등 가중으로 평균낸다.
+  const totalHc = named.reduce((sum, p) => sum + (Number(p.headcount) || 0), 0);
+  const useWeights = totalHc > 0;
+  const divisor = useWeights ? totalHc : named.length;
   TARGETS.forEach((t) => {
     const weighted = named.reduce((sum, p) => {
-      const hc = Number(p.headcount) || 1;
+      const hc = useWeights ? Number(p.headcount) || 0 : 1;
       return sum + (Number(p.rates[t.key]) || 0) * hc;
     }, 0);
-    r[t.key] = String(totalHc > 0 ? weighted / totalHc : 0);
+    r[t.key] = String(divisor > 0 ? weighted / divisor : 0);
   });
   return r;
 }
@@ -275,9 +341,7 @@ export function ReadOnlyRateRow({
       {withNote && (
         <td>
           {note && (
-            <button className="av-note-btn" type="button">
-              i<span className="tip">{note}</span>
-            </button>
+            <NoteTip text={note} />
           )}
         </td>
       )}
@@ -383,7 +447,7 @@ function personRowFromCurrent(p: CurrentPerson, i: number): PersonEditRow {
   return {
     key: `${i}-${p.name}`,
     name: p.name,
-    headcount: p.headcount != null ? String(p.headcount) : "1",
+    headcount: p.headcount != null ? String(p.headcount) : "0",
     note: p.note ?? "",
     role: p.role,
     rates: toRateMap(p.rates),
@@ -401,7 +465,7 @@ function initialPersons(item: OrgReviewData): PersonEditRow[] {
       {
         key: "seed-org",
         name: item.submittedBy ?? "법인 전체",
-        headcount: "1",
+        headcount: "0",
         note: "",
         role: "법인",
         rates: toRateMap(item.currentOrgSubmission ?? item.currentRate),
@@ -416,6 +480,7 @@ function ParentOrgDetail({ item, period, version }: { item: OrgReviewData; perio
   const [confirming, setConfirming] = useState(false);
   const [confirmed, setConfirmed] = useState(item.confirmedThisPeriod);
   const [error, setError] = useState("");
+  const router = useRouter();
 
   const pastRateHistory = item.rateHistory.filter((h) => h.quarter !== period);
   const computed = weightedAvgFromChildren(item.children);
@@ -439,6 +504,9 @@ function ParentOrgDetail({ item, period, version }: { item: OrgReviewData; perio
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || "확정 처리 중 오류가 발생했습니다.");
       setConfirmed(true);
+      // 서버 컴포넌트가 페이지 진입 시 한 번만 조회하므로, 새로고침하지 않으면 다른 조직으로 옮겼다 돌아왔을 때
+      // 방금 저장한 내용이 미확정으로 보인다.
+      router.refresh();
     } catch (e: any) {
       setError(e.message);
     } finally {
@@ -521,6 +589,7 @@ function HkrAutoPanel({
   const [confirming, setConfirming] = useState(false);
   const [confirmed, setConfirmed] = useState(confirmedThisPeriod);
   const [error, setError] = useState("");
+  const router = useRouter();
 
   const pastHistory = history.filter((h) => h.quarter !== period);
   const computed = computeHkr(honsaOrgs);
@@ -551,6 +620,7 @@ function HkrAutoPanel({
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || "확정 처리 중 오류가 발생했습니다.");
       setConfirmed(true);
+      router.refresh();
     } catch (e: any) {
       setError(e.message);
     } finally {
@@ -645,6 +715,7 @@ function OrgDetail({
   const [confirming, setConfirming] = useState(false);
   const [confirmed, setConfirmed] = useState(item.confirmedThisPeriod && (!item.expat || item.expat.confirmedThisPeriod));
   const [error, setError] = useState("");
+  const router = useRouter();
 
   const hasExpat = !!item.expat;
   const usesPersonTable = item.org.requires_person_detail || hasExpat;
@@ -726,9 +797,7 @@ function OrgDetail({
                     <td className="total-col">{(p.total * 100).toFixed(1)}%</td>
                     <td>
                       {p.note && (
-                        <button className="av-note-btn" type="button">
-                          i<span className="tip">{p.note}</span>
-                        </button>
+                        <NoteTip text={p.note} />
                       )}
                     </td>
                   </tr>
@@ -746,7 +815,7 @@ function OrgDetail({
       previousPersonsForOrg.map((p, i) => ({
         key: `prev-${i}-${Date.now()}`,
         name: p.name,
-        headcount: p.headcount != null ? String(p.headcount) : "1",
+        headcount: p.headcount != null ? String(p.headcount) : "0",
         note: p.note ?? "",
         role: p.role,
         rates: toRateMap(p.rates),
@@ -792,7 +861,7 @@ function OrgDetail({
     setPersons((list) => list.map((p) => (p.key === key ? { ...p, ...patch } : p)));
   }
   function addPerson() {
-    setPersons((list) => [...list, { key: `${Date.now()}`, name: "", headcount: "1", note: "", role: "법인", rates: emptyRates() }]);
+    setPersons((list) => [...list, { key: `${Date.now()}`, name: "", headcount: "0", note: "", role: "법인", rates: emptyRates() }]);
   }
   function removePerson(key: string) {
     setPersons((list) => list.filter((p) => p.key !== key));
@@ -813,7 +882,7 @@ function OrgDetail({
       grid.forEach((rowTokens, ri) => {
         const idx = personIdx + ri;
         while (next.length <= idx) {
-          next.push({ key: `paste-${Date.now()}-${next.length}`, name: "", headcount: "1", note: "", role: "법인", rates: emptyRates() });
+          next.push({ key: `paste-${Date.now()}-${next.length}`, name: "", headcount: "0", note: "", role: "법인", rates: emptyRates() });
         }
         let person = next[idx];
         rowTokens.forEach((tok, ci) => {
@@ -875,6 +944,7 @@ function OrgDetail({
       setConfirmed(true);
       setOrgUnlocked(false);
       setPersonsUnlocked(false);
+      router.refresh();
     } catch (e: any) {
       setError(e.message);
     } finally {
@@ -1184,9 +1254,7 @@ function OrgDetail({
                       <td className="total-col">{(totalOf(p.rates) * 100).toFixed(1)}%</td>
                       <td>
                         {p.note && (
-                          <button className="av-note-btn" type="button">
-                            i<span className="tip">{p.note}</span>
-                          </button>
+                          <NoteTip text={p.note} />
                         )}
                       </td>
                     </tr>
