@@ -51,12 +51,41 @@ const TYPE_COLOR: Record<string, string> = {
 const TYPE_ORDER = ["리소스배부율", "자가사용(건물)", "IT", "고정비율"];
 const STATUS_LABEL: Record<string, string> = { new: "신규", removed: "삭제", changed: "변경", same: "동일" };
 
+/**
+ * View 표기 순서 — 배부판 양식의 행 순서를 그대로 따른다.
+ * 이름순(가나다/ABC)으로 정렬하면 양식과 어긋나 대조하기 어렵다.
+ * 목록에 없는 배부기준은 맨 뒤로 보내고, 그 안에서만 이름순으로 정렬한다.
+ */
+const BASIS_ORDER = [
+  // 리소스배부율 · 본사
+  "Staff(휴맥스이브이)", "국내영업팀", "Platform개발팀", "사업협력팀", "사업 그룹", "개발 그룹",
+  "SCM실", "Media그룹", "CEO", "경영지원실", "지식재산팀", "Staff(CEO)", "HR실", "HKR(관계사제외)",
+  // 리소스배부율 · 주재원
+  "HBR_주재원", "HUK_주재원", "HDG_주재원", "HSZ_주재원",
+  // 리소스배부율 · 법인
+  "HUS", "HMX", "HUK", "HDG", "HUG", "HTR", "HBR", "HJP", "HTH", "HAU", "HID", "HSZ",
+  // 자가사용(건물)
+  "분당(자가사용)", "용인(자가사용)",
+  // IT
+  "인원수비율(Mobility 포함)", "인원수비율(MS)", "인원수비율(SAP)", "인원수비율(그룹사인원)",
+  "인원수비율(그룹사인원_입주사)", "인원수비율(M/W/H)", "인원수비율(M/E/W/H)",
+  // 고정비율 · 기타
+  "EVCS(국내/해외)", "EVCS(국내30/해외70)",
+  // 고정비율 · 직접비
+  "건물 100%", "공통 100%", "STB 100%", "Mobility 100%", "EVCS(국내) 100%", "EVCS(해외) 100%",
+  "H.Networks", "H.Mobility 100%", "H.Holdings 100%", "H.EV 100%",
+];
+function basisOrderIndex(basis: string): number {
+  const i = BASIS_ORDER.indexOf(basis);
+  return i === -1 ? BASIS_ORDER.length : i;
+}
+
 function sortRows<T extends { division: string; basis: string }>(rows: T[]): T[] {
   return [...rows].sort((a, b) => {
     const da = DIVISION_ORDER.indexOf(a.division);
     const db = DIVISION_ORDER.indexOf(b.division);
     if (da !== db) return da - db;
-    return a.basis.localeCompare(b.basis);
+    return basisOrderIndex(a.basis) - basisOrderIndex(b.basis) || a.basis.localeCompare(b.basis);
   });
 }
 
