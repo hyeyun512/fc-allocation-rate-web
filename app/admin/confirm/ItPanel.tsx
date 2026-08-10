@@ -328,6 +328,63 @@ export default function ItPanel({
       .sort(([a], [b]) => a.localeCompare(b));
   }, [history, quarter]);
 
+  /**
+   * 과거 분기 이력 표에 뿌릴 행.
+   * 맨 앞 열에 청구기준을 두고, 같은 값이 연속되면 첫 행에만 적어 아래로 합친다(rowSpan).
+   * 인원수와 SAP은 청구기준이 다를 수 있어 행마다 해당하는 쪽 값을 가져온다.
+   */
+  const historyRows = useMemo(() => {
+    const flat = historyByQuarter.flatMap(([q, { headcount, sap }]) =>
+      computeItRates(
+        headcount
+          ? {
+              headquarters: headcount.headquarters,
+              overseasCorp: headcount.overseas_corp,
+              hMobility: headcount.h_mobility,
+              hEv: headcount.h_ev,
+              hiparking: headcount.hiparking,
+              peoplecar: headcount.peoplecar,
+              winercom: headcount.winercom,
+              holdings: headcount.holdings,
+              hiparkingResident: headcount.hiparking_resident,
+            }
+          : null,
+        sap
+          ? {
+              headquarters: sap.headquarters,
+              overseasCorp: sap.overseas_corp,
+              hMobility: sap.h_mobility,
+              hEv: sap.h_ev,
+              hiparking: sap.hiparking,
+              peoplecar: sap.peoplecar,
+              winercom: sap.winercom,
+              holdings: sap.holdings,
+              hiparkingResident: null,
+            }
+          : null
+      ).map((row) => {
+        const rates = toFullRec(row.rates);
+        return {
+          key: `${q}-${row.basis}`,
+          billing: (row.division === "ID수" ? sap?.billing_basis : headcount?.billing_basis) || "미지정",
+          label: `${q} · ${row.basis}`,
+          rates,
+          total: TARGETS.reduce((a, t) => a + (rates[t.key] || 0), 0),
+          headcount: row.headcount ?? null,
+        };
+      })
+    );
+    return flat.map((r, i) => {
+      const isStart = i === 0 || flat[i - 1].billing !== r.billing;
+      let span = 0;
+      if (isStart) {
+        span = 1;
+        while (i + span < flat.length && flat[i + span].billing === r.billing) span++;
+      }
+      return { ...r, spanStart: isStart, span };
+    });
+  }, [historyByQuarter]);
+
   async function handleConfirm() {
     setError("");
     setConfirming(true);
@@ -455,47 +512,44 @@ export default function ItPanel({
           </div>
           <div className="tbl-scroll" style={{ marginBottom: 8 }}>
             <table className="rate-tbl">
-              <RateTableHead />
+              <thead>
+                <tr>
+                  <th>청구기준</th>
+                  <th></th>
+                  <th>인원수</th>
+                  {TARGETS.map((t) => (
+                    <th key={t.key} className={t.group === "humax" ? "grp-humax" : "grp-affiliate"}>
+                      {t.label}
+                    </th>
+                  ))}
+                  <th>TOTAL</th>
+                </tr>
+              </thead>
               <tbody>
-                {historyByQuarter.map(([q, { headcount, sap }]) =>
-                  computeItRates(
-                    headcount
-                      ? {
-                          headquarters: headcount.headquarters,
-                          overseasCorp: headcount.overseas_corp,
-                          hMobility: headcount.h_mobility,
-                          hEv: headcount.h_ev,
-                          hiparking: headcount.hiparking,
-                          peoplecar: headcount.peoplecar,
-                          winercom: headcount.winercom,
-                          holdings: headcount.holdings,
-                          hiparkingResident: headcount.hiparking_resident,
-                        }
-                      : null,
-                    sap
-                      ? {
-                          headquarters: sap.headquarters,
-                          overseasCorp: sap.overseas_corp,
-                          hMobility: sap.h_mobility,
-                          hEv: sap.h_ev,
-                          hiparking: sap.hiparking,
-                          peoplecar: sap.peoplecar,
-                          winercom: sap.winercom,
-                          holdings: sap.holdings,
-                          hiparkingResident: null,
-                        }
-                      : null
-                  ).map((row) => (
-                    <ReadOnlyRateRow key={`${q}-${row.basis}`} label={`${q} · ${row.basis}`} rec={toFullRec(row.rates)} headcount={row.headcount ?? null} />
-                  ))
-                )}
+                {historyRows.map((r, i) => (
+                  <tr key={r.key} className={`ro-row${r.spanStart ? " basis-group-start" : ""}`}>
+                    {/* 같은 청구기준이 이어지면 첫 행에만 적고 아래로 합친다. */}
+                    {r.spanStart && (
+                      <td rowSpan={r.span} className="basis-cell">
+                        {r.billing}
+                      </td>
+                    )}
+                    <td style={{ textAlign: "left" }}>{r.label}</td>
+                    <td>{r.headcount != null ? `${r.headcount}명` : "-"}</td>
+                    {TARGETS.map((t) => (
+                      <td key={t.key}>{((r.rates[t.key] || 0) * 100).toFixed(1)}%</td>
+                    ))}
+                    <td className="total-col">{(r.total * 100).toFixed(1)}%</td>
+                  </tr>
+                ))}
               </tbody>
             </table>
           </div>
           <div className="field-hint">
             {historyByQuarter.map(([q, { headcount, sap }]) => (
               <div key={q}>
-                {q}: 인원수 입력 {headcount?.submitted_by ?? "-"} ({fmtDate(headcount?.confirmed_at ?? null)}) · SAP ID 개수 입력{" "}
+                {q}: 인원수 청구기준 {headcount?.billing_basis ?? "미지정"} · 입력 {headcount?.submitted_by ?? "-"} (
+                {fmtDate(headcount?.confirmed_at ?? null)}) · SAP ID 개수 청구기준 {sap?.billing_basis ?? "미지정"} · 입력{" "}
                 {sap?.submitted_by ?? "-"} ({fmtDate(sap?.confirmed_at ?? null)})
               </div>
             ))}
