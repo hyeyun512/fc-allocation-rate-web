@@ -18,9 +18,16 @@ export interface ItBasisRow {
   winercom: number;
   holdings: number;
   hiparking_resident: number | null;
+  /** 이 수치가 어느 반기 청구기준인지 (예: 2026-1H). 분기와 청구기준이 항상 같지 않아 따로 받는다. */
+  billing_basis: string | null;
+  note: string | null;
   submitted_by: string | null;
   confirmed_at: string | null;
 }
+
+/** 청구기준 선택지 — 목록에 없으면 '직접 입력'으로 자유롭게 적는다. */
+export const BILLING_BASIS_OPTIONS = ["2025-2H", "2026-1H", "2026-2H", "2027-1H"];
+const BILLING_CUSTOM = "__custom__";
 
 type FieldKey = "headquarters" | "overseasCorp" | "hMobility" | "hEv" | "hiparking" | "peoplecar" | "winercom" | "holdings" | "hiparkingResident";
 
@@ -90,24 +97,63 @@ function toFullRec(rates: Partial<Record<TargetKey, number>>): Record<TargetKey,
 }
 
 function BasisForm({
-  title,
   quarter,
   state,
   onChange,
   withResident,
   pastRows,
+  billingBasis,
+  onBillingBasisChange,
+  note,
+  onNoteChange,
 }: {
-  title: string;
   quarter: string;
   state: FormState;
   onChange: (key: FieldKey, v: string) => void;
   withResident?: boolean;
   pastRows: ItBasisRow[];
+  billingBasis: string;
+  onBillingBasisChange: (v: string) => void;
+  note: string;
+  onNoteChange: (v: string) => void;
 }) {
+  // 목록에 없는 값이 저장돼 있으면 '직접 입력'으로 열어둔다.
+  // (선택 직후에는 값이 비어 있어 값만으로는 판단할 수 없어 별도 상태로 둔다.)
+  const [customBasis, setCustomBasis] = useState(
+    billingBasis !== "" && !BILLING_BASIS_OPTIONS.includes(billingBasis)
+  );
+  const isCustomBasis = customBasis;
   const total = sumItBasisInput(toBasisInput(state));
   const currentRow = (
     <tr key={quarter}>
       <td style={{ textAlign: "left", fontWeight: 700, color: "#2563eb" }}>{quarter} (입력중)</td>
+      <td>
+        <select
+          value={isCustomBasis ? BILLING_CUSTOM : billingBasis}
+          onChange={(e) => {
+            const v = e.target.value;
+            setCustomBasis(v === BILLING_CUSTOM);
+            onBillingBasisChange(v === BILLING_CUSTOM ? "" : v);
+          }}
+          style={{ width: 96 }}
+        >
+          <option value="">선택</option>
+          {BILLING_BASIS_OPTIONS.map((o) => (
+            <option key={o} value={o}>
+              {o}
+            </option>
+          ))}
+          <option value={BILLING_CUSTOM}>직접 입력…</option>
+        </select>
+        {isCustomBasis && (
+          <input
+            value={billingBasis}
+            onChange={(e) => onBillingBasisChange(e.target.value)}
+            placeholder="예: 2026-1H"
+            style={{ width: 96, marginTop: 4, textAlign: "left" }}
+          />
+        )}
+      </td>
       {FIELDS.map((f) => (
         <td key={f.key}>
           <input
@@ -134,6 +180,14 @@ function BasisForm({
       <td colSpan={2} className="field-hint">
         확정 시 기록됨
       </td>
+      <td>
+        <input
+          value={note}
+          onChange={(e) => onNoteChange(e.target.value)}
+          placeholder="코멘트"
+          style={{ width: 140, textAlign: "left" }}
+        />
+      </td>
     </tr>
   );
   // 과거 이력 + 현재 분기를 항상 연도->분기 순으로 정렬해서, 현재 분기가 과거 데이터보다
@@ -144,7 +198,9 @@ function BasisForm({
       <table className="rate-tbl">
         <thead>
           <tr>
-            <th style={{ textAlign: "left" }}>{title}</th>
+            {/* 첫 열은 분기 라벨이라 머리글을 비워둔다. */}
+            <th></th>
+            <th>청구기준</th>
             {FIELDS.map((f) => (
               <th key={f.key}>{f.label}</th>
             ))}
@@ -152,6 +208,7 @@ function BasisForm({
             {withResident && <th>하이파킹 입주인원</th>}
             <th>입력자</th>
             <th>확인일자</th>
+            <th>코멘트</th>
           </tr>
         </thead>
         <tbody>
@@ -172,6 +229,7 @@ function BasisForm({
             return (
               <tr key={r.quarter} className="ro-row">
                 <td style={{ textAlign: "left" }}>{r.quarter}</td>
+                <td>{r.billing_basis ?? "-"}</td>
                 <td>{r.headquarters}</td>
                 <td>{r.overseas_corp}</td>
                 <td>{r.h_mobility}</td>
@@ -184,6 +242,7 @@ function BasisForm({
                 {withResident && <td>{r.hiparking_resident ?? "-"}</td>}
                 <td>{r.submitted_by ?? "-"}</td>
                 <td>{fmtDate(r.confirmed_at)}</td>
+                <td style={{ textAlign: "left" }}>{r.note ?? ""}</td>
               </tr>
             );
           })}
@@ -210,6 +269,11 @@ export default function ItPanel({
   // 인원수와 SAP ID 개수는 담당자가 달라 입력자를 따로 받는다.
   const [headcountBy, setHeadcountBy] = useState(initialHeadcount?.submitted_by ?? "");
   const [sapBy, setSapBy] = useState(initialSap?.submitted_by ?? "");
+  // 청구기준·코멘트도 표마다 따로 받는다.
+  const [headcountBasis, setHeadcountBasis] = useState(initialHeadcount?.billing_basis ?? "");
+  const [sapBasis, setSapBasis] = useState(initialSap?.billing_basis ?? "");
+  const [headcountNote, setHeadcountNote] = useState(initialHeadcount?.note ?? "");
+  const [sapNote, setSapNote] = useState(initialSap?.note ?? "");
   const [confirming, setConfirming] = useState(false);
   const [confirmed, setConfirmed] = useState(false);
   const [error, setError] = useState("");
@@ -256,6 +320,10 @@ export default function ItPanel({
           sap: toBasisInput(sapForm),
           headcountBy: headcountBy || null,
           sapBy: sapBy || null,
+          headcountBasis: headcountBasis || null,
+          sapBasis: sapBasis || null,
+          headcountNote: headcountNote || null,
+          sapNote: sapNote || null,
           // 예전 형식(단일 입력자)과 호환 — 서버가 개별 값이 없을 때만 쓴다.
           submittedBy: headcountBy || sapBy || null,
         }),
@@ -304,12 +372,15 @@ export default function ItPanel({
         </div>
       </div>
       <BasisForm
-        title="청구기준"
         quarter={quarter}
         state={headcountForm}
         onChange={(k, v) => setHeadcountForm((s) => ({ ...s, [k]: v }))}
         withResident
         pastRows={pastHeadcountRows}
+        billingBasis={headcountBasis}
+        onBillingBasisChange={setHeadcountBasis}
+        note={headcountNote}
+        onNoteChange={setHeadcountNote}
       />
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8, margin: "16px 0 8px" }}>
         <div className="panel-sub" style={{ fontWeight: 700, color: "#1a202c", margin: 0 }}>
@@ -331,15 +402,23 @@ export default function ItPanel({
         </div>
       </div>
       <BasisForm
-        title="청구기준"
         quarter={quarter}
         state={sapForm}
         onChange={(k, v) => setSapForm((s) => ({ ...s, [k]: v }))}
         pastRows={pastSapRows}
+        billingBasis={sapBasis}
+        onBillingBasisChange={setSapBasis}
+        note={sapNote}
+        onNoteChange={setSapNote}
       />
 
       <div className="panel-sub" style={{ fontWeight: 700, color: "#1a202c", margin: "12px 0 8px" }}>
-        ■ 자동계산 미리보기 ({quarter})
+        {/* 어떤 청구기준으로 만들어진 비율인지 함께 밝힌다 (인원수·SAP의 기준이 다를 수 있다). */}
+        ■ 자동계산 미리보기 ({quarter}
+        {headcountBasis || sapBasis
+          ? ` · 청구기준 인원수 ${headcountBasis || "미지정"} / SAP ${sapBasis || "미지정"}`
+          : ""}
+        )
       </div>
       <div className="tbl-scroll" style={{ marginBottom: 12 }}>
         <table className="rate-tbl">

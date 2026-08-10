@@ -210,6 +210,8 @@ export default async function AdminConfirmPage() {
     winercom: number;
     holdings: number;
     hiparking_resident: number | null;
+    billing_basis?: string | null;
+    note?: string | null;
   }
   interface SelfuseBasisPayload {
     bundang_selfuse_ratio: number;
@@ -229,6 +231,8 @@ export default async function AdminConfirmPage() {
       return {
         quarter: r.quarter as string,
         metric: (r.category === "it_headcount" ? "인원수" : "SAP ID 개수") as "인원수" | "SAP ID 개수",
+        billing_basis: p.billing_basis ?? null,
+        note: p.note ?? null,
         headquarters: p.headquarters,
         overseas_corp: p.overseas_corp,
         h_mobility: p.h_mobility,

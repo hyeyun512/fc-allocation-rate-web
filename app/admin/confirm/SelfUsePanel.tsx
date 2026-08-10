@@ -165,7 +165,7 @@ export default function SelfUsePanel({
         <table className="rate-tbl">
           <thead>
             <tr>
-              <th style={{ textAlign: "left" }}>청구기준</th>
+              <th></th>
               {FIELDS.map((f) => (
                 <th key={f.key}>{f.label}</th>
               ))}
