@@ -73,7 +73,7 @@ const BASIS_ORDER = [
   "EVCS(국내/해외)", "EVCS(국내30/해외70)",
   // 고정비율 · 직접비
   "건물 100%", "공통 100%", "STB 100%", "Mobility 100%", "EVCS(국내) 100%", "EVCS(해외) 100%",
-  "H.Networks", "H.Mobility 100%", "H.Holdings 100%", "H.EV 100%",
+  "H.Networks", "H.Mobility 100%", "H.Holdings 100%", "H.EV 100%", "실적 제외",
 ];
 function basisOrderIndex(basis: string): number {
   const i = BASIS_ORDER.indexOf(basis);
@@ -87,6 +87,18 @@ function sortRows<T extends { division: string; basis: string }>(rows: T[]): T[]
     if (da !== db) return da - db;
     return basisOrderIndex(a.basis) - basisOrderIndex(b.basis) || a.basis.localeCompare(b.basis);
   });
+}
+
+/**
+ * 비고에 보여줄 메모.
+ * allocation_rate.note에는 "웹 확정 (Forecast) - 2026-08-10T…" 같은 저장 기록이 자동으로 들어간다.
+ * 읽을 내용이 아니라 감사 로그라 화면에는 표시하지 않는다 (사람이 적은 메모만 남긴다).
+ */
+function displayNote(note: string | null): string | null {
+  if (!note) return null;
+  const t = note.trim();
+  if (/^(웹 확정|자동계산 반영|복구)\b/.test(t)) return null;
+  return t || null;
 }
 
 function fmtPct(v: number, digits = 1): string {
@@ -208,14 +220,14 @@ export default function AllocationView({
     (r) =>
       (divisions.size === 0 || divisions.has(r.division)) &&
       (types.size === 0 || types.has(r.type)) &&
-      matchesSearch(r.basis, r.division, r.type, r.note)
+      matchesSearch(r.basis, r.division, r.type, displayNote(r.note))
   );
   const filteredDeltaRows = deltaRows.filter(
     (r) =>
       (divisions.size === 0 || divisions.has(r.division)) &&
       (types.size === 0 || types.has(r.type)) &&
       !(changedOnly && r.status === "same") &&
-      matchesSearch(r.basis, r.division, r.type, r.note)
+      matchesSearch(r.basis, r.division, r.type, displayNote(r.note))
   );
 
   const visibleRows: Array<AllocRateRow | DeltaRow> = isDelta ? filteredDeltaRows : filteredQuarterRows;
@@ -525,9 +537,9 @@ export default function AllocationView({
                         {totalOk ? fmtPct(r.total, 0) : r.total === 0 ? "제외" : fmtPct(r.total, 0)}
                       </td>
                       <td className="col-note">
-                        {r.note && (
-                          <button className="av-note-btn" type="button">
-                            i<span className="tip">{r.note}</span>
+                        {displayNote(r.note) && (
+                          <button className="av-note-btn" type="button" aria-label="비고">
+                            i<span className="tip">{displayNote(r.note)}</span>
                           </button>
                         )}
                       </td>

@@ -1,5 +1,6 @@
 import { TARGETS, TargetKey, sumTargets } from "./targets";
 import { latestByPerson, computeRollup, countedPersonRows, SubmissionRow } from "./rollup";
+import { ensureFixedRates } from "./fixedRates";
 
 /**
  * 자동계산 조직(상위 집계 조직 · HKR)의 배부율을 서버에서 다시 계산해 allocation_rate에 반영한다.
@@ -125,13 +126,25 @@ function renormalizeExcludingAffiliates(avg: Rec): Rec {
   return r;
 }
 
+/** 그 분기에 계산할 근거가 없어진 자동계산 행을 지운다 (입력한 적 없는 분기가 목록에 남지 않도록). */
+async function deleteRate(supabase: any, key: { quarter: string; type: string; division: string; basis: string }) {
+  const { error } = await supabase
+    .from("allocation_rate")
+    .delete()
+    .eq("quarter", key.quarter)
+    .eq("type", key.type)
+    .eq("division", key.division)
+    .eq("basis", key.basis);
+  return error;
+}
+
 async function upsertRate(
   supabase: any,
   row: { quarter: string; type: string; division: string; basis: string; rates: Rec; version?: string }
 ) {
-  // 하위 조직에 아직 입력이 없으면 합이 0이 된다. 그 상태를 저장하면 0%짜리 확정 행이 생겨
-  // 실제로는 미입력인데 확정된 것처럼 보이므로 건너뛴다.
-  if (sumTargets(row.rates) <= 0) return null;
+  // 하위 조직에 아직 입력이 없으면 합이 0이 된다. 0%짜리 확정 행을 남기면 실제로는 미입력인데
+  // 확정된 것처럼 보이므로, 남아 있던 행이 있으면 지우고 새로 쓰지는 않는다.
+  if (sumTargets(row.rates) <= 0) return deleteRate(supabase, row);
 
   const { error } = await supabase.from("allocation_rate").upsert(
     {
@@ -159,6 +172,9 @@ export async function recomputeAggregates(
   version?: string
 ): Promise<string[]> {
   const problems: string[] = [];
+
+  // 고정비율은 조사로 받는 값이 아니라 정의상 고정된 비율이라 분기마다 그대로 복제한다.
+  problems.push(...(await ensureFixedRates(supabase, period)));
 
   const { data: orgs } = await supabase.from("allocation_orgs").select("*").eq("active", true);
   if (!orgs?.length) return problems;
@@ -212,10 +228,17 @@ export async function recomputeAggregates(
     const children = orgs.filter((o: any) => o.parent_basis === parent.basis);
     if (children.length === 0) continue;
     const childStates: OrgState[] = children.map((c: any) => stateById.get(c.id)!).filter(Boolean);
-    // 이번 분기에 아무 하위 조직도 입력하지 않았으면 계산할 근거가 없다.
-    // (입력이 없는 조직은 지난 분기 확정값으로 대체되므로, 그대로 두면 아무도 입력 안 한 분기에
-    //  지난 분기 값이 그 분기 확정값처럼 기록된다.)
-    if (!childStates.some((s) => s.hasSubmission)) continue;
+    // 이번 분기에 아무 하위 조직도 입력하지 않았으면 계산할 근거가 없다 —
+    // 남아 있던 행이 있으면 지운다 (입력한 적 없는 분기가 목록에 남지 않도록).
+    if (!childStates.some((s) => s.hasSubmission)) {
+      await deleteRate(supabase, {
+        quarter: period,
+        type: parent.type,
+        division: parent.division,
+        basis: parent.basis,
+      });
+      continue;
+    }
     const avg = weightedAvg(childStates);
     const err = await upsertRate(supabase, {
       quarter: period,
@@ -233,8 +256,12 @@ export async function recomputeAggregates(
     const dst = orgs.find((o: any) => o.basis === rule.to);
     const dstState = dst ? stateById.get(dst.id) : null;
     // 원본 조직이 이번 분기에 입력하지 않았으면 복사할 값이 없다
-    // (지난 분기 확정값이 이번 분기 값으로 둔갑하는 걸 막는다).
-    if (!dst || !dstState?.hasSubmission) continue;
+    // (지난 분기 확정값이 이번 분기 값으로 둔갑하는 걸 막는다). 남아 있던 행은 지운다.
+    if (!dst) continue;
+    if (!dstState?.hasSubmission) {
+      await deleteRate(supabase, { quarter: period, type: dst.type, division: dst.division, basis: dst.basis });
+      continue;
+    }
     const err = await upsertRate(supabase, {
       quarter: period,
       type: dst.type,
@@ -249,18 +276,16 @@ export async function recomputeAggregates(
   // 3) HKR(관계사제외) = 본사 최상위 조직들의 가중평균 → 계열사 제외 재정규화
   const honsa = orgs.filter((o: any) => o.division === "본사" && !o.parent_basis);
   const honsaStates: OrgState[] = honsa.map((o: any) => stateById.get(o.id)!).filter(Boolean);
-  // 상위 집계 조직과 같은 기준 — 이번 분기에 입력한 본사 조직이 하나도 없으면 기록하지 않는다.
+  // 상위 집계 조직과 같은 기준 — 이번 분기에 입력한 본사 조직이 하나도 없으면 기록하지 않고,
+  // 남아 있던 행이 있으면 지운다 (입력한 적 없는 분기가 목록에 남지 않도록).
+  const hkrKey = { quarter: period, type: "리소스배부율", division: "본사", basis: "HKR(관계사제외)" };
   if (honsaStates.some((s) => s.hasSubmission)) {
     const hkr = renormalizeExcludingAffiliates(weightedAvg(honsaStates));
-    const err = await upsertRate(supabase, {
-      quarter: period,
-      type: "리소스배부율",
-      division: "본사",
-      basis: "HKR(관계사제외)",
-      rates: hkr,
-      version,
-    });
+    const err = await upsertRate(supabase, { ...hkrKey, rates: hkr, version });
     if (err) problems.push(`HKR(관계사제외): ${err.message}`);
+  } else {
+    const err = await deleteRate(supabase, hkrKey);
+    if (err) problems.push(`HKR(관계사제외) 정리: ${err.message}`);
   }
 
   return problems;

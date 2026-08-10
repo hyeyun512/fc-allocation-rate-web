@@ -36,23 +36,36 @@ export async function POST(req: NextRequest) {
     parsed[t.key] = Number.isFinite(v) ? v : 0;
   });
 
-  const upsertRow = {
-    quarter: period,
-    type: org.type,
-    division: org.division,
-    basis: org.basis,
-    ...parsed,
-    total: sumTargets(parsed),
-    update_flag: true,
-    note: `웹 확정 (${version}) - ${new Date().toISOString()}`,
-  };
-
-  const { error: upsertError } = await supabase
-    .from("allocation_rate")
-    .upsert(upsertRow, { onConflict: "quarter,type,division,basis" });
-
-  if (upsertError) {
-    return NextResponse.json({ error: upsertError.message }, { status: 500 });
+  // 값을 다 지우고 저장한 경우(합계 0)에는 0%짜리 행을 남기지 않고 아예 지운다.
+  // 예전에는 0으로 덮어썼는데, 그러면 입력한 적 없는 분기가 배부율 목록에 계속 남았다.
+  if (sumTargets(parsed) <= 0) {
+    const { error: delError } = await supabase
+      .from("allocation_rate")
+      .delete()
+      .eq("quarter", period)
+      .eq("type", org.type)
+      .eq("division", org.division)
+      .eq("basis", org.basis);
+    if (delError) {
+      return NextResponse.json({ error: delError.message }, { status: 500 });
+    }
+  } else {
+    const { error: upsertError } = await supabase.from("allocation_rate").upsert(
+      {
+        quarter: period,
+        type: org.type,
+        division: org.division,
+        basis: org.basis,
+        ...parsed,
+        total: sumTargets(parsed),
+        update_flag: true,
+        note: `웹 확정 (${version}) - ${new Date().toISOString()}`,
+      },
+      { onConflict: "quarter,type,division,basis" }
+    );
+    if (upsertError) {
+      return NextResponse.json({ error: upsertError.message }, { status: 500 });
+    }
   }
 
   // 검토및확정 화면에서 개인별 값을 입력/수정해 확정한 경우, 조직 합산값만 저장하고 개인별 값은
