@@ -602,7 +602,7 @@ export default function AllocationView({
                         {totalOk ? fmtPct(r.total, 0) : r.total === 0 ? "제외" : fmtPct(r.total, 0)}
                       </td>
                       <td className="col-comment">
-                        <div className="av-comment-cell">
+                        <div className="comment-cell">
                           <input
                             value={commentValue(view, r.basis)}
                             onChange={(e) => changeComment(view, r.basis, e.target.value)}

@@ -229,7 +229,7 @@ function BasisForm({
       </td>
       <td className="field-hint">확정 시 기록됨</td>
       <td>
-        <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+        <div className="comment-cell">
           <input
             value={note}
             onChange={(e) => onNoteChange(e.target.value)}

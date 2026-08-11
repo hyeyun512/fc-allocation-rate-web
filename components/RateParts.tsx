@@ -331,7 +331,7 @@ export function ReadOnlyRateRow({
       {withNote && (
         <td>
           {noteEditable ? (
-            <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+            <div className="comment-cell">
               <input
                 value={noteValue ?? ""}
                 onChange={(e) => onNoteChange?.(e.target.value)}
@@ -451,13 +451,15 @@ export function EditableRateRow({
       <td className={`total-col ${ok ? "total-ok" : "total-bad"}`}>{(total * 100).toFixed(1)}%</td>
       {withNote && (
         <td>
-          <input
-            value={noteValue ?? ""}
-            onChange={(e) => onNoteChange?.(e.target.value)}
-            placeholder="코멘트"
-            // 숫자 칸은 오른쪽 정렬이 기본이지만 코멘트는 글이라 왼쪽부터 읽는다.
-            style={{ width: 120, textAlign: "left" }}
-          />
+          <div className="comment-cell">
+            <input
+              value={noteValue ?? ""}
+              onChange={(e) => onNoteChange?.(e.target.value)}
+              placeholder="코멘트"
+              // 숫자 칸은 오른쪽 정렬이 기본이지만 코멘트는 글이라 왼쪽부터 읽는다.
+              style={{ width: 120, textAlign: "left" }}
+            />
+          </div>
         </td>
       )}
     </tr>
@@ -597,18 +599,20 @@ export function PersonEditTable({
                   ))}
                   <td className={`total-col ${pOk ? "total-ok" : "total-bad"}`}>{(pTotal * 100).toFixed(1)}%</td>
                   <td>
-                    <input
-                      value={p.note}
-                      onChange={(e) => updatePerson(p.key, { note: e.target.value })}
-                      placeholder="코멘트"
-                      // 숫자 칸은 오른쪽 정렬이 기본이지만 코멘트는 글이라 왼쪽부터 읽는다.
-                      style={{ width: 120, textAlign: "left" }}
-                      onPaste={(e) => {
-                        if (!shouldHandlePaste(e.clipboardData)) return;
-                        e.preventDefault();
-                        handlePersonCellPaste(pIdx, PASTE_NOTE_COL, e.clipboardData);
-                      }}
-                    />
+                    <div className="comment-cell">
+                      <input
+                        value={p.note}
+                        onChange={(e) => updatePerson(p.key, { note: e.target.value })}
+                        placeholder="코멘트"
+                        // 숫자 칸은 오른쪽 정렬이 기본이지만 코멘트는 글이라 왼쪽부터 읽는다.
+                        style={{ width: 120, textAlign: "left" }}
+                        onPaste={(e) => {
+                          if (!shouldHandlePaste(e.clipboardData)) return;
+                          e.preventDefault();
+                          handlePersonCellPaste(pIdx, PASTE_NOTE_COL, e.clipboardData);
+                        }}
+                      />
+                    </div>
                   </td>
                 </tr>
               );

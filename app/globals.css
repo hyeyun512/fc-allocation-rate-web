@@ -68,6 +68,27 @@ a{color:inherit}
 .note-save-btn.is-dirty{background:#16a34a;border-color:#15803d;color:#fff}
 .note-save-btn.is-dirty:hover:not(:disabled){background:#15803d;border-color:#166534;color:#fff}
 
+/* ================= 코멘트 칸 (전 화면 공통) =================
+   흰 입력칸과 초록 체크가 늘 떠 있으면 표가 입력 폼처럼 보여 적어둔 글이 잘 읽히지 않는다.
+   저장된 코멘트는 글자만 남기고, 커서를 올렸을 때(또는 칸에 들어갔을 때)만 입력칸과 저장 버튼을 드러낸다.
+   저장하지 않은 변경이 있는 칸은 커서를 치워도 계속 드러내, 어디를 눌러야 하는지 놓치지 않게 한다. */
+.comment-cell{display:inline-flex;align-items:center;gap:4px}
+/* 평소 모습 — 테두리·배경만 지우고 자리는 그대로 차지해서 커서를 올려도 표가 밀리지 않는다. */
+.comment-cell input{
+  font-family:inherit;font-size:12.5px;padding:5px 8px;border:0.5px solid transparent;border-radius:6px;
+  background:transparent;color:#1a202c;text-align:left;
+  transition:border-color .12s ease,background-color .12s ease
+}
+/* 빈 칸은 적을 수 있다는 힌트만 아주 옅게 남긴다. */
+.comment-cell input::placeholder{color:#e2e8f0}
+.comment-cell:hover input,.comment-cell:focus-within input{border-color:#cbd5e1;background:#fff}
+.comment-cell input:focus{outline:2px solid #bfdbfe;border-color:#2563eb;background:#fff}
+/* 초록 체크는 자리만 잡아두고 감춘다 — display:none으로 지우면 커서를 올릴 때 입력칸이 밀린다. */
+.comment-cell .note-save-btn{visibility:hidden;opacity:0;transition:opacity .12s ease}
+.comment-cell:hover .note-save-btn,.comment-cell:focus-within .note-save-btn{visibility:visible;opacity:1}
+.comment-cell .note-save-btn.is-dirty{visibility:visible;opacity:1}
+.comment-cell:has(.note-save-btn.is-dirty) input{border-color:#cbd5e1;background:#fff}
+
 /* 청구기준처럼 여러 행에 걸쳐 하나로 합친 칸 — 세로 가운데 정렬. 표의 다른 선들과 톤을 맞춘다. */
 .rate-tbl td.basis-cell{
   vertical-align:middle;font-weight:700;color:#475569;background:#f8fafc;
@@ -204,13 +225,9 @@ footer{text-align:center;padding:22px;color:#94a3b8;font-size:11.5px}
 /* 코멘트 열 — 관리자가 표에서 바로 적고 옆의 초록 체크(.note-save-btn)로 저장한다.
    표의 다른 칸은 가운데 정렬이지만 글이라 왼쪽 정렬로 둔다. */
 .av-table th.col-comment,.av-table td.col-comment{min-width:200px;text-align:left}
-.av-comment-cell{display:flex;align-items:center;gap:4px}
-.av-comment-cell input{
-  flex:1 1 auto;min-width:0;font-family:inherit;font-size:12.5px;padding:5px 8px;
-  border:0.5px solid #cbd5e1;border-radius:6px;background:#fff;color:#1a202c;text-align:left
-}
-.av-comment-cell input::placeholder{color:#cbd5e1}
-.av-comment-cell input:focus{outline:2px solid #bfdbfe;border-color:#2563eb}
+/* View 표의 코멘트 칸만 열 너비에 맞춰 늘린다 (나머지 규칙은 아래 .comment-cell 공통). */
+.av-table td.col-comment .comment-cell{display:flex}
+.av-table td.col-comment .comment-cell input{flex:1 1 auto;min-width:0;width:auto}
 
 /* 코멘트 아이콘: 원 안 어디를 가리켜도 반응하도록 flex로 중앙 정렬하고 크기를 키웠다. */
 .av-note-btn{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:50%;border:0.5px solid #cbd5e1;background:#f1f5f9;color:#475569;font-size:12px;font-weight:700;cursor:pointer;position:relative;font-family:inherit;line-height:1;padding:0}
