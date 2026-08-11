@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { TARGETS, TargetKey, getPreviousPeriod } from "@/lib/targets";
 import { sortQuarters } from "@/lib/quarter";
 import { computeItRates, sumItBasisInput, ItBasisInput } from "@/lib/itBasis";
-import { RateTableHead, ReadOnlyRateRow, NoteTip } from "./ConfirmReview";
+import { RateTableHead, ReadOnlyRateRow, NoteTip } from "@/components/RateParts";
 import { readPasteGrid, shouldHandlePaste } from "@/lib/paste";
 
 export interface ItBasisRow {
@@ -372,8 +372,10 @@ export default function ItPanel({
   const prevHeadcountRow = prevPeriod ? pastHeadcountRows.find((r) => r.quarter === prevPeriod) ?? null : null;
   const prevSapRow = prevPeriod ? pastSapRows.find((r) => r.quarter === prevPeriod) ?? null : null;
 
-  // 분기별로 인원수/SAP 행을 묶어 과거 이력 배부율을 재계산 (현재 편집 중인 분기는 위 미리보기에서 이미 보여주므로 제외).
-  const historyByQuarter = useMemo(() => {
+  // 분기별로 인원수/SAP 행을 묶어 확정된 배부율을 재계산.
+  // 현재 라운드가 1Q여도 이미 확정된 2Q가 이력에 남아 있어(뒤 분기를 먼저 확정할 수 있다)
+  // '과거'로 걸러내지 않고 확정된 분기를 그대로 모두 보여준다.
+  const confirmedByQuarter = useMemo(() => {
     const map = new Map<string, { headcount: ItBasisRow | null; sap: ItBasisRow | null }>();
     history.forEach((row) => {
       const entry = map.get(row.quarter) ?? { headcount: null, sap: null };
@@ -381,18 +383,16 @@ export default function ItPanel({
       else entry.sap = row;
       map.set(row.quarter, entry);
     });
-    return Array.from(map.entries())
-      .filter(([q]) => q !== quarter)
-      .sort(([a], [b]) => a.localeCompare(b));
-  }, [history, quarter]);
+    return Array.from(map.entries()).sort(([a], [b]) => a.localeCompare(b));
+  }, [history]);
 
   /**
-   * 과거 분기 이력 표에 뿌릴 행.
+   * 확정 이력 표에 뿌릴 행.
    * 맨 앞 열에 청구기준을 두고, 같은 값이 연속되면 첫 행에만 적어 아래로 합친다(rowSpan).
    * 인원수와 SAP은 청구기준이 다를 수 있어 행마다 해당하는 쪽 값을 가져온다.
    */
   const historyRows = useMemo(() => {
-    const flat = historyByQuarter.flatMap(([q, { headcount, sap }]) =>
+    const flat = confirmedByQuarter.flatMap(([q, { headcount, sap }]) =>
       computeItRates(
         headcount
           ? {
@@ -466,10 +466,16 @@ export default function ItPanel({
       }
       return { ...r, spanStart: isStart, span, qStart, qSpan };
     });
-  }, [historyByQuarter]);
+  }, [confirmedByQuarter]);
 
   async function handleConfirm() {
     setError("");
+    // 빈 화면에서 저장(또는 코멘트 칸 엔터)이 눌리면 값이 0인 분기가 확정된 것처럼 남는다 —
+    // 실제로 3Q를 연 적도 없는데 View에 3Q IT 배부율이 생긴 적이 있어 여기서 막는다.
+    if (sumItBasisInput(toBasisInput(headcountForm)) <= 0 && sumItBasisInput(toBasisInput(sapForm)) <= 0) {
+      setError("인원수·SAP ID 개수가 비어 있어 저장하지 않았습니다.");
+      return;
+    }
     setConfirming(true);
     try {
       const res = await fetch("/api/admin/it-basis", {
@@ -613,10 +619,10 @@ export default function ItPanel({
         </button>
       )}
 
-      {historyByQuarter.length > 0 && (
+      {confirmedByQuarter.length > 0 && (
         <>
           <div className="panel-sub" style={{ fontWeight: 700, color: "#1a202c", margin: "20px 0 8px" }}>
-            ■ 과거 분기 이력
+            ■ 확정 이력
           </div>
           <div className="tbl-scroll" style={{ marginBottom: 8 }}>
             <table className="rate-tbl">
@@ -665,7 +671,7 @@ export default function ItPanel({
             </table>
           </div>
           <div className="field-hint">
-            {historyByQuarter.map(([q, { headcount, sap }]) => (
+            {confirmedByQuarter.map(([q, { headcount, sap }]) => (
               <div key={q}>
                 {q}: 인원수 청구기준 {headcount?.billing_basis ?? "미지정"} · 입력 {headcount?.submitted_by ?? "-"} (
                 {fmtDate(headcount?.confirmed_at ?? null)}) · SAP ID 개수 청구기준 {sap?.billing_basis ?? "미지정"} · 입력{" "}

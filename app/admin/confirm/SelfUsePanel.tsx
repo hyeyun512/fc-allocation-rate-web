@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { TARGETS, TargetKey, getPreviousPeriod } from "@/lib/targets";
 import { sortQuarters } from "@/lib/quarter";
 import { computeSelfuseRates, SelfuseBasisInput } from "@/lib/selfuseBasis";
-import { RateTableHead, ReadOnlyRateRow } from "./ConfirmReview";
+import { RateTableHead, ReadOnlyRateRow } from "@/components/RateParts";
 import { readPasteGrid, shouldHandlePaste } from "@/lib/paste";
 
 export interface SelfuseBasisRow {
@@ -116,13 +116,23 @@ export default function SelfUsePanel({
   const input = toBasisInput({ ...form, bizDevMediaHeadcount: derivedBizDevMedia });
   const preview = useMemo(() => computeSelfuseRates(input), [JSON.stringify(input)]);
 
-  const pastHistory = useMemo(() => history.filter((h) => h.quarter !== quarter).sort((a, b) => a.quarter.localeCompare(b.quarter)), [history, quarter]);
+  // 확정된 분기 전체. 현재 라운드가 1Q여도 이미 확정된 2Q가 남아 있을 수 있어(뒤 분기를 먼저 확정할 수 있다)
+  // '과거'로 걸러내지 않고 그대로 모두 보여준다.
+  const confirmedHistory = useMemo(() => [...history].sort((a, b) => a.quarter.localeCompare(b.quarter)), [history]);
+  // 위 기준정보 표에서는 현재 분기를 입력행으로 따로 그리므로 나머지 분기만 쓴다.
+  const otherQuarters = useMemo(() => confirmedHistory.filter((h) => h.quarter !== quarter), [confirmedHistory, quarter]);
 
   const prevPeriod = getPreviousPeriod(quarter);
-  const prevRow = prevPeriod ? pastHistory.find((h) => h.quarter === prevPeriod) ?? null : null;
+  const prevRow = prevPeriod ? otherQuarters.find((h) => h.quarter === prevPeriod) ?? null : null;
 
   async function handleConfirm() {
     setError("");
+    // 빈 화면에서 저장이 눌리면 자가사용비율 0 → '건물 100%'짜리 배부율이 만들어져,
+    // 열어본 적도 없는 분기가 View에 확정된 것처럼 남는다.
+    if (!Object.values(input).some((v) => v > 0)) {
+      setError("입력값이 비어 있어 저장하지 않았습니다.");
+      return;
+    }
     setConfirming(true);
     try {
       const res = await fetch("/api/admin/selfuse-basis", {
@@ -186,9 +196,9 @@ export default function SelfUsePanel({
             </tr>
           </thead>
           <tbody>
-            {sortQuarters(Array.from(new Set([...pastHistory.map((h) => h.quarter), quarter]))).map((q) => {
+            {sortQuarters(Array.from(new Set([...otherQuarters.map((h) => h.quarter), quarter]))).map((q) => {
               if (q !== quarter) {
-                const h = pastHistory.find((row) => row.quarter === q)!;
+                const h = otherQuarters.find((row) => row.quarter === q)!;
                 return (
                   <tr key={h.quarter} className="ro-row">
                     <td style={{ textAlign: "left" }}>{h.quarter}</td>
@@ -303,16 +313,16 @@ export default function SelfUsePanel({
         </button>
       )}
 
-      {pastHistory.length > 0 && (
+      {confirmedHistory.length > 0 && (
         <>
           <div className="panel-sub" style={{ fontWeight: 700, color: "#1a202c", margin: "20px 0 8px" }}>
-            ■ 과거 분기 이력
+            ■ 확정 이력
           </div>
           <div className="tbl-scroll" style={{ marginBottom: 8 }}>
             <table className="rate-tbl">
               <RateTableHead />
               <tbody>
-                {pastHistory.map((h) =>
+                {confirmedHistory.map((h) =>
                   computeSelfuseRates({
                     bundangSelfuseRatio: h.bundang_selfuse_ratio,
                     yonginSelfuseRatio: h.yongin_selfuse_ratio,

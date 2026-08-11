@@ -21,6 +21,13 @@ export async function POST(req: NextRequest) {
     materialEvcsOverseasRatio: Number(input.materialEvcsOverseasRatio) || 0,
   };
 
+  // 입력이 전부 0이면 자가사용비율 0 → '건물 100%'인 배부율 2행이 만들어진다.
+  // 빈 화면에서 저장이 한 번 눌렸을 뿐인데 그 분기가 확정된 것처럼 View에 남으므로 아예 저장하지 않는다.
+  // (IT 기준정보는 전부 0이면 합계 0이라 그쪽 라우트에서 0인 행을 지우는 방식으로 막는다.)
+  if (!Object.values(parsedInput).some((v) => v > 0)) {
+    return NextResponse.json({ error: "입력값이 없어 저장하지 않았습니다." }, { status: 400 });
+  }
+
   const { error: basisError } = await supabase
     .from("allocation_basis_inputs")
     .upsert(
