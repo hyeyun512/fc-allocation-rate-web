@@ -265,6 +265,47 @@ export default function AllocationView({
     }
   }
 
+  /**
+   * 코멘트 칸 — 분기 표와 변화 표가 똑같은 모습을 쓰도록 한곳에서 그린다.
+   * 평소에는 글자만 보이고 커서를 올리면 입력칸과 초록 체크가 나타난다 (.comment-cell, globals.css).
+   */
+  function commentCell(quarter: string, basis: string) {
+    const dirty = commentDirty(quarter, basis);
+    return (
+      <td className="col-comment">
+        <div className="comment-cell">
+          <input
+            value={commentValue(quarter, basis)}
+            onChange={(e) => changeComment(quarter, basis, e.target.value)}
+            placeholder="코멘트"
+            maxLength={500}
+            // 표 안이라 폼 제출이 없다 — 엔터로도 저장되게 한다.
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                saveComment(quarter, basis);
+              }
+            }}
+          />
+          <button
+            type="button"
+            className={`note-save-btn${dirty ? " is-dirty" : ""}`}
+            title={dirty ? "저장하지 않은 변경이 있습니다 — 눌러서 저장" : "저장"}
+            aria-label="코멘트 저장"
+            disabled={savingComment === commentKey(quarter, basis)}
+            onClick={() => saveComment(quarter, basis)}
+          >
+            ✓
+          </button>
+        </div>
+      </td>
+    );
+  }
+
+  // 변화 표의 코멘트는 비교 대상인 나중 분기에 매어 저장한다 —
+  // 그러면 그 분기 탭에서 적은 코멘트와 같은 칸이 되어 두 화면이 어긋나지 않는다.
+  const deltaCommentQuarter = deltaPair ? deltaPair[1] : "";
+
   function matchesSearch(basis: string, division: string, type: string, comment: string) {
     if (!search) return true;
     const hay = `${basis} ${division} ${type} ${comment}`.toLowerCase();
@@ -282,8 +323,7 @@ export default function AllocationView({
       (divisions.size === 0 || divisions.has(r.division)) &&
       (types.size === 0 || types.has(r.type)) &&
       !(changedOnly && r.status === "same") &&
-      // 변화 탭에는 코멘트 열이 없다 (분기 두 개를 겹쳐 보는 화면이라 코멘트가 한쪽에 매이지 않는다).
-      matchesSearch(r.basis, r.division, r.type, "")
+      matchesSearch(r.basis, r.division, r.type, commentValue(deltaCommentQuarter, r.basis))
   );
 
   const visibleRows: Array<AllocRateRow | DeltaRow> = isDelta ? filteredDeltaRows : filteredQuarterRows;
@@ -365,7 +405,7 @@ export default function AllocationView({
             ))}
             {deltaPair && (
               <button type="button" className={`mode-delta ${isDelta ? "active" : ""}`} onClick={() => setView("delta")}>
-                변화({shortQuarterLabel(deltaPair[1])}-{shortQuarterLabel(deltaPair[0])})(청구)
+                변화({shortQuarterLabel(deltaPair[1])}-{shortQuarterLabel(deltaPair[0])})
               </button>
             )}
           </div>
@@ -470,18 +510,14 @@ export default function AllocationView({
                 <th key={t.key}>{t.label}</th>
               ))}
               {/* update(반영 여부)는 검토 및 확정 > 조사 탭에서 확인하는 내용이라 여기서는 빼둔다. */}
-              {isDelta ? <th>상태</th> : (
-                <>
-                  <th>TOTAL</th>
-                  <th className="col-comment">코멘트</th>
-                </>
-              )}
+              {isDelta ? <th>상태</th> : <th>TOTAL</th>}
+              <th className="col-comment">코멘트</th>
             </tr>
           </thead>
           <tbody>
             {visibleRows.length === 0 && (
               <tr>
-                <td colSpan={TARGETS.length + (isDelta ? 2 : 3)}>
+                <td colSpan={TARGETS.length + 3}>
                   <div className="av-empty">조건에 맞는 배부기준이 없습니다.</div>
                 </td>
               </tr>
@@ -499,7 +535,7 @@ export default function AllocationView({
                             <td className="col-basis">
                               {divisionLabel(row.division)} <span className="grp-count">· {count}건</span>
                             </td>
-                            <td colSpan={TARGETS.length + (isDelta ? 1 : 2)}></td>
+                            <td colSpan={TARGETS.length + 2}></td>
                           </tr>
                         );
                       })()
@@ -562,6 +598,7 @@ export default function AllocationView({
                             {r.status === "changed" ? ` · ${r.changedCount}개 법인` : ""}
                           </span>
                         </td>
+                        {commentCell(deltaCommentQuarter, r.basis)}
                       </tr>
                     </React.Fragment>
                   );
@@ -601,33 +638,7 @@ export default function AllocationView({
                       <td className={`col-total ${totalOk ? "av-total-ok" : "av-total-excl"}`}>
                         {totalOk ? fmtPct(r.total, 0) : r.total === 0 ? "제외" : fmtPct(r.total, 0)}
                       </td>
-                      <td className="col-comment">
-                        <div className="comment-cell">
-                          <input
-                            value={commentValue(view, r.basis)}
-                            onChange={(e) => changeComment(view, r.basis, e.target.value)}
-                            placeholder="코멘트"
-                            maxLength={500}
-                            // 표 안이라 폼 제출이 없다 — 엔터로도 저장되게 한다.
-                            onKeyDown={(e) => {
-                              if (e.key === "Enter") {
-                                e.preventDefault();
-                                saveComment(view, r.basis);
-                              }
-                            }}
-                          />
-                          <button
-                            type="button"
-                            className={`note-save-btn${commentDirty(view, r.basis) ? " is-dirty" : ""}`}
-                            title={commentDirty(view, r.basis) ? "저장하지 않은 변경이 있습니다 — 눌러서 저장" : "저장"}
-                            aria-label="코멘트 저장"
-                            disabled={savingComment === commentKey(view, r.basis)}
-                            onClick={() => saveComment(view, r.basis)}
-                          >
-                            ✓
-                          </button>
-                        </div>
-                      </td>
+                      {commentCell(view, r.basis)}
                     </tr>
                   </React.Fragment>
                 );
