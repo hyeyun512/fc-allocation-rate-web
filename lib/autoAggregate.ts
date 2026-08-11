@@ -1,4 +1,4 @@
-import { TARGETS, TargetKey, sumTargets } from "./targets";
+import { TARGETS, TargetKey, sumTargets, normalizeTargets } from "./targets";
 import { latestByPerson, computeRollup, countedPersonRows, SubmissionRow } from "./rollup";
 import { ensureFixedRates } from "./fixedRates";
 import { isOrgActiveIn } from "./orgLifespan";
@@ -100,6 +100,7 @@ function buildOrgState(org: any, subs: SubmissionRow[], rateRows: any[], period:
   return { rate, weight, hasSubmission };
 }
 
+// 하위 조직 값이 100%에서 미세하게 벗어나 있으면 가중평균도 그만큼 벗어난다 — 합계를 100%로 맞춰 돌려준다.
 function weightedAvg(states: OrgState[]): Rec {
   const r = zeroRec();
   if (states.length === 0) return r;
@@ -111,20 +112,17 @@ function weightedAvg(states: OrgState[]): Rec {
     const weighted = states.reduce((sum, s) => sum + (s.rate[t.key] || 0) * (useWeights ? s.weight : 1), 0);
     r[t.key] = divisor > 0 ? weighted / divisor : 0;
   });
-  return r;
+  return normalizeTargets(r) as Rec;
 }
 
 /** 본사 가중평균에서 계열사 배부분을 빼고 나머지로 재정규화 (HKR). */
 function renormalizeExcludingAffiliates(avg: Rec): Rec {
-  const humaxSum = TARGETS.reduce(
-    (sum, t) => (AFFILIATE_KEYS.includes(t.key) ? sum : sum + (avg[t.key] || 0)),
-    0
-  );
-  const r = zeroRec();
+  const humaxOnly = zeroRec();
   TARGETS.forEach((t) => {
-    r[t.key] = AFFILIATE_KEYS.includes(t.key) ? 0 : humaxSum > 0 ? (avg[t.key] || 0) / humaxSum : 0;
+    humaxOnly[t.key] = AFFILIATE_KEYS.includes(t.key) ? 0 : avg[t.key] || 0;
   });
-  return r;
+  // 계열사 몫을 0으로 두고 남은 항목만 100%로 다시 맞추는 것이 곧 '계열사 제외 재정규화'다.
+  return normalizeTargets(humaxOnly) as Rec;
 }
 
 /** 그 분기에 계산할 근거가 없어진 자동계산 행을 지운다 (입력한 적 없는 분기가 목록에 남지 않도록). */
@@ -147,14 +145,17 @@ async function upsertRate(
   // 확정된 것처럼 보이므로, 남아 있던 행이 있으면 지우고 새로 쓰지는 않는다.
   if (sumTargets(row.rates) <= 0) return deleteRate(supabase, row);
 
+  // 저장 직전에 한 번 더 100%로 맞춘다 — 어느 경로로 불려도 저장값의 합계는 항상 100%다.
+  const rates = normalizeTargets(row.rates);
+
   const { error } = await supabase.from("allocation_rate").upsert(
     {
       quarter: row.quarter,
       type: row.type,
       division: row.division,
       basis: row.basis,
-      ...row.rates,
-      total: sumTargets(row.rates),
+      ...rates,
+      total: sumTargets(rates),
       update_flag: true,
       note: `자동계산 반영 (${row.version ?? ""}) - ${new Date().toISOString()}`,
     },

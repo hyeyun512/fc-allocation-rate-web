@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
-import { TARGETS, TargetKey, sumTargets } from "@/lib/targets";
+import { TARGETS, TargetKey, sumTargets, normalizeTargets } from "@/lib/targets";
 import { recomputeAggregates } from "@/lib/autoAggregate";
 import { buildDeletionTombstones } from "@/lib/personTombstones";
 import { DELETED_STATUS } from "@/lib/rollup";
@@ -50,14 +50,18 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: delError.message }, { status: 500 });
     }
   } else {
+    // 배부율 표에 남는 값은 항상 합계 100%여야 한다. 입력 단계에서 ±0.5%p까지 허용한 오차가
+    // 여기까지 흘러오므로, 저장 직전에 비율을 유지한 채 100%로 맞춘다.
+    // (제출 이력 allocation_submissions에는 입력한 값을 그대로 남긴다 — 무엇을 적었는지 추적해야 한다.)
+    const normalized = normalizeTargets(parsed);
     const { error: upsertError } = await supabase.from("allocation_rate").upsert(
       {
         quarter: period,
         type: org.type,
         division: org.division,
         basis: org.basis,
-        ...parsed,
-        total: sumTargets(parsed),
+        ...normalized,
+        total: sumTargets(normalized),
         update_flag: true,
         note: `웹 확정 (${version}) - ${new Date().toISOString()}`,
       },

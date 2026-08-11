@@ -16,6 +16,7 @@ import {
   TARGETS,
   TargetKey,
   sumTargets,
+  normalizeTargets,
   fractionToPercentInput,
   percentInputToFraction,
 } from "@/lib/targets";
@@ -198,15 +199,18 @@ export function countedPersons(persons: PersonEditRow[]): PersonEditRow[] {
 }
 
 // 개인별 입력은 한 행이 한 명이므로 모두 같은 가중치(1명)로 단순 평균한다.
+// 개인 합계는 100%에서 ±0.5%p까지 허용되므로(totalIsValid), 평균낸 조직 값은 100%로 맞춘다 —
+// 서버 저장값(lib/rollup의 computeRollup)과 같은 값이 화면에 보여야 한다.
 export function averageFromPersons(persons: PersonEditRow[]): RateMap {
   const counted = countedPersons(persons);
   const r = emptyRates();
   if (counted.length === 0) return r;
+  const avg = {} as Record<TargetKey, number>;
   TARGETS.forEach((t) => {
     const sum = counted.reduce((acc, p) => acc + (Number(p.rates[t.key]) || 0), 0);
-    r[t.key] = String(sum / counted.length);
+    avg[t.key] = sum / counted.length;
   });
-  return r;
+  return toRateMap(normalizeTargets(avg));
 }
 
 // 개인별 입력은 한 행 = 한 명이므로, 이름이 있고 배부율이 0%가 아닌 행 수가 곧 인원수다.

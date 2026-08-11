@@ -43,6 +43,49 @@ export function sumTargets(row: Partial<Record<TargetKey, number | null | undefi
   return TARGETS.reduce((sum, t) => sum + (Number(row[t.key]) || 0), 0);
 }
 
+/**
+ * 배부율 합계를 정확히 100%로 맞춘다 (비율은 그대로 두고 전체를 같은 비로 늘리거나 줄인다).
+ *
+ * 개인별 입력은 합계가 100%에서 ±0.5%p까지 통과하는데(RateParts의 totalIsValid), 예전에는 이 오차가
+ * 조직 평균 -> 상위 집계 -> HKR로 그대로 흘러가 저장값이 100.0014% 같은 값으로 남았다.
+ * (실제 사례: HUS 소속 1명이 STB를 50.01%로 입력 -> 7명 평균에 0.0001/7이 남아 HUS 합계 100.0014%)
+ * 입력 단계의 허용 오차는 그대로 두고, 계산·저장 시점에만 100%로 맞춘다.
+ *
+ * 합계가 0이면(미입력이거나 값을 다 지운 경우) 손대지 않는다 — 호출부에서 '행을 지운다'로 따로 처리한다.
+ */
+export function normalizeTargets(
+  rates: Partial<Record<TargetKey, number | null | undefined>>
+): Record<TargetKey, number> {
+  const out = {} as Record<TargetKey, number>;
+  TARGETS.forEach((t) => (out[t.key] = Number(rates[t.key]) || 0));
+
+  const sum = sumTargets(out);
+  if (sum <= 0) return out;
+  if (sum !== 1) TARGETS.forEach((t) => (out[t.key] = out[t.key] / sum));
+
+  // 나눗셈에서 남는 부동소수점 찌꺼기(0.9999999999999999 같은 값)를 흡수시켜 합계를 정확히 1로 만든다.
+  // 이게 없으면 저장은 100%인데 엑셀에서 =SUM(...)=1 검산이 FALSE로 뜬다.
+  //
+  // 값이 큰 항목부터 넣는다 — 같은 크기의 오차라도 큰 값에 얹어야 비율이 덜 흔들린다.
+  // 다만 오차가 그 항목의 표현 한계(1 ULP)보다 작으면 더해도 값이 그대로여서 흡수되지 않으므로,
+  // 그럴 때는 더 작은(정밀도가 촘촘한) 항목으로 넘어간다.
+  const byValueDesc = TARGETS.map((t) => t.key)
+    .filter((key) => out[key] > 0)
+    .sort((a, b) => out[b] - out[a]);
+
+  for (const key of byValueDesc) {
+    let guard = 0;
+    while (sumTargets(out) !== 1 && guard++ < 4) {
+      const next = out[key] + (1 - sumTargets(out));
+      if (next === out[key]) break;
+      out[key] = next;
+    }
+    if (sumTargets(out) === 1) break;
+  }
+
+  return out;
+}
+
 // 화면 입력/표시는 항상 %(예: 30) 단위를 쓰고, 내부 상태·DB 저장은 항상 0~1 소수(fraction)로 통일한다.
 /**
  * 저장값(분수) → 입력칸에 보여줄 퍼센트 문자열.

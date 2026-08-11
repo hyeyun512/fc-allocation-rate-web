@@ -1,4 +1,4 @@
-import { TARGETS, TargetKey } from "@/lib/targets";
+import { TARGETS, TargetKey, normalizeTargets } from "@/lib/targets";
 
 export interface SubmissionRow {
   id: number;
@@ -79,6 +79,7 @@ export function countedPersonRows(personRows: SubmissionRow[]): SubmissionRow[] 
 }
 
 // 개인별 제출이 있으면 인원수(=행 수) 평균, 없으면 조직 단위 제출값을 그대로 사용.
+// 개인 입력은 합계가 100%에서 ±0.5%p까지 허용되므로, 평균낸 조직 값은 100%로 정규화해서 돌려준다.
 export function computeRollup(
   orgLevelRow: SubmissionRow | null,
   personRows: SubmissionRow[]
@@ -91,11 +92,11 @@ export function computeRollup(
       const sum = counted.reduce((acc, p) => acc + (Number(p[t.key]) || 0), 0);
       result[t.key] = sum / counted.length;
     });
-    return result;
+    return normalizeTargets(result);
   }
 
   TARGETS.forEach((t) => {
     result[t.key] = orgLevelRow ? Number(orgLevelRow[t.key]) || 0 : 0;
   });
-  return result;
+  return normalizeTargets(result);
 }
