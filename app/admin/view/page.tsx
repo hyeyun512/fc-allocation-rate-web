@@ -39,5 +39,16 @@ export default async function AdminViewPage() {
     dataByQuarter[q] = allRows.filter((r) => r.quarter === q);
   });
 
-  return <AllocationView quarters={quarters} dataByQuarter={dataByQuarter} />;
+  // 관리자 코멘트는 allocation_rate.note와 따로 보관한다 (note는 확정할 때마다 감사 로그로 덮인다).
+  // 키 형식은 AllocationView의 commentKey(quarter, basis)와 반드시 같아야 한다 (분기 + 공백 + 배부기준).
+  const { data: commentRows } = await supabase
+    .from("allocation_view_comments")
+    .select("quarter,basis,content");
+
+  const comments: Record<string, string> = {};
+  (commentRows ?? []).forEach((c) => {
+    comments[[c.quarter, c.basis].join(" ")] = c.content ?? "";
+  });
+
+  return <AllocationView quarters={quarters} dataByQuarter={dataByQuarter} comments={comments} />;
 }

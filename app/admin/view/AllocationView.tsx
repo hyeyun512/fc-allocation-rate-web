@@ -25,7 +25,6 @@ interface DeltaRow {
   q1: AllocRateRow | null;
   q2: AllocRateRow | null;
   deltas: Record<TargetKey, number | null>;
-  note: string | null;
 }
 
 const DIVISION_ORDER = ["본사", "주재원", "법인", "건물", "IT", "인원수", "ID수", "기타", "직접비"];
@@ -90,15 +89,15 @@ function sortRows<T extends { division: string; basis: string }>(rows: T[]): T[]
 }
 
 /**
- * 비고에 보여줄 메모.
- * allocation_rate.note에는 "웹 확정 (Forecast) - 2026-08-10T…" 같은 저장 기록이 자동으로 들어간다.
- * 읽을 내용이 아니라 감사 로그라 화면에는 표시하지 않는다 (사람이 적은 메모만 남긴다).
+ * 관리자 코멘트 저장 키 — 같은 배부기준이라도 분기마다 코멘트를 따로 갖는다.
+ *
+ * 코멘트를 allocation_rate.note에 적지 않는 이유:
+ * 그 칸에는 확정할 때마다 "웹 확정 (Forecast) - 2026-08-05T…" 같은 감사 로그가 자동으로 덮여서,
+ * 관리자가 적은 코멘트가 다음 확정에서 조용히 사라진다.
+ * 그래서 allocation_view_comments 표에 따로 보관한다.
  */
-function displayNote(note: string | null): string | null {
-  if (!note) return null;
-  const t = note.trim();
-  if (/^(웹 확정|자동계산 반영|복구)\b/.test(t)) return null;
-  return t || null;
+function commentKey(quarter: string, basis: string): string {
+  return [quarter, basis].join(" ");
 }
 
 function fmtPct(v: number, digits = 1): string {
@@ -108,6 +107,13 @@ function fmtDelta(d: number): string {
   const pct = d * 100;
   const s = (pct >= 0 ? "+" : "") + pct.toFixed(Math.abs(pct) < 1 ? 1 : 0);
   return s + "%p";
+}
+// 셀에 마우스를 올렸을 때 보여줄 정밀값 — 소수점 3자리까지 (표에 보이는 값은 반올림돼 있다).
+function fmtPctExact(v: number): string {
+  return (v * 100).toFixed(3) + "%";
+}
+function fmtDeltaExact(d: number): string {
+  return (d >= 0 ? "+" : "") + (d * 100).toFixed(3) + "%p";
 }
 
 function makeDeltaRow(r1: AllocRateRow | null, r2: AllocRateRow | null, div: string): DeltaRow {
@@ -138,7 +144,6 @@ function makeDeltaRow(r1: AllocRateRow | null, r2: AllocRateRow | null, div: str
     q1: r1,
     q2: r2,
     deltas,
-    note: (r2 && r2.note) || (r1 && r1.note) || null,
   };
 }
 
@@ -166,9 +171,12 @@ function buildDeltaRows(pair: [string, string] | null, dataByQuarter: Record<str
 export default function AllocationView({
   quarters,
   dataByQuarter,
+  comments,
 }: {
   quarters: string[];
   dataByQuarter: Record<string, AllocRateRow[]>;
+  /** commentKey(quarter, basis) -> 저장된 관리자 코멘트 */
+  comments: Record<string, string>;
 }) {
   const router = useRouter();
   const [view, setView] = useState<string>(quarters[quarters.length - 1] ?? "");
@@ -176,6 +184,12 @@ export default function AllocationView({
   const [divisions, setDivisions] = useState<Set<string>>(new Set());
   const [types, setTypes] = useState<Set<string>>(new Set());
   const [changedOnly, setChangedOnly] = useState(false);
+  // 저장이 끝난 코멘트. 저장 후 router.refresh()로 다시 받아오면 서버가 아직 예전 값을 주는 순간이 있어
+  // 방금 적은 코멘트가 사라져 보인다 — 저장 성공 시 이 상태만 갱신한다.
+  const [savedComments, setSavedComments] = useState<Record<string, string>>(comments);
+  // 아직 저장하지 않은 입력값만 담는다 (키가 없으면 = 저장된 값과 같다).
+  const [commentDrafts, setCommentDrafts] = useState<Record<string, string>>({});
+  const [savingComment, setSavingComment] = useState<string | null>(null);
 
   const isDelta = view === "delta";
   // 변화 탭은 항상 확정치(청구) 두 분기를 비교한다. 청구 분기가 2개 미만이면 마지막 두 분기로 대체.
@@ -210,9 +224,50 @@ export default function AllocationView({
     router.push("/admin/login");
   }
 
-  function matchesSearch(basis: string, division: string, type: string, note: string | null) {
+  // ---- 관리자 코멘트 ----
+  /** 칸에 보여줄 값 — 저장 안 된 입력이 있으면 그것을 우선한다. */
+  function commentValue(quarter: string, basis: string): string {
+    const key = commentKey(quarter, basis);
+    return commentDrafts[key] ?? savedComments[key] ?? "";
+  }
+  function commentDirty(quarter: string, basis: string): boolean {
+    const key = commentKey(quarter, basis);
+    return key in commentDrafts && commentDrafts[key] !== (savedComments[key] ?? "");
+  }
+  function changeComment(quarter: string, basis: string, value: string) {
+    setCommentDrafts((prev) => ({ ...prev, [commentKey(quarter, basis)]: value }));
+  }
+  async function saveComment(quarter: string, basis: string) {
+    const key = commentKey(quarter, basis);
+    const content = commentDrafts[key] ?? savedComments[key] ?? "";
+    setSavingComment(key);
+    try {
+      const res = await fetch("/api/admin/view-comment", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ quarter, basis, content }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        alert(json.error ?? "코멘트 저장에 실패했습니다.");
+        return;
+      }
+      setSavedComments((prev) => ({ ...prev, [key]: content }));
+      setCommentDrafts((prev) => {
+        const next = { ...prev };
+        delete next[key];
+        return next;
+      });
+    } catch {
+      alert("코멘트 저장에 실패했습니다. 네트워크 상태를 확인해주세요.");
+    } finally {
+      setSavingComment(null);
+    }
+  }
+
+  function matchesSearch(basis: string, division: string, type: string, comment: string) {
     if (!search) return true;
-    const hay = `${basis} ${division} ${type} ${note ?? ""}`.toLowerCase();
+    const hay = `${basis} ${division} ${type} ${comment}`.toLowerCase();
     return hay.includes(search.toLowerCase());
   }
 
@@ -220,14 +275,15 @@ export default function AllocationView({
     (r) =>
       (divisions.size === 0 || divisions.has(r.division)) &&
       (types.size === 0 || types.has(r.type)) &&
-      matchesSearch(r.basis, r.division, r.type, displayNote(r.note))
+      matchesSearch(r.basis, r.division, r.type, commentValue(view, r.basis))
   );
   const filteredDeltaRows = deltaRows.filter(
     (r) =>
       (divisions.size === 0 || divisions.has(r.division)) &&
       (types.size === 0 || types.has(r.type)) &&
       !(changedOnly && r.status === "same") &&
-      matchesSearch(r.basis, r.division, r.type, displayNote(r.note))
+      // 변화 탭에는 코멘트 열이 없다 (분기 두 개를 겹쳐 보는 화면이라 코멘트가 한쪽에 매이지 않는다).
+      matchesSearch(r.basis, r.division, r.type, "")
   );
 
   const visibleRows: Array<AllocRateRow | DeltaRow> = isDelta ? filteredDeltaRows : filteredQuarterRows;
@@ -333,7 +389,7 @@ export default function AllocationView({
         <input
           className="av-search"
           type="text"
-          placeholder="배부기준, 비고 검색…"
+          placeholder="배부기준, 코멘트 검색…"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
         />
@@ -417,7 +473,7 @@ export default function AllocationView({
               {isDelta ? <th>상태</th> : (
                 <>
                   <th>TOTAL</th>
-                  <th>비고</th>
+                  <th className="col-comment">코멘트</th>
                 </>
               )}
             </tr>
@@ -490,7 +546,11 @@ export default function AllocationView({
                               key={t.key}
                               className={`heat-cell ${cls}${strong}`}
                               style={{ ["--dv" as any]: dv.toFixed(4) }}
-                              title={`${r.basis} → ${t.label}: ${deltaPair ? prettyQuarterLabel(deltaPair[0]) : ""}→${deltaPair ? prettyQuarterLabel(deltaPair[1]) : ""} ${d >= 0 ? "+" : ""}${(d * 100).toFixed(2)}%p`}
+                              title={`${r.basis} → ${t.label}: ${deltaPair ? prettyQuarterLabel(deltaPair[0]) : ""} ${fmtPctExact(
+                                r.q1?.[t.key] ?? 0
+                              )} → ${deltaPair ? prettyQuarterLabel(deltaPair[1]) : ""} ${fmtPctExact(
+                                r.q2?.[t.key] ?? 0
+                              )} (${fmtDeltaExact(d)})`}
                             >
                               {fmtDelta(d)}
                             </td>
@@ -520,14 +580,19 @@ export default function AllocationView({
                       {TARGETS.map((t) => {
                         const v = r[t.key];
                         if (v === null || v === undefined) return <td key={t.key} className="heat-cell na"></td>;
-                        if (v === 0) return <td key={t.key} className="heat-cell zero">0</td>;
+                        if (v === 0)
+                          return (
+                            <td key={t.key} className="heat-cell zero" title={`${r.basis} → ${t.label}: ${fmtPctExact(0)}`}>
+                              0
+                            </td>
+                          );
                         const hi = v >= 0.5;
                         return (
                           <td
                             key={t.key}
                             className={`heat-cell has-value${hi ? " hi" : ""}`}
                             style={{ ["--v" as any]: v.toFixed(4) }}
-                            title={`${r.basis} → ${t.label}: ${(v * 100).toFixed(4).replace(/\.?0+$/, "")}%`}
+                            title={`${r.basis} → ${t.label}: ${fmtPctExact(v)}`}
                           >
                             {fmtPct(v, v < 0.01 ? 2 : 0)}
                           </td>
@@ -536,12 +601,32 @@ export default function AllocationView({
                       <td className={`col-total ${totalOk ? "av-total-ok" : "av-total-excl"}`}>
                         {totalOk ? fmtPct(r.total, 0) : r.total === 0 ? "제외" : fmtPct(r.total, 0)}
                       </td>
-                      <td className="col-note">
-                        {displayNote(r.note) && (
-                          <button className="av-note-btn" type="button" aria-label="비고">
-                            i<span className="tip">{displayNote(r.note)}</span>
+                      <td className="col-comment">
+                        <div className="av-comment-cell">
+                          <input
+                            value={commentValue(view, r.basis)}
+                            onChange={(e) => changeComment(view, r.basis, e.target.value)}
+                            placeholder="코멘트"
+                            maxLength={500}
+                            // 표 안이라 폼 제출이 없다 — 엔터로도 저장되게 한다.
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") {
+                                e.preventDefault();
+                                saveComment(view, r.basis);
+                              }
+                            }}
+                          />
+                          <button
+                            type="button"
+                            className={`note-save-btn${commentDirty(view, r.basis) ? " is-dirty" : ""}`}
+                            title={commentDirty(view, r.basis) ? "저장하지 않은 변경이 있습니다 — 눌러서 저장" : "저장"}
+                            aria-label="코멘트 저장"
+                            disabled={savingComment === commentKey(view, r.basis)}
+                            onClick={() => saveComment(view, r.basis)}
+                          >
+                            ✓
                           </button>
-                        )}
+                        </div>
                       </td>
                     </tr>
                   </React.Fragment>
@@ -552,7 +637,7 @@ export default function AllocationView({
         </table>
       </div>
 
-      <footer style={{ textAlign: "right" }}>소수점은 원본 계산값을 그대로 저장 — 표시는 반올림, 셀에 마우스를 올리면 정밀값이 표시됩니다</footer>
+      <footer style={{ textAlign: "right" }}>소수점은 원본 계산값을 그대로 저장 — 표시는 반올림, 셀에 마우스를 올리면 소수점 3자리까지 표시됩니다</footer>
     </div>
   );
 }

@@ -201,6 +201,17 @@ footer{text-align:center;padding:22px;color:#94a3b8;font-size:11.5px}
 .av-table td.col-status .pill.changed{background:#eff6ff;color:#2563eb}
 .av-table td.col-status .pill.same{background:#f1f5f9;color:#94a3b8}
 
+/* 코멘트 열 — 관리자가 표에서 바로 적고 옆의 초록 체크(.note-save-btn)로 저장한다.
+   표의 다른 칸은 가운데 정렬이지만 글이라 왼쪽 정렬로 둔다. */
+.av-table th.col-comment,.av-table td.col-comment{min-width:200px;text-align:left}
+.av-comment-cell{display:flex;align-items:center;gap:4px}
+.av-comment-cell input{
+  flex:1 1 auto;min-width:0;font-family:inherit;font-size:12.5px;padding:5px 8px;
+  border:0.5px solid #cbd5e1;border-radius:6px;background:#fff;color:#1a202c;text-align:left
+}
+.av-comment-cell input::placeholder{color:#cbd5e1}
+.av-comment-cell input:focus{outline:2px solid #bfdbfe;border-color:#2563eb}
+
 /* 코멘트 아이콘: 원 안 어디를 가리켜도 반응하도록 flex로 중앙 정렬하고 크기를 키웠다. */
 .av-note-btn{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:50%;border:0.5px solid #cbd5e1;background:#f1f5f9;color:#475569;font-size:12px;font-weight:700;cursor:pointer;position:relative;font-family:inherit;line-height:1;padding:0}
 .av-note-btn:hover{background:#2563eb;color:#fff;border-color:#2563eb}
