@@ -3,6 +3,7 @@ import { TARGETS, TargetKey } from "@/lib/targets";
 import { latestByPerson, latestByPersonAndPeriod, latestOrgByPeriod, computeRollup, SubmissionRow } from "@/lib/rollup";
 import { HIDDEN_IN_CONFIRM } from "@/lib/autoAggregate";
 import { isOrgActiveIn } from "@/lib/orgLifespan";
+import { resolveManager, OrgManagerRow } from "@/lib/orgManager";
 import { OrgReviewData } from "./ConfirmReview";
 import { SurveyOrgData } from "../SurveyOverview";
 import ConfirmTabs from "./ConfirmTabs";
@@ -49,6 +50,9 @@ export default async function AdminConfirmPage() {
     .order("submitted_at", { ascending: false });
 
   const { data: rateRows } = await supabase.from("allocation_rate").select("*").order("quarter", { ascending: true });
+
+  // 조사 현황의 담당자 — 이번 분기 값이 없으면 지난 분기 값을 이어 쓰므로 전체 분기를 가져온다.
+  const { data: managerRows } = await supabase.from("allocation_org_managers").select("org_id,period,manager_name");
 
   // HKR(관계사 제외)은 별도 설문 조직이 아니라 다른 본사 조직 값에서 자동계산되며,
   // allocation_rate(운영)에서 basis="HKR(관계사제외)"로 직접 이력을 조회/기록한다.
@@ -274,6 +278,7 @@ export default async function AdminConfirmPage() {
   // 즉 상위 조직(개발 그룹·경영지원실 등)만 늘어놓고, 하위 팀은 그 안에 접어 넣는다
   // (예전에는 팀이 전부 펼쳐져 있어 두 화면의 조직 단위가 서로 달라 보였다).
   // 미러 조직(사업총괄대표)은 다른 조직 값을 그대로 따라가므로 양쪽 모두에서 감춘다.
+  const managers = (managerRows ?? []) as OrgManagerRow[];
   const surveyItems: SurveyOrgData[] = orgList
     .filter((org) => !HIDDEN_IN_CONFIRM.includes(org.basis))
     .map((org) => {
@@ -301,6 +306,7 @@ export default async function AdminConfirmPage() {
         submittedBy,
         latestSubmittedAt,
         personCount,
+        manager: resolveManager(managers, org.id, period),
         children: [],
       };
     });

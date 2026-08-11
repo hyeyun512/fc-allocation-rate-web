@@ -134,6 +134,36 @@ a{color:inherit}
 .list-item-title{font-size:13.5px;font-weight:600;color:#1a202c}
 .list-item-sub{font-size:12px;color:#94a3b8;margin-top:2px}
 
+/* ================= 조사 현황 (조직 · 입력 링크 · 담당자) =================
+   관리자 화면은 폭이 넓지만(page-wide) 이 표는 열이 셋뿐이라, 가로로 늘어뜨리면
+   조직명과 담당자가 화면 양 끝에 떨어져 한 줄로 읽히지 않는다. 폭을 묶어 왼쪽에 붙여둔다. */
+.survey-wrap{max-width:720px}
+.survey-panel{padding:14px 16px}
+.survey-panel-head{display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin-bottom:8px}
+.survey-panel-title{font-size:13.5px;font-weight:700;color:#1a202c}
+.survey-panel-count{font-size:11.5px;color:#94a3b8}
+
+.survey-tbl{width:100%;border-collapse:collapse;table-layout:fixed}
+.survey-tbl th{padding:6px 8px;font-size:11px;font-weight:700;color:#94a3b8;background:#f8fafc;border-bottom:0.5px solid #e2e8f0;text-align:left;white-space:nowrap}
+.survey-tbl td{padding:7px 8px;border-bottom:0.5px solid #f1f5f9;vertical-align:middle}
+.survey-tbl tr:last-child td{border-bottom:none}
+.survey-tbl .col-link{width:92px;text-align:center}
+.survey-tbl .col-manager{width:170px}
+.survey-tbl th.col-link,.survey-tbl th.col-manager{text-align:center}
+.survey-tbl th.col-manager{text-align:left;padding-left:14px}
+
+.survey-org-name{font-size:13px;font-weight:600;color:#1a202c;display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.survey-org-sub{font-size:11px;color:#94a3b8;margin-top:1px}
+/* 하위 팀은 상위 조직 아래에 한 칸 들여 쓴다 — 링크는 상위 조직 것 하나뿐이라 화살표로만 표시한다. */
+.survey-tbl tr.child-row .survey-org-name{font-weight:500}
+.survey-org-branch{color:#cbd5e1;font-size:11px}
+.survey-inherit-link{color:#cbd5e1;text-align:center;font-size:12px}
+
+/* 담당자 칸은 코멘트 칸과 같은 규칙(.comment-cell)을 쓰되 열 너비에 맞춰 늘린다. */
+.survey-manager{display:flex;width:100%}
+.survey-manager input{flex:1 1 auto;min-width:0;width:auto;font-size:12.5px}
+.survey-save-state{font-size:10.5px;color:#94a3b8;white-space:nowrap;flex:none}
+
 footer{text-align:center;padding:22px;color:#94a3b8;font-size:11.5px}
 
 /* ================= 배부율 View (heat-map) ================= */
