@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
-import { TARGETS, TargetKey, sumTargets, normalizeTargets } from "@/lib/targets";
+import { TARGETS, TargetKey, sumTargets, normalizeTargets, RATE_TOTAL_TOLERANCE } from "@/lib/targets";
 import { recomputeAggregates } from "@/lib/autoAggregate";
 import { buildDeletionTombstones } from "@/lib/personTombstones";
 import { DELETED_STATUS } from "@/lib/rollup";
@@ -58,7 +58,7 @@ export async function POST(req: NextRequest) {
 
     // 화면 검증(totalIsValid)이 ±0.5%p까지만 통과시키므로 그보다 큰 편차는 정상 경로로는 오지 않는다.
     // 그런데도 들어왔다면 입력 실수일 가능성이 크다 — 100%로 맞춰 저장하되 흔적은 로그에 남긴다.
-    if (Math.abs(enteredTotal - 1) > 0.005) {
+    if (Math.abs(enteredTotal - 1) > RATE_TOTAL_TOLERANCE) {
       console.warn(
         `[allocation] 합계 이상: ${period} ${org.basis} 입력 ${(enteredTotal * 100).toFixed(4)}% -> 100%로 보정해 저장`
       );

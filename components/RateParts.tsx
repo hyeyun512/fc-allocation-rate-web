@@ -17,6 +17,7 @@ import {
   TargetKey,
   sumTargets,
   normalizeTargets,
+  RATE_TOTAL_TOLERANCE,
   fractionToPercentInput,
   percentInputToFraction,
 } from "@/lib/targets";
@@ -170,7 +171,7 @@ export function totalOf(rates: RateMap): number {
 // 합계가 0(미입력)이거나 100%에 근접해야 통과. "값은 있는데 100%가 아닌" 경우만 오류로 취급.
 export function totalIsValid(rates: RateMap): boolean {
   const total = totalOf(rates);
-  return total === 0 || Math.abs(total - 1) < 0.005;
+  return total === 0 || Math.abs(total - 1) < RATE_TOTAL_TOLERANCE;
 }
 
 export function recTotal(rec: Record<TargetKey, number>): number {

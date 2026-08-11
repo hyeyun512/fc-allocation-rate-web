@@ -44,6 +44,12 @@ export function sumTargets(row: Partial<Record<TargetKey, number | null | undefi
 }
 
 /**
+ * 합계 100%로 인정하는 허용 오차(±0.5%p).
+ * 화면 입력 검증(RateParts의 totalIsValid)과 서버의 '이 정도면 입력 실수' 판정이 같은 값을 써야 한다.
+ */
+export const RATE_TOTAL_TOLERANCE = 0.005;
+
+/**
  * 배부율 합계를 정확히 100%로 맞춘다 (비율은 그대로 두고 전체를 같은 비로 늘리거나 줄인다).
  *
  * 개인별 입력은 합계가 100%에서 ±0.5%p까지 통과하는데(RateParts의 totalIsValid), 예전에는 이 오차가

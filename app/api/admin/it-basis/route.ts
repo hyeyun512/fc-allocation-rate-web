@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { computeItRates } from "@/lib/itBasis";
-import { TARGETS, TargetKey, sumTargets } from "@/lib/targets";
+import { TARGETS, TargetKey, sumTargets, normalizeTargets, RATE_TOTAL_TOLERANCE } from "@/lib/targets";
 
 export async function POST(req: NextRequest) {
   const { quarter, headcount, sap, submittedBy, headcountBy, sapBy, headcountBasis, sapBasis, headcountNote, sapNote } = await req.json();
@@ -116,14 +116,27 @@ export async function POST(req: NextRequest) {
       }
       continue;
     }
+    // 각 basis는 항목을 같은 대상인원(P)으로 나눈 값이라 원래 합계가 100%지만,
+    // 나눗셈에서 부동소수점 찌꺼기가 남아 100.0000000000000200% 같은 값으로 저장됐다.
+    // 리소스배부율과 같은 규칙으로 저장 직전에 100%로 맞춘다.
+    const computedTotal = sumTargets(parsed);
+    const normalized = normalizeTargets(parsed);
+
+    // 분모 구성이 어긋나지 않는 한 편차는 부동소수점 수준이어야 한다 — 그보다 크면 기준정보 입력을 의심한다.
+    if (Math.abs(computedTotal - 1) > RATE_TOTAL_TOLERANCE) {
+      console.warn(
+        `[allocation] IT 합계 이상: ${quarter} ${row.basis} 계산 ${(computedTotal * 100).toFixed(4)}% -> 100%로 보정해 저장`
+      );
+    }
+
     const { error } = await supabase.from("allocation_rate").upsert(
       {
         quarter,
         type: "IT",
         division: row.division,
         basis: row.basis,
-        ...parsed,
-        total: sumTargets(parsed),
+        ...normalized,
+        total: sumTargets(normalized),
         update_flag: true,
         note: `웹 확정 (IT 기준정보) - ${new Date().toISOString()}`,
       },

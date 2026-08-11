@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { computeSelfuseRates } from "@/lib/selfuseBasis";
-import { TARGETS, TargetKey, sumTargets } from "@/lib/targets";
+import { TARGETS, TargetKey, sumTargets, normalizeTargets, RATE_TOTAL_TOLERANCE } from "@/lib/targets";
 
 export async function POST(req: NextRequest) {
   const { quarter, input, submittedBy } = await req.json();
@@ -59,14 +59,28 @@ export async function POST(req: NextRequest) {
     TARGETS.forEach((t) => {
       parsed[t.key] = row.rates[t.key] ?? 0;
     });
+    // 리소스배부율·IT와 같은 규칙으로 저장 직전에 100%로 맞춘다.
+    const computedTotal = sumTargets(parsed);
+    const normalized = normalizeTargets(parsed);
+
+    // 분당은 '사업+개발+Media 인원 = 본사 총 - Staff'로 자동 계산되므로 합계가 항상 100%다(찌꺼기만 남는다).
+    // 용인은 재료비 비중(EVCS 국내/해외)을 각각 입력받아 둘의 합이 100%라는 보장이 없다 —
+    // 어긋나면 자가사용분과 건물분의 경계가 밀리므로, 보정은 하되 입력을 다시 보도록 로그를 남긴다.
+    if (Math.abs(computedTotal - 1) > RATE_TOTAL_TOLERANCE) {
+      console.warn(
+        `[allocation] 자가사용 합계 이상: ${quarter} ${row.basis} 계산 ${(computedTotal * 100).toFixed(4)}%` +
+          ` -> 100%로 보정해 저장 (용인은 재료비 비중 국내+해외가 100%인지 확인 필요)`
+      );
+    }
+
     const { error } = await supabase.from("allocation_rate").upsert(
       {
         quarter,
         type: "자가사용(건물)",
         division: row.division,
         basis: row.basis,
-        ...parsed,
-        total: sumTargets(parsed),
+        ...normalized,
+        total: sumTargets(normalized),
         update_flag: true,
         note: `웹 확정 (자가사용 기준정보) - ${new Date().toISOString()}`,
       },
