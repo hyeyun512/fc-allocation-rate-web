@@ -270,40 +270,48 @@ export default async function AdminConfirmPage() {
 
   // '조사' 탭 데이터 — 이미 불러온 orgList/subList를 그대로 재사용한다.
   //
-  // 직접 제출받지 않는 조직은 조사 대상이 아니므로 목록에서 뺀다. 안 그러면 값이 멀쩡히 채워져
-  // 있는데도(리소스배부율 칩은 초록) 조사 현황에서만 '미제출'로 떠서 누락된 것처럼 보인다.
-  //   - 집계 조직(개발 그룹·HR실 등): 하위 조직 값에서 자동계산된다
-  //   - 미러 조직(사업총괄대표): 다른 조직 값을 그대로 따라간다
-  const aggregateBases = new Set(orgList.filter((o) => o.parent_basis).map((o) => o.parent_basis as string));
-  const surveyTargets = orgList.filter(
-    (org) => !aggregateBases.has(org.basis) && !HIDDEN_IN_CONFIRM.includes(org.basis)
-  );
+  // 목록의 단위는 '검토 및 확정 > 리소스배부율'의 조직/팀 선택과 같게 맞춘다.
+  // 즉 상위 조직(개발 그룹·경영지원실 등)만 늘어놓고, 하위 팀은 그 안에 접어 넣는다
+  // (예전에는 팀이 전부 펼쳐져 있어 두 화면의 조직 단위가 서로 달라 보였다).
+  // 미러 조직(사업총괄대표)은 다른 조직 값을 그대로 따라가므로 양쪽 모두에서 감춘다.
+  const surveyItems: SurveyOrgData[] = orgList
+    .filter((org) => !HIDDEN_IN_CONFIRM.includes(org.basis))
+    .map((org) => {
+      const orgSubs = subList.filter((s) => s.org_id === org.id);
+      const deduped = latestByPerson(orgSubs);
+      // 값이 전부 0인 저장은 제출로 보지 않는다 (조사 현황의 '제출됨' 표기 기준).
+      const hasSubmission = deduped.some((r) => (Number(r.total) || 0) > 0);
+      const latestSubmittedAt = deduped.reduce<string | null>((max, r) => {
+        if (!max || new Date(r.submitted_at) > new Date(max)) return r.submitted_at;
+        return max;
+      }, null);
+      const submittedBy = deduped.find((r) => r.person_name === null)?.submitted_by ?? deduped[0]?.submitted_by ?? null;
+      const personCount = deduped.filter((r) => r.person_name !== null).length;
 
-  const surveyData: SurveyOrgData[] = surveyTargets.map((org) => {
-    const orgSubs = subList.filter((s) => s.org_id === org.id);
-    const deduped = latestByPerson(orgSubs);
-    // 값이 전부 0인 저장은 제출로 보지 않는다 (조사 현황의 '제출됨' 표기 기준).
-    const hasSubmission = deduped.some((r) => (Number(r.total) || 0) > 0);
-    const latestSubmittedAt = deduped.reduce<string | null>((max, r) => {
-      if (!max || new Date(r.submitted_at) > new Date(max)) return r.submitted_at;
-      return max;
-    }, null);
-    const submittedBy = deduped.find((r) => r.person_name === null)?.submitted_by ?? deduped[0]?.submitted_by ?? null;
-    const personCount = deduped.filter((r) => r.person_name !== null).length;
+      return {
+        org: {
+          id: org.id,
+          basis: org.basis,
+          division: org.division,
+          requires_person_detail: org.requires_person_detail,
+          access_token: org.access_token,
+          parent_basis: org.parent_basis ?? null,
+        },
+        hasSubmission,
+        submittedBy,
+        latestSubmittedAt,
+        personCount,
+        children: [],
+      };
+    });
 
-    return {
-      org: {
-        id: org.id,
-        basis: org.basis,
-        division: org.division,
-        requires_person_detail: org.requires_person_detail,
-        access_token: org.access_token,
-      },
-      hasSubmission,
-      submittedBy,
-      latestSubmittedAt,
-      personCount,
-    };
+  const surveyByBasis = new Map(surveyItems.map((i) => [i.org.basis, i]));
+  const surveyData: SurveyOrgData[] = [];
+  surveyItems.forEach((item) => {
+    const parent = item.org.parent_basis ? surveyByBasis.get(item.org.parent_basis) : null;
+    // 상위 조직이 목록에 없으면(감춰졌거나 비활성) 링크를 잃지 않도록 그대로 최상위에 둔다.
+    if (parent) parent.children.push(item);
+    else surveyData.push(item);
   });
 
   return (

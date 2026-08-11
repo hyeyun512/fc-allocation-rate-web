@@ -2,9 +2,11 @@
 
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { TARGETS, TargetKey, getPreviousPeriod } from "@/lib/targets";
+import { TARGETS, TargetKey, getPreviousPeriod, normalizeTargets } from "@/lib/targets";
 import { HIDDEN_IN_CONFIRM, MIRROR_HEADCOUNT, mirrorSourceOf } from "@/lib/autoAggregate";
 import { isOrgActiveIn } from "@/lib/orgLifespan";
+// 조사 현황과 같은 단위·순서로 보여야 해서 정렬 규칙을 함께 쓴다.
+import { leaderFirst, sortForOrgPicker } from "@/lib/orgOrder";
 // 표·행 컴포넌트는 조사 링크 화면(/submit/[token])과 함께 쓴다 — 두 화면이 어긋나지 않도록 한 곳에 둔다.
 import {
   NoteTip,
@@ -144,6 +146,8 @@ function sumOrgWeightsForQuarter(items: OrgReviewData[], quarter: string): numbe
 }
 
 // 상위 집계 조직(예: 경영지원실)의 값 = 하위 조직들(예: 재무팀, Staff(경영지원))의 인원수 가중평균.
+// 하위 값이 100%에서 미세하게 벗어나 있으면 평균도 벗어나므로 100%로 맞춰서 돌려준다
+// (서버의 lib/autoAggregate weightedAvg와 같은 값이어야 화면과 저장값이 어긋나지 않는다).
 function weightedAvgFromChildren(children: OrgReviewData[], period: string): RateMap {
   const r = emptyRates();
   if (children.length === 0) return r;
@@ -152,11 +156,12 @@ function weightedAvgFromChildren(children: OrgReviewData[], period: string): Rat
   // 아무 조직도 인원수를 적지 않았으면 가중치를 못 쓰므로 균등 평균으로 물러난다.
   const useWeights = totalW > 0;
   const divisor = useWeights ? totalW : children.length;
+  const avg = {} as Record<TargetKey, number>;
   TARGETS.forEach((t) => {
     const weighted = eff.reduce((sum, e) => sum + (Number(e.rec[t.key]) || 0) * (useWeights ? e.weight : 1), 0);
-    r[t.key] = String(divisor > 0 ? weighted / divisor : 0);
+    avg[t.key] = divisor > 0 ? weighted / divisor : 0;
   });
-  return r;
+  return toRateMap(normalizeTargets(avg));
 }
 
 const AFFILIATE_KEYS: TargetKey[] = ["h_mobility", "h_ev", "hiparking", "peoplecar", "winercom", "holdings", "h_networks"];
@@ -165,16 +170,12 @@ const AFFILIATE_KEYS: TargetKey[] = ["h_mobility", "h_ev", "hiparking", "peoplec
 // 계열사 배부분을 제외하고 나머지(Humax 내부) 컬럼만으로 재정규화한 값.
 function computeHkr(honsaOrgs: OrgReviewData[], period: string): RateMap {
   const avg = toNumRec(weightedAvgFromChildren(honsaOrgs, period));
-  const humaxSum = TARGETS.reduce((sum, t) => (AFFILIATE_KEYS.includes(t.key) ? sum : sum + (avg[t.key] || 0)), 0);
-  const r = emptyRates();
+  const humaxOnly = {} as Record<TargetKey, number>;
   TARGETS.forEach((t) => {
-    if (AFFILIATE_KEYS.includes(t.key)) {
-      r[t.key] = "0";
-    } else {
-      r[t.key] = String(humaxSum > 0 ? (avg[t.key] || 0) / humaxSum : 0);
-    }
+    humaxOnly[t.key] = AFFILIATE_KEYS.includes(t.key) ? 0 : avg[t.key] || 0;
   });
-  return r;
+  // 계열사 몫을 0으로 두고 남은 항목만 100%로 다시 맞추는 것이 곧 '계열사 제외 재정규화'다.
+  return toRateMap(normalizeTargets(humaxOnly));
 }
 
 
@@ -924,28 +925,6 @@ function OrgDetail({
 
 const HKR_ID = -1;
 
-// 배부율조사 로직 정의(엑셀 '1차. 조직 표기' 열) 순서 그대로 — 법인(1~12) · 주재원(13~16) · 본사(17~29).
-const ORG_ORDER = [
-  "HUS", "HMX", "HUK", "HDG", "HUG", "HTR", "HBR", "HJP", "HTH", "HAU", "HID", "HSZ",
-  "HBR_주재원", "HDG_주재원", "HSZ_주재원", "HUK_주재원",
-  "Staff(휴맥스이브이)", "국내영업팀", "Platform개발팀", "사업협력팀", "사업 그룹", "개발 그룹", "SCM실", "Media그룹", "CEO", "지식재산팀", "Staff(CEO)", "경영지원실", "HR실",
-];
-function orgOrderIndex(basis: string): number {
-  const i = ORG_ORDER.indexOf(basis);
-  return i === -1 ? ORG_ORDER.length : i;
-}
-
-// 조직장(그룹장·실장)은 목록에서 항상 맨 위에 보여준다. 표기에 띄어쓰기가 섞여 있어 공백은 무시하고 비교한다.
-// 경영지원실장은 재무팀 팀장으로 기재하기로 해 별도 조직을 두지 않는다.
-const LEADER_FIRST = ["개발그룹장", "사업그룹장"];
-function isLeaderOrg(basis: string): boolean {
-  return LEADER_FIRST.includes(String(basis).replace(/\s/g, ""));
-}
-/** 조직장을 맨 위로 올리되, 나머지는 원래 순서를 유지한다. */
-function leaderFirst<T extends { org: { basis: string } }>(items: T[]): T[] {
-  return [...items].sort((a, b) => Number(isLeaderOrg(b.org.basis)) - Number(isLeaderOrg(a.org.basis)));
-}
-
 export default function ConfirmReview({
   period,
   version,
@@ -963,14 +942,11 @@ export default function ConfirmReview({
   // 그 안에서 개별 입력/확정하도록 하고, 상단 선택 카테고리에는 상위 조직만 노출한다.
   // 법인/주재원은 엑셀 '1차. 조직 표기'에서 별도 행으로 독립된 조직이므로 구분(division) 그대로 유지하고
   // 순서도 그 표의 No. 순서(ORG_ORDER)를 그대로 따른다.
-  const topLevel = data
-    // 사업총괄대표처럼 값이 자동으로 채워지는 조직은 검토·확정 화면에서 감춘다 (View에서는 그대로 보인다).
-    .filter((item) => !item.org.parent_basis && !HIDDEN_IN_CONFIRM.includes(item.org.basis))
-    .sort(
-      (a, b) =>
-        Number(isLeaderOrg(b.org.basis)) - Number(isLeaderOrg(a.org.basis)) ||
-        orgOrderIndex(a.org.basis) - orgOrderIndex(b.org.basis)
-    );
+  const topLevel = sortForOrgPicker(
+    data
+      // 사업총괄대표처럼 값이 자동으로 채워지는 조직은 검토·확정 화면에서 감춘다 (View에서는 그대로 보인다).
+      .filter((item) => !item.org.parent_basis && !HIDDEN_IN_CONFIRM.includes(item.org.basis))
+  );
   const [selectedId, setSelectedId] = useState<number | null>(topLevel[0]?.org.id ?? null);
 
   const grouped = topLevel.reduce<Record<string, OrgReviewData[]>>((acc, item) => {

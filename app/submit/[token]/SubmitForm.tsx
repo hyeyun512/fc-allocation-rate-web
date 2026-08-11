@@ -313,7 +313,7 @@ export default function SubmitForm({
             <input
               value={submittedBy}
               onChange={(e) => setSubmittedBy(e.target.value)}
-              placeholder="예: 이용길 팀장님"
+              placeholder="이름"
               disabled={!editable}
             />
           </div>
