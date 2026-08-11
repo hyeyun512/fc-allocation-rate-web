@@ -2,7 +2,7 @@
 
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { TARGETS, TargetKey, getPreviousPeriod, normalizeTargets } from "@/lib/targets";
+import { TARGETS, TargetKey, getPreviousPeriod, normalizeTargets, RATE_TOTAL_TOLERANCE } from "@/lib/targets";
 import { HIDDEN_IN_CONFIRM, MIRROR_HEADCOUNT, mirrorSourceOf } from "@/lib/autoAggregate";
 import { isOrgActiveIn } from "@/lib/orgLifespan";
 // 조사 현황과 같은 단위·순서로 보여야 해서 정렬 규칙을 함께 쓴다.
@@ -267,7 +267,7 @@ function ParentOrgDetail({ item, period, version }: { item: OrgReviewData; perio
   const computed = weightedAvgFromChildren(item.children, period);
   const computedHeadcount = sumOrgWeights(item.children, period);
   const total = totalOf(computed);
-  const totalOk = Math.abs(total - 1) < 0.005 || total === 0;
+  const totalOk = Math.abs(total - 1) < RATE_TOTAL_TOLERANCE || total === 0;
 
   // 입력란은 감추지만 가중평균에는 들어가는 자리(사업총괄대표)는 각주로만 알린다.
   const mirroredChildren = item.children.filter((c) => mirrorSourceOf(c.org.basis));
@@ -432,7 +432,7 @@ function HkrAutoPanel({
     });
   }
   const total = totalOf(computed);
-  const totalOk = Math.abs(total - 1) < 0.005 || total === 0;
+  const totalOk = Math.abs(total - 1) < RATE_TOTAL_TOLERANCE || total === 0;
 
   async function handleConfirm() {
     setError("");
@@ -573,6 +573,8 @@ function OrgDetail({
   const [confirming, setConfirming] = useState(false);
   const [confirmed, setConfirmed] = useState(item.confirmedThisPeriod && (!item.expat || item.expat.confirmedThisPeriod));
   const [error, setError] = useState("");
+  // 저장은 됐지만 합계를 100%로 맞춰야 했던 경우의 안내 (오류가 아니므로 error와 따로 둔다).
+  const [notice, setNotice] = useState("");
   const router = useRouter();
 
   const hasExpat = !!item.expat;
@@ -668,6 +670,7 @@ function OrgDetail({
 
   async function handleConfirm() {
     setError("");
+    setNotice("");
     if (usesPersonTable) {
       const invalid = persons.find((p) => p.name.trim() && !totalIsValid(p.rates));
       if (invalid) {
@@ -695,6 +698,8 @@ function OrgDetail({
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || "확정 처리 중 오류가 발생했습니다.");
+      const corrected: { basis: string; from: number }[] = [];
+      if (json.correctedFrom != null) corrected.push({ basis: json.basis, from: json.correctedFrom });
 
       // 주재원 행을 전부 지운 경우에도(합계 0) 예전 주재원 조직 데이터를 지워야 하므로,
       // 값이 0이라도 '전에 주재원 데이터가 있었다면' 호출한다.
@@ -713,6 +718,16 @@ function OrgDetail({
         });
         const json2 = await res2.json();
         if (!res2.ok) throw new Error(json2.error || "주재원 확정 처리 중 오류가 발생했습니다.");
+        if (json2.correctedFrom != null) corrected.push({ basis: json2.basis, from: json2.correctedFrom });
+      }
+
+      // 화면 검증은 ±0.5%p까지 통과시키므로 100.01% 같은 입력이 그대로 저장될 뻔했다.
+      // 저장은 100%로 맞춰 끝났지만, 원본 입력을 다시 보도록 어떤 값이었는지 알려준다.
+      if (corrected.length > 0) {
+        setNotice(
+          corrected.map((c) => `${c.basis} 합계가 ${(c.from * 100).toFixed(3)}%였습니다`).join(", ") +
+            " — 100%로 맞춰 저장했습니다. 개인별 입력값을 확인해 주세요."
+        );
       }
 
       // 값이 없는 저장(행을 전부 지웠거나 배부율이 0%)은 확정으로 보지 않는다 — 화면 배지도 그대로 둔다.
@@ -728,9 +743,9 @@ function OrgDetail({
   }
 
   const total = totalOf(computedOrgRates);
-  const totalOk = Math.abs(total - 1) < 0.005 || total === 0;
+  const totalOk = Math.abs(total - 1) < RATE_TOTAL_TOLERANCE || total === 0;
   const expatTotal = computedExpatRates ? totalOf(computedExpatRates) : 0;
-  const expatTotalOk = !computedExpatRates || expatTotal === 0 || Math.abs(expatTotal - 1) < 0.005;
+  const expatTotalOk = !computedExpatRates || expatTotal === 0 || Math.abs(expatTotal - 1) < RATE_TOTAL_TOLERANCE;
 
   const actionButton = (
     <div style={{ marginTop: 14 }}>
@@ -908,6 +923,7 @@ function OrgDetail({
             <PersonReadOnlyTable persons={persons} hasExpat={hasExpat} />
           )}
           {error && <div className="callout alert" style={{ marginTop: 12, marginBottom: 12 }}>{error}</div>}
+          {notice && <div className="callout info" style={{ marginTop: 12, marginBottom: 12 }}>{notice}</div>}
           {actionButton}
           <PersonHistoryBlocks rows={afterPersonRows} quarterOrder={personQuarterOrder} hasExpat={hasExpat} />
         </>
@@ -916,6 +932,7 @@ function OrgDetail({
       {!usesPersonTable && (
         <>
           {error && <div className="callout alert" style={{ marginTop: 12, marginBottom: 12 }}>{error}</div>}
+          {notice && <div className="callout info" style={{ marginTop: 12, marginBottom: 12 }}>{notice}</div>}
           {actionButton}
         </>
       )}

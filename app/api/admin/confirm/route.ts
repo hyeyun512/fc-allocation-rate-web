@@ -36,6 +36,11 @@ export async function POST(req: NextRequest) {
     parsed[t.key] = Number.isFinite(v) ? v : 0;
   });
 
+  // 100%로 맞추면서 값이 실제로 달라졌으면 화면에 알려준다 (아래에서 채운다).
+  // 나눗셈에서 생기는 부동소수점 찌꺼기(1e-16 수준)까지 알리면 잡음이라 그보다 큰 것만 센다.
+  const CORRECTION_NOTICE_THRESHOLD = 1e-9;
+  let correctedFrom: number | null = null;
+
   // 값을 다 지우고 저장한 경우(합계 0)에는 0%짜리 행을 남기지 않고 아예 지운다.
   // 예전에는 0으로 덮어썼는데, 그러면 입력한 적 없는 분기가 배부율 목록에 계속 남았다.
   if (sumTargets(parsed) <= 0) {
@@ -62,6 +67,12 @@ export async function POST(req: NextRequest) {
       console.warn(
         `[allocation] 합계 이상: ${period} ${org.basis} 입력 ${(enteredTotal * 100).toFixed(4)}% -> 100%로 보정해 저장`
       );
+    }
+
+    // 화면이 ±0.5%p까지 통과시키는 탓에 100.01% 같은 입력이 조용히 지나갔고, 그게 조직 평균으로
+    // 흘러가 문제가 됐다. 보정했다는 사실을 응답에 실어 담당자가 원본 입력을 다시 보게 한다.
+    if (Math.abs(enteredTotal - 1) > CORRECTION_NOTICE_THRESHOLD) {
+      correctedFrom = enteredTotal;
     }
     const { error: upsertError } = await supabase.from("allocation_rate").upsert(
       {
@@ -164,5 +175,5 @@ export async function POST(req: NextRequest) {
   // (예전에는 화면의 별도 '저장' 버튼을 눌러야 반영돼 누락되기 쉬웠다).
   const aggregateProblems = await recomputeAggregates(supabase, period, version);
 
-  return NextResponse.json({ ok: true, aggregateProblems });
+  return NextResponse.json({ ok: true, aggregateProblems, correctedFrom, basis: org.basis });
 }
