@@ -4,6 +4,7 @@ import { TARGETS, TargetKey, sumTargets } from "@/lib/targets";
 import { recomputeAggregates } from "@/lib/autoAggregate";
 import { buildDeletionTombstones } from "@/lib/personTombstones";
 import { resolveTargetOrg } from "@/lib/submitScope";
+import { warmNoteTranslations } from "@/lib/noteTranslate";
 
 function parseRates(rates: Record<string, string>) {
   const out = {} as Record<TargetKey, number>;
@@ -130,6 +131,12 @@ export async function POST(req: NextRequest) {
 
   // 상위 집계 조직·HKR·사업총괄대표 값은 이 제출에서 파생되므로 함께 갱신한다.
   await recomputeAggregates(supabase, period, version);
+
+  // 영어로 나가는 조직이 한국어로 코멘트를 적어 보냈으면 미리 번역해둔다 (다시 열 때 기다리지 않도록).
+  await warmNoteTranslations(supabase, org.basis, [
+    note,
+    ...(Array.isArray(persons) ? persons.map((p: any) => p?.note) : []),
+  ]);
 
   return NextResponse.json({ ok: true, count: rows.length });
 }

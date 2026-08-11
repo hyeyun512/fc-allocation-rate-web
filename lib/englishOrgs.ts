@@ -44,22 +44,30 @@ export function submitterFor(name: string | null | undefined, lang: SubmitLang):
 }
 
 /**
- * 지난 분기까지 한국어로 적혀 있는 코멘트의 영어 표기.
+ * 손으로 옮겨둔 코멘트 번역.
  *
- * 코멘트는 자유 입력이라 자동 번역할 방법이 없다 — 관리자가 한국어로 새 코멘트를 적으면
- * 여기에 한 줄 추가해야 영어 링크에서도 영어로 보인다(없으면 원문 그대로 보인다).
+ * 코멘트는 기계 번역(lib/noteTranslate.ts)으로 자동으로 영어가 되지만, 번역이 어색해서
+ * 문구를 확정해두고 싶은 코멘트는 여기에 적어두면 기계 번역보다 **먼저** 쓰인다.
  * 키는 공백을 하나로 줄여서 맞춘다(줄바꿈·중복 공백 차이로 어긋나지 않게).
  */
 const NOTE_EN: Record<string, string> = {
   "[STB] Aura STB 품질 이슈로 투입 증가 (I Wedia엔지니어 투입 2Q까지 지속 예상, 김종순의 경우 STB 투입률 100%임), HDG STB매출 1H 지속으로 조사나 계약직 고용상태(비용HUK부담), HDG 세무조사 진행중 / [EVCS] 2H 매출 예상":
-    "[STB] Increased effort due to Aura STB quality issues (iWedia engineers expected to stay engaged through Q2; Jongsoon Kim is 100% allocated to STB). HDG STB sales continue through 1H, so Sana Cho remains on a fixed-term contract (cost borne by HUK); an HDG tax audit is under way. / [EVCS] Revenue expected in 2H",
+    "[STB] Increased effort due to Aura STB quality issues (iWedia engineers expected to stay engaged through Q2; Jongsoon Kim is 100% allocated to STB). HDG STB sales continue through 1H, so Jyothsana remains on a fixed-term contract (cost borne by HUK); an HDG tax audit is under way. / [EVCS] Revenue expected in 2H",
+};
+
+/**
+ * 사람 이름 표기 — 기계 번역이 이름을 제각각 옮기지 않도록 정해둔 표기를 알려준다.
+ * (한글 이름이 실제로는 현지 이름인 경우가 있어 로마자로 옮기면 엉뚱해진다. 예: 조사나 → Jyothsana)
+ */
+export const PERSON_NAME_EN: Record<string, string> = {
+  조사나: "Jyothsana",
+  김종순: "Jongsoon Kim",
+  김정욱: "Jungwook Kim",
 };
 
 const NOTE_EN_NORMALIZED = new Map(Object.entries(NOTE_EN).map(([ko, en]) => [ko.replace(/\s+/g, " ").trim(), en]));
 
-/** 영어 링크에서 보여줄 코멘트. 번역해둔 문구가 있으면 영어로, 없으면 원문 그대로. */
-export function noteFor(note: string | null | undefined, lang: SubmitLang): string | null {
-  if (!note) return null;
-  if (lang !== "en") return note;
-  return NOTE_EN_NORMALIZED.get(note.replace(/\s+/g, " ").trim()) ?? note;
+/** 손으로 확정해둔 번역이 있으면 돌려준다 (없으면 null — 기계 번역으로 넘어간다). */
+export function manualNoteEn(note: string): string | null {
+  return NOTE_EN_NORMALIZED.get(note.replace(/\s+/g, " ").trim()) ?? null;
 }

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { TARGETS, TargetKey, sumTargets } from "@/lib/targets";
+import { warmNoteTranslations } from "@/lib/noteTranslate";
 
 /**
  * 자동계산 조직(개인별 조직 · 상위 집계 조직)의 코멘트만 저장하는 라우트.
@@ -50,6 +51,9 @@ export async function POST(req: NextRequest) {
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
+
+  // 영어로 나가는 조직이면 방금 적은 코멘트를 미리 번역해둔다 (담당자가 링크를 열 때 기다리지 않도록).
+  await warmNoteTranslations(supabase, org.basis, [note]);
 
   return NextResponse.json({ ok: true });
 }
