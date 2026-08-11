@@ -1,279 +1,238 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
+import { TargetKey, getPreviousPeriod } from "@/lib/targets";
 import {
-  TARGETS,
-  TargetKey,
-  sumTargets,
-  fractionToPercentInput,
-  percentInputToFraction,
-} from "@/lib/targets";
-import { readPasteGrid, shouldHandlePaste } from "@/lib/paste";
+  RateTableHead,
+  ReadOnlyRateRow,
+  EditableRateRow,
+  PersonEditTable,
+  PersonReadOnlyTable,
+  PersonHistoryBlocks,
+  emptyRates,
+  toRateMap,
+  totalOf,
+  totalIsValid,
+  toNumRec,
+  orderedQuarters,
+  averageFromPersons,
+  namedHeadcountSum,
+  isExpatOnly,
+  personHeadcountForQuarter,
+  personRowFromCurrent,
+  toPersonPayload,
+} from "@/components/RateParts";
+import type {
+  CurrentPerson,
+  PersonEditRow,
+  PersonHistoryEntry,
+  PersonHistoryRow,
+  RateHistoryEntry,
+  RateMap,
+} from "@/components/RateParts";
 
-type RateMap = Record<TargetKey, string>;
-
-interface PersonRow {
-  key: string;
-  name: string;
-  headcount: string;
-  note: string;
-  role: "법인" | "주재원";
-  rates: RateMap;
+/** 자동 임시저장에 담는 값 — 화면을 다시 열었을 때 그대로 이어서 입력할 수 있게 한다. */
+export interface SubmitDraft {
+  submittedBy?: string;
+  orgRates?: Record<string, string>;
+  orgHeadcount?: string;
+  orgNote?: string;
+  persons?: PersonEditRow[];
 }
 
-interface OrgInfo {
-  id: number;
-  basis: string;
+export interface SubmitOrgData {
+  orgBasis: string;
   division: string;
-  type: string;
-  manager_name: string | null;
-  requires_person_detail: boolean;
+  requiresPersonDetail: boolean;
+  managerName: string | null;
+  submittedThisPeriod: boolean;
+  submittedBy: string | null;
+  latestSubmittedAt: string | null;
+  rollup: Record<TargetKey, number>;
+  currentOrgSubmission: Record<TargetKey, number> | null;
+  submittedHeadcount: number | null;
+  submittedNote: string | null;
+  currentPersons: CurrentPerson[];
+  currentRate: Record<TargetKey, number> | null;
+  rateHistory: RateHistoryEntry[];
+  personHistory: PersonHistoryEntry[];
+  draft: SubmitDraft | null;
+  draftSavedAt: string | null;
 }
 
-export interface PreviousPersonRow {
-  person_name: string;
-  headcount: number | null;
-  [key: string]: any; // TargetKey 컬럼들
+const DRAFT_DEBOUNCE_MS = 1500;
+
+function fmtTime(iso: string | null): string {
+  if (!iso) return "";
+  return new Date(iso).toLocaleTimeString("ko-KR");
 }
 
-function emptyRates(): RateMap {
-  const r = {} as RateMap;
-  TARGETS.forEach((t) => (r[t.key] = "0"));
-  return r;
-}
-
-function ratesFromPrevious(previousRate: Record<TargetKey, number> | null): RateMap {
-  const r = emptyRates();
-  if (!previousRate) return r;
-  TARGETS.forEach((t) => {
-    const v = previousRate[t.key];
-    if (v !== null && v !== undefined) r[t.key] = String(v);
-  });
-  return r;
-}
-
-function ratesFromRow(row: Record<string, any>): RateMap {
-  const r = emptyRates();
-  TARGETS.forEach((t) => {
-    const v = row[t.key];
-    if (v !== null && v !== undefined) r[t.key] = String(v);
-  });
-  return r;
-}
-
-function totalOf(rates: RateMap): number {
-  const parsed = {} as Record<TargetKey, number>;
-  TARGETS.forEach((t) => (parsed[t.key] = Number(rates[t.key]) || 0));
-  return sumTargets(parsed);
-}
-
-// 합계가 0(미입력)이거나 100%에 근접해야 통과. "값은 있는데 100%가 아닌" 경우만 오류로 취급.
-function totalIsValid(rates: RateMap): boolean {
-  const total = totalOf(rates);
-  return total === 0 || Math.abs(total - 1) < 0.005;
-}
-
-// 개인별 표에서 '한 명'으로 세는 행 = 이름이 있고 배부율이 0%가 아닌 행 (한 행 = 한 명).
-function countedPersons(persons: PersonRow[]): PersonRow[] {
-  return persons.filter((p) => p.name.trim() && totalOf(p.rates) > 0);
-}
-
-// 팀 구성원별 비율의 평균 -> 조직 단위 배부율(읽기 전용 표시값). 한 행이 한 명이라 단순 평균이다.
-function averageFromPersons(persons: PersonRow[]): RateMap {
-  const counted = countedPersons(persons);
-  const r = emptyRates();
-  if (counted.length === 0) return r;
-  TARGETS.forEach((t) => {
-    const sum = counted.reduce((acc, p) => acc + (Number(p.rates[t.key]) || 0), 0);
-    r[t.key] = String(sum / counted.length);
-  });
-  return r;
-}
-
-function RateTable({
-  rates,
-  onChange,
-  readOnly,
-}: {
-  rates: RateMap;
-  onChange: (key: TargetKey, value: string) => void;
-  readOnly?: boolean;
-}) {
-  const total = totalOf(rates);
-  const ok = Math.abs(total - 1) < 0.005 || total === 0;
-  return (
-    <div className="tbl-scroll">
-      <table className="rate-tbl">
-        <thead>
-          <tr>
-            <th></th>
-            {TARGETS.map((t) => (
-              <th key={t.key} className={t.group === "humax" ? "grp-humax" : "grp-affiliate"}>
-                {t.label}
-              </th>
-            ))}
-            <th>TOTAL</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr>
-            <td>비율</td>
-            {TARGETS.map((t, i) => (
-              <td key={t.key}>
-                <div className="pct-input">
-                  <input
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    max="100"
-                    disabled={readOnly}
-                    value={fractionToPercentInput(rates[t.key])}
-                    onChange={(e) => onChange(t.key, percentInputToFraction(e.target.value))}
-                    onPaste={(e) => {
-                      // 엑셀에서 여러 칸을 복사해 붙여넣으면 그 칸부터 순서대로 채운다.
-                      // (일반 텍스트는 화면에 보이는 값만 담겨 소수점이 잘리므로 원본값을 우선 쓴다.)
-                      if (readOnly || !shouldHandlePaste(e.clipboardData)) return;
-                      e.preventDefault();
-                      const row = readPasteGrid(e.clipboardData)[0] ?? [];
-                      row.forEach((tok, offset) => {
-                        const target = TARGETS[i + offset];
-                        if (target) onChange(target.key, tok === "" ? "0" : percentInputToFraction(tok));
-                      });
-                    }}
-                  />
-                  <span>%</span>
-                </div>
-              </td>
-            ))}
-            <td className={`total-col ${ok ? "total-ok" : "total-bad"}`}>{(total * 100).toFixed(1)}%</td>
-          </tr>
-        </tbody>
-      </table>
-      {!ok && (
-        <div className="field-hint" style={{ color: "#dc2626" }}>
-          ⚠ 합계가 100%가 아닙니다. 각 항목의 비율 합이 100%가 되도록 입력해주세요.
-        </div>
-      )}
-    </div>
-  );
-}
-
+/**
+ * 조사 링크 화면.
+ *
+ * 관리자 '검토 및 확정 > 리소스배부율'에서 조직을 선택했을 때와 **같은 구성**으로 보여준다
+ * (같은 표 컴포넌트를 @/components/RateParts에서 함께 쓴다).
+ * 다만 이 화면은 담당자에게 나가므로 자기 조직 것만 보여주고, 다른 조직명은 어디에도 넣지 않는다.
+ * 하단 버튼은 관리자 화면의 '저장'이 아니라 '제출하기'다.
+ */
 export default function SubmitForm({
   token,
-  org,
   period,
   version,
-  previousRate,
-  previousPersons,
-  hasExpat,
+  data,
 }: {
   token: string;
-  org: OrgInfo;
   period: string;
   version: string;
-  previousRate: Record<TargetKey, number> | null;
-  previousPersons: PreviousPersonRow[];
-  hasExpat: boolean;
+  data: SubmitOrgData;
 }) {
-  const [submittedBy, setSubmittedBy] = useState(org.manager_name ?? "");
-  const [headcount, setHeadcount] = useState("");
-  const [note, setNote] = useState("");
-  const [orgRates, setOrgRates] = useState<RateMap>(() => ratesFromPrevious(previousRate));
-  const [persons, setPersons] = useState<PersonRow[]>(() => {
-    // 개인별 추적은 안 하지만 주재원과 하나로 관리되는 조직(HBR/HDG/HUK 등)은
-    // '법인 전체'를 나타내는 행 하나로 시작해서 주재원 행을 추가할 수 있게 한다.
-    if (!org.requires_person_detail && hasExpat) {
-      return [
-        {
-          key: "seed-org",
-          name: org.manager_name ?? "법인 전체",
-          headcount: "1",
-          note: "",
-          role: "법인",
-          rates: ratesFromPrevious(previousRate),
-        },
-      ];
-    }
-    return [];
-  });
-  const [status, setStatus] = useState<"idle" | "submitting" | "success" | "error">("idle");
-  const [errorMsg, setErrorMsg] = useState("");
+  const draft = data.draft;
+  const router = useRouter();
 
-  const prevHasValue = previousRate ? totalOf(ratesFromPrevious(previousRate)) > 0 : false;
-  // 법인+주재원이 하나로 관리되는 조직(hasExpat)이거나 개인별 확인이 필요한 조직은
-  // 팀 구성원별 표에서 입력을 받고, 조직 단위 배부율은 그 값들의 인원수 가중평균으로 자동 계산됨.
-  const usesPersonTable = org.requires_person_detail || hasExpat;
-  const legalPersons = persons.filter((p) => p.role !== "주재원");
-  const expatPersons = persons.filter((p) => p.role === "주재원");
-  const displayOrgRates = usesPersonTable ? averageFromPersons(legalPersons) : orgRates;
-  const displayExpatRates = hasExpat ? averageFromPersons(expatPersons) : null;
-  // 개인별 조사 조직은 인원수를 별도로 입력받지 않고 값이 채워진 행 수(법인분)로 자동 계산한다.
-  const autoHeadcount = countedPersons(legalPersons).length;
+  const [submittedBy, setSubmittedBy] = useState(draft?.submittedBy ?? data.submittedBy ?? data.managerName ?? "");
+  const [orgRates, setOrgRates] = useState<RateMap>(() =>
+    draft?.orgRates
+      ? ({ ...emptyRates(), ...draft.orgRates } as RateMap)
+      : toRateMap(data.currentOrgSubmission ?? data.currentRate)
+  );
+  // 인원수를 비워두고 제출하면 0명으로 남긴다 (빈칸으로 두지 않는다).
+  const [orgHeadcountInput, setOrgHeadcountInput] = useState(
+    () => draft?.orgHeadcount ?? String(data.submittedHeadcount ?? 0)
+  );
+  const [orgNoteInput, setOrgNoteInput] = useState(() => draft?.orgNote ?? data.submittedNote ?? "");
+  const [persons, setPersons] = useState<PersonEditRow[]>(() => draft?.persons ?? data.currentPersons.map(personRowFromCurrent));
+
+  const [submitted, setSubmitted] = useState(data.submittedThisPeriod);
+  // 임시저장본이 남아 있으면 아직 제출 전 작업이 있는 것이므로 잠그지 않고 이어서 입력하게 한다.
+  const [unlocked, setUnlocked] = useState(!!draft);
+  const [sending, setSending] = useState(false);
+  const [error, setError] = useState("");
+  const [justSubmitted, setJustSubmitted] = useState(false);
+  const [draftSavedAt, setDraftSavedAt] = useState<string | null>(data.draftSavedAt);
+  const [draftState, setDraftState] = useState<"idle" | "saving" | "error">("idle");
+
+  const usesPersonTable = data.requiresPersonDetail;
+  const isExpatOnlyOrg = isExpatOnly(data.division, data.orgBasis);
+  const editable = !submitted || unlocked;
+  const orgEditable = usesPersonTable ? false : editable;
+  const personsEditable = usesPersonTable ? editable : false;
+
+  const pastRateHistory = data.rateHistory.filter((h) => h.quarter !== period);
+  const pastPersonHistory = data.personHistory.filter((h) => h.period !== period);
+  const prevPeriod = getPreviousPeriod(period);
+  const previousPersonsForOrg = prevPeriod ? data.personHistory.filter((h) => h.period === prevPeriod) : [];
+  const previousOrgRate = prevPeriod ? pastRateHistory.find((h) => h.quarter === prevPeriod) ?? null : null;
+
+  // 개인별 과거 이력을 현재 분기 기준으로 이전/이후로 나눈다 — 항상 연도->분기 순으로 보이게 하기 위해,
+  // 현재 분기보다 나중 분기가 이미 있으면 그 이력은 현재 분기 아래에 따로 보여준다.
+  const personCombinedHistory: PersonHistoryRow[] = pastPersonHistory;
+  const personQuarterOrder = orderedQuarters(personCombinedHistory.map((h) => h.period), period);
+  const currentQuarterIdx = personQuarterOrder.indexOf(period);
+  const beforeQuarterSet = new Set(personQuarterOrder.slice(0, currentQuarterIdx));
+  const afterQuarterSet = new Set(personQuarterOrder.slice(currentQuarterIdx + 1));
+  const personRowSort = (a: PersonHistoryRow, b: PersonHistoryRow) =>
+    personQuarterOrder.indexOf(a.period) - personQuarterOrder.indexOf(b.period);
+  const beforePersonRows = personCombinedHistory.filter((r) => beforeQuarterSet.has(r.period)).sort(personRowSort);
+  const afterPersonRows = personCombinedHistory.filter((r) => afterQuarterSet.has(r.period)).sort(personRowSort);
+
+  const legalPersons = isExpatOnlyOrg ? persons : persons.filter((p) => p.role !== "주재원");
+  const computedOrgRates = usesPersonTable ? averageFromPersons(legalPersons) : orgRates;
+  const currentOrgHeadcount = usesPersonTable ? namedHeadcountSum(legalPersons) : Number(orgHeadcountInput) || 0;
+
+  const total = totalOf(computedOrgRates);
+  const totalOk = Math.abs(total - 1) < 0.005 || total === 0;
 
   function updateOrgRate(key: TargetKey, value: string) {
     setOrgRates((r) => ({ ...r, [key]: value }));
   }
 
-  function loadPreviousOrgRates() {
-    setOrgRates(ratesFromPrevious(previousRate));
+  function loadPreviousOrgRate() {
+    if (!previousOrgRate) return;
+    setOrgRates(toRateMap(previousOrgRate.rates));
+    setOrgHeadcountInput(previousOrgRate.headcount != null ? String(previousOrgRate.headcount) : "");
+    setOrgNoteInput(previousOrgRate.note ?? "");
   }
 
   function loadPreviousPersons() {
     setPersons(
-      previousPersons.map((p, i) => ({
+      previousPersonsForOrg.map((p, i) => ({
         key: `prev-${i}-${Date.now()}`,
-        name: p.person_name,
-        headcount: p.headcount != null ? String(p.headcount) : "1",
-        note: (p.note as string) ?? "",
-        role: p.sub_team === "주재원" ? "주재원" : "법인",
-        rates: ratesFromRow(p),
+        name: p.name,
+        headcount: p.headcount != null ? String(p.headcount) : "0",
+        note: p.note ?? "",
+        role: p.role,
+        rates: toRateMap(p.rates),
       }))
     );
   }
 
-  function addPerson() {
-    setPersons((list) => [
-      ...list,
-      { key: `${Date.now()}-${list.length}`, name: "", headcount: "1", note: "", role: "법인", rates: emptyRates() },
-    ]);
+  function draftPayload(): SubmitDraft {
+    return { submittedBy, orgRates, orgHeadcount: orgHeadcountInput, orgNote: orgNoteInput, persons };
   }
 
-  function removePerson(key: string) {
-    setPersons((list) => list.filter((p) => p.key !== key));
-  }
-
-  function updatePerson(key: string, patch: Partial<PersonRow>) {
-    setPersons((list) => list.map((p) => (p.key === key ? { ...p, ...patch } : p)));
-  }
-
-  function updatePersonRate(key: string, target: TargetKey, value: string) {
-    setPersons((list) =>
-      list.map((p) => (p.key === key ? { ...p, rates: { ...p.rates, [target]: value } } : p))
-    );
-  }
-
-  async function handleSubmit() {
-    if (!submittedBy.trim()) {
-      setErrorMsg("입력자 이름을 적어주세요.");
-      setStatus("error");
+  // 제출 전에도 입력한 값이 남도록 편집이 멈추면 자동으로 임시저장한다.
+  // 임시저장은 미제출 상태라 관리자 화면에는 보이지 않는다 (별도 테이블).
+  const skipFirstAutosave = useRef(true);
+  useEffect(() => {
+    if (skipFirstAutosave.current) {
+      skipFirstAutosave.current = false;
       return;
     }
+    if (!editable) return;
+    const timer = setTimeout(async () => {
+      setDraftState("saving");
+      try {
+        const res = await fetch("/api/submissions/draft", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ token, payload: draftPayload() }),
+        });
+        const json = await res.json();
+        if (!res.ok) throw new Error(json.error ?? "임시저장 실패");
+        setDraftSavedAt(json.savedAt ?? new Date().toISOString());
+        setDraftState("idle");
+      } catch {
+        setDraftState("error");
+      }
+    }, DRAFT_DEBOUNCE_MS);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [submittedBy, orgRates, orgHeadcountInput, orgNoteInput, persons, editable]);
 
+  // 자동 임시저장(1.5초)이 돌기 전에 창을 닫아도 마지막 입력이 남도록 한 번 더 보낸다.
+  const draftPayloadRef = useRef(draftPayload);
+  draftPayloadRef.current = draftPayload;
+  useEffect(() => {
+    function flush() {
+      if (!navigator.sendBeacon) return;
+      const blob = new Blob([JSON.stringify({ token, payload: draftPayloadRef.current() })], {
+        type: "application/json",
+      });
+      navigator.sendBeacon("/api/submissions/draft", blob);
+    }
+    window.addEventListener("pagehide", flush);
+    return () => window.removeEventListener("pagehide", flush);
+  }, [token]);
+
+  async function handleSubmit() {
+    setError("");
+    if (!submittedBy.trim()) {
+      setError("입력자 이름을 적어주세요.");
+      return;
+    }
     if (usesPersonTable) {
-      const invalidPerson = persons.find((p) => p.name.trim() && !totalIsValid(p.rates));
-      if (invalidPerson) {
-        setErrorMsg(`'${invalidPerson.name}'님의 비율 합계가 100%가 아닙니다. 확인 후 다시 제출해주세요.`);
-        setStatus("error");
+      const invalid = persons.find((p) => p.name.trim() && !totalIsValid(p.rates));
+      if (invalid) {
+        setError(`'${invalid.name}'님의 비율 합계가 100%가 아닙니다. 확인 후 다시 제출해주세요.`);
         return;
       }
     } else if (!totalIsValid(orgRates)) {
-      setErrorMsg("조직 단위 배부율 합계가 100%가 아닙니다. 확인 후 다시 제출해주세요.");
-      setStatus("error");
+      setError("조직 단위 배부율 합계가 100%가 아닙니다. 확인 후 다시 제출해주세요.");
       return;
     }
 
-    setStatus("submitting");
-    setErrorMsg("");
+    setSending(true);
     try {
       const res = await fetch("/api/submissions", {
         method: "POST",
@@ -281,161 +240,199 @@ export default function SubmitForm({
         body: JSON.stringify({
           token,
           submittedBy,
-          headcount: usesPersonTable ? autoHeadcount : headcount ? Number(headcount) : null,
-          note,
-          orgRates: displayOrgRates,
-          persons: persons.map((p) => ({
-            name: p.name,
-            headcount: p.headcount ? Number(p.headcount) : null,
-            note: p.note,
-            subTeam: p.role === "주재원" ? "주재원" : null,
-            rates: p.rates,
-          })),
+          headcount: currentOrgHeadcount,
+          // 개인별 조직은 조직 단위 코멘트를 이 화면에서 고치지 않는다 —
+          // 그래도 기존 값을 그대로 돌려보내야 재제출할 때마다 코멘트가 지워지지 않는다.
+          note: orgNoteInput || null,
+          orgRates: computedOrgRates,
+          persons: usesPersonTable ? toPersonPayload(persons) : undefined,
         }),
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || "제출 중 오류가 발생했습니다.");
-      setStatus("success");
+      setSubmitted(true);
+      setUnlocked(false);
+      setJustSubmitted(true);
+      setDraftSavedAt(null);
+      router.refresh();
     } catch (e: any) {
-      setStatus("error");
-      setErrorMsg(e.message || "제출 중 오류가 발생했습니다.");
+      setError(e.message || "제출 중 오류가 발생했습니다.");
+    } finally {
+      setSending(false);
     }
   }
 
-  if (status === "success") {
-    return (
-      <div className="page page-narrow">
-        <div className="panel">
-          <div className="callout success">
-            <b>제출이 완료되었습니다.</b> 담당자 검토 후 최종 반영됩니다. 수정이 필요하면 이 링크로 다시 접속해서 재제출하실 수 있습니다.
-          </div>
-          <button className="btn btn-secondary" onClick={() => setStatus("idle")}>
-            다시 입력하기
-          </button>
-        </div>
-      </div>
-    );
-  }
+  const actionButton = (
+    <div style={{ marginTop: 14, display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+      {submitted && !unlocked ? (
+        <button className="btn btn-secondary btn-sm" onClick={() => setUnlocked(true)}>
+          수정하기
+        </button>
+      ) : (
+        <button className="btn btn-primary" disabled={sending} onClick={handleSubmit}>
+          {sending ? "제출 중..." : "제출하기"}
+        </button>
+      )}
+      {editable && (
+        <span className="field-hint" style={{ margin: 0, color: draftState === "error" ? "#dc2626" : undefined }}>
+          {draftState === "saving"
+            ? "임시저장 중..."
+            : draftState === "error"
+            ? "임시저장 실패 — 네트워크를 확인해주세요"
+            : draftSavedAt
+            ? `임시저장됨 ${fmtTime(draftSavedAt)} (제출 전까지 담당자에게 보이지 않습니다)`
+            : "입력하면 자동으로 임시저장됩니다 (제출 전까지 담당자에게 보이지 않습니다)"}
+        </span>
+      )}
+    </div>
+  );
 
   return (
     <div className="page">
       <div className="panel">
-        <div className="panel-title">
-          {org.basis} 배부율 입력 <span className="tag">{period} · {version}</span>
-        </div>
-        <div className="panel-sub">
-          구분: {org.division} / {org.type}
-          {!usesPersonTable && previousRate && prevHasValue
-            ? " · 직전 확정값이 미리 채워져 있습니다. 변경된 부분만 수정해주세요."
-            : ""}
-        </div>
-
-        <div className="field-row" style={{ gridTemplateColumns: "1fr 1fr" }}>
-          <div className="field">
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 10, marginBottom: 14 }}>
+          <div>
+            <div className="panel-title">
+              {data.orgBasis} <span className="tag">{period} · {version}</span>{" "}
+              {submitted ? (
+                <span className="status-badge status-confirmed">제출됨 ({period})</span>
+              ) : (
+                <span className="status-badge" style={{ background: "#f1f5f9", color: "#64748b" }}>
+                  미제출
+                </span>
+              )}
+            </div>
+            <div className="panel-sub">
+              {data.division} · {usesPersonTable ? "개인별 확인 필요" : "조직 단위"}
+              {data.submittedBy ? ` · 제출자: ${data.submittedBy}` : ""}
+              {data.latestSubmittedAt ? ` · ${new Date(data.latestSubmittedAt).toLocaleString("ko-KR")}` : ""}
+            </div>
+          </div>
+          <div className="field" style={{ minWidth: 200 }}>
             <label>입력자 (책임자/담당자 이름) *</label>
-            <input value={submittedBy} onChange={(e) => setSubmittedBy(e.target.value)} placeholder="예: 이용길 팀장님" />
-          </div>
-          <div className="field">
-            <label>조직 전체 인원수{usesPersonTable && " (자동 계산)"}</label>
-            {usesPersonTable ? (
-              <input type="number" value={autoHeadcount} disabled />
-            ) : (
-              <input type="number" min="0" value={headcount} onChange={(e) => setHeadcount(e.target.value)} placeholder="예: 3" />
-            )}
+            <input
+              value={submittedBy}
+              onChange={(e) => setSubmittedBy(e.target.value)}
+              placeholder="예: 이용길 팀장님"
+              disabled={!editable}
+            />
           </div>
         </div>
 
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 4, marginBottom: 8 }}>
-          <div className="panel-sub" style={{ margin: 0 }}>
-            ■ 조직 단위 배부율 (단위: %){hasExpat && " · 법인분"}
-            {usesPersonTable && " — 아래 표의 '법인' 행 값의 평균으로 자동 계산됩니다"}
+        {justSubmitted && (
+          <div className="callout success" style={{ marginBottom: 12 }}>
+            <b>제출이 완료되었습니다.</b> 담당자 검토 후 최종 반영됩니다. 수정이 필요하면 아래 '수정하기'를 눌러 다시 제출하실 수 있습니다.
           </div>
-          {!usesPersonTable && previousRate && (
-            <button className="btn btn-secondary btn-sm" onClick={loadPreviousOrgRates}>
-              전분기 값 불러오기
+        )}
+
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8, marginBottom: 8 }}>
+          <div className="panel-sub" style={{ fontWeight: 700, color: "#1a202c", margin: 0 }}>
+            ■ 조직별 리소스 배부율
+          </div>
+          {!usesPersonTable && orgEditable && previousOrgRate && (
+            <button className="btn btn-secondary btn-sm" onClick={loadPreviousOrgRate}>
+              전분기 데이터 끌고오기
             </button>
           )}
         </div>
-        <RateTable rates={displayOrgRates} onChange={updateOrgRate} readOnly={usesPersonTable} />
+        <div className="tbl-scroll" style={{ marginBottom: 12 }}>
+          <table className="rate-tbl">
+            <RateTableHead withClear={orgEditable} withNote />
+            <tbody>
+              {orderedQuarters(pastRateHistory.map((h) => h.quarter), period).map((q) => {
+                if (q !== period) {
+                  const h = pastRateHistory.find((x) => x.quarter === q)!;
+                  return (
+                    <ReadOnlyRateRow
+                      key={q}
+                      label={h.quarter}
+                      rec={h.rates}
+                      headcount={
+                        usesPersonTable
+                          ? personHeadcountForQuarter(data.personHistory, h.quarter, isExpatOnlyOrg ? "all" : "legal")
+                          : h.headcount
+                      }
+                      showClearSlot={orgEditable}
+                      withNote
+                      note={h.note}
+                    />
+                  );
+                }
+                return orgEditable ? (
+                  <EditableRateRow
+                    key={q}
+                    label={`${period} (입력중)`}
+                    rates={orgRates}
+                    onChange={updateOrgRate}
+                    headcount={currentOrgHeadcount}
+                    onClear={() => setOrgRates(emptyRates())}
+                    headcountEditable
+                    headcountValue={orgHeadcountInput}
+                    onHeadcountChange={setOrgHeadcountInput}
+                    withNote
+                    noteValue={orgNoteInput}
+                    onNoteChange={setOrgNoteInput}
+                  />
+                ) : (
+                  <ReadOnlyRateRow
+                    key={q}
+                    label={`${period}${usesPersonTable ? " (자동계산)" : ""}`}
+                    rec={toNumRec(computedOrgRates)}
+                    headcount={currentOrgHeadcount}
+                    withNote
+                    note={orgNoteInput || null}
+                  />
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+        {!totalOk && (
+          <div className="field-hint" style={{ color: "#dc2626", marginBottom: 12 }}>
+            ⚠ {period} 합계가 100%가 아닙니다. 각 항목의 비율 합이 100%가 되도록 입력해주세요.
+          </div>
+        )}
 
-        {hasExpat && displayExpatRates && (
+        {usesPersonTable && (
           <>
-            <div className="panel-sub" style={{ margin: "10px 0 8px" }}>
-              ■ 주재원분 (자동 계산 참고용)
+            <div className="panel-sub" style={{ fontWeight: 700, color: "#1a202c", margin: "0 0 8px" }}>
+              ■ 개인별 리소스 배부율
             </div>
-            <RateTable rates={displayExpatRates} onChange={() => {}} readOnly />
+            <div className="field-hint" style={{ marginBottom: 8 }}>
+              관계사·계열사(H.Mobility~H.Networks)에 청구되는 조직이라 개인별 확인이 필요합니다. 팀원별로 행을 추가해 입력해주세요.
+              위 조직 단위 값은 아래 행들의 평균으로 자동 계산됩니다.
+            </div>
+
+            <PersonHistoryBlocks rows={beforePersonRows} quarterOrder={personQuarterOrder} hasExpat={false} />
+
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8, marginBottom: 8 }}>
+              <div className="field-hint" style={{ fontWeight: 700, color: personsEditable ? "#2563eb" : "#1a202c", margin: 0 }}>
+                {period} {personsEditable ? "(입력중)" : "(제출됨)"}
+              </div>
+              {personsEditable && previousPersonsForOrg.length > 0 && (
+                <button className="btn btn-secondary btn-sm" onClick={loadPreviousPersons}>
+                  전분기 데이터 끌고오기 ({previousPersonsForOrg.length}명)
+                </button>
+              )}
+            </div>
+            {personsEditable ? (
+              <PersonEditTable persons={persons} setPersons={setPersons} hasExpat={false} />
+            ) : (
+              <PersonReadOnlyTable persons={persons} hasExpat={false} />
+            )}
+            {error && <div className="callout alert" style={{ marginTop: 12, marginBottom: 12 }}>{error}</div>}
+            {actionButton}
+            <PersonHistoryBlocks rows={afterPersonRows} quarterOrder={personQuarterOrder} hasExpat={false} />
           </>
         )}
 
-        <div className="field" style={{ marginTop: 14 }}>
-          <label>비고 (특이사항이 있으면 적어주세요)</label>
-          <textarea rows={2} value={note} onChange={(e) => setNote(e.target.value)} />
-        </div>
+        {!usesPersonTable && (
+          <>
+            {error && <div className="callout alert" style={{ marginTop: 12, marginBottom: 12 }}>{error}</div>}
+            {actionButton}
+          </>
+        )}
       </div>
-
-      {usesPersonTable && (
-        <div className="panel">
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 8 }}>
-            <div>
-              <div className="panel-title">■ {org.requires_person_detail ? "팀 구성원별" : ""} 배부율{hasExpat ? " (법인/주재원 함께 입력)" : ""}</div>
-              <div className="panel-sub">
-                {hasExpat
-                  ? "법인과 주재원을 한 표에서 같이 입력합니다. 각 행의 '구분'에서 법인/주재원을 선택해주세요."
-                  : "관계사·계열사(H.Mobility~H.Networks)에 청구되는 조직이라 개인별 확인이 필요합니다. 팀원별로 행을 추가해 입력해주세요."}
-              </div>
-            </div>
-            {previousPersons.length > 0 && (
-              <button className="btn btn-secondary btn-sm" onClick={loadPreviousPersons}>
-                전분기 데이터 끌고오기 ({previousPersons.length}명)
-              </button>
-            )}
-          </div>
-          {persons.map((p) => (
-            <div key={p.key} style={{ marginBottom: 14, paddingBottom: 14, borderBottom: "0.5px solid #f1f5f9" }}>
-              {/* 개인별 입력은 한 행 = 한 명이라 인원수 칸을 두지 않는다 (이름+배부율이 있으면 1명으로 센다). */}
-              <div className="field-row" style={{ gridTemplateColumns: hasExpat ? "1.3fr 1fr 1.7fr auto" : "1.5fr 2fr auto", alignItems: "end" }}>
-                <div className="field">
-                  <label>이름</label>
-                  <input
-                    value={p.name}
-                    onChange={(e) => updatePerson(p.key, { name: e.target.value })}
-                    placeholder="이름"
-                    style={{ textAlign: "center" }}
-                  />
-                </div>
-                {hasExpat && (
-                  <div className="field">
-                    <label>구분</label>
-                    <select value={p.role} onChange={(e) => updatePerson(p.key, { role: e.target.value as "법인" | "주재원" })}>
-                      <option value="법인">법인</option>
-                      <option value="주재원">주재원</option>
-                    </select>
-                  </div>
-                )}
-                <div className="field">
-                  <label>코멘트</label>
-                  <input value={p.note} onChange={(e) => updatePerson(p.key, { note: e.target.value })} placeholder="담당 업무, 특이사항 등" />
-                </div>
-                <button className="btn btn-danger btn-sm" onClick={() => removePerson(p.key)}>
-                  삭제
-                </button>
-              </div>
-              <RateTable rates={p.rates} onChange={(k, v) => updatePersonRate(p.key, k, v)} />
-            </div>
-          ))}
-          <div className="person-row-actions">
-            <button className="btn btn-secondary btn-sm" onClick={addPerson}>
-              + {hasExpat ? "인원" : "팀원"} 추가
-            </button>
-          </div>
-        </div>
-      )}
-
-      {status === "error" && <div className="callout alert">{errorMsg}</div>}
-
-      <button className="btn btn-primary" disabled={status === "submitting"} onClick={handleSubmit}>
-        {status === "submitting" ? "제출 중..." : "제출하기"}
-      </button>
     </div>
   );
 }

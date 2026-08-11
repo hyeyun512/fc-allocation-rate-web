@@ -117,6 +117,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
+  // 제출이 끝났으면 임시저장본은 필요 없다 (다음에 다시 열면 제출된 값에서 이어서 고친다).
+  await supabase.from("allocation_submission_drafts").delete().eq("org_id", org.id).eq("period", period);
+
   // 상위 집계 조직·HKR·사업총괄대표 값은 이 제출에서 파생되므로 함께 갱신한다.
   await recomputeAggregates(supabase, period, version);
 
