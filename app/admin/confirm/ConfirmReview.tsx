@@ -61,6 +61,10 @@ export interface OrgReviewData {
   currentOrgSubmission: Record<TargetKey, number> | null;
   submittedHeadcount: number | null;
   submittedNote: string | null;
+  /** 링크가 영어로 나가는 조직(HUK 등)에서 한국어 코멘트 대신 내보낼 영문 코멘트. */
+  submittedNoteEn: string | null;
+  /** 이 조직은 '코멘트(영문)' 칸을 함께 받아야 하는가 (서버에서 판단해 내려준다). */
+  needsEnglishNote: boolean;
   currentPersons: CurrentPerson[];
   currentRate: Record<TargetKey, number> | null;
   currentQuarter: string | null;
@@ -209,17 +213,21 @@ function useOrgNote(args: {
   period: string;
   version: string;
   initial: string | null;
+  /** 링크가 영어로 나가는 조직에서만 쓰는 영문 코멘트 — 한국어 코멘트와 같은 요청으로 함께 저장한다. */
+  initialEn: string | null;
   rates: () => RateMap;
   headcount: () => number | null;
 }) {
-  const { orgId, period, version, initial } = args;
+  const { orgId, period, version, initial, initialEn } = args;
   const [value, setValue] = useState(initial ?? "");
+  const [valueEn, setValueEn] = useState(initialEn ?? "");
   const [state, setState] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const savedRef = useRef(initial ?? "");
+  const savedEnRef = useRef(initialEn ?? "");
   const router = useRouter();
 
   async function commit() {
-    if (value === savedRef.current) return;
+    if (value === savedRef.current && valueEn === savedEnRef.current) return;
     setState("saving");
     try {
       const res = await fetch("/api/admin/org-note", {
@@ -230,12 +238,14 @@ function useOrgNote(args: {
           period,
           version,
           note: value,
+          noteEn: valueEn,
           rates: toNumRec(args.rates()),
           headcount: args.headcount(),
         }),
       });
       if (!res.ok) throw new Error((await res.json()).error ?? "저장 실패");
       savedRef.current = value;
+      savedEnRef.current = valueEn;
       setState("saved");
       // 서버 컴포넌트는 페이지 진입 시 한 번만 조회한다. 새로고침하지 않으면 다른 조직으로 옮겼다
       // 돌아왔을 때 낡은 초기값(코멘트 저장 전 상태)으로 다시 그려져 방금 쓴 코멘트가 사라져 보인다.
@@ -246,14 +256,18 @@ function useOrgNote(args: {
   }
 
   // 저장 버튼을 눈에 띄게 할지 판단할 값 — 마지막으로 저장한 것과 다르면 아직 저장 전이다.
-  const dirty = value !== savedRef.current;
+  const dirty = value !== savedRef.current || valueEn !== savedEnRef.current;
 
-  return { value, setValue, state, commit, dirty };
+  return { value, setValue, valueEn, setValueEn, state, commit, dirty };
 }
 
 // 이번 분기 조직 단위 코멘트(자동계산 조직도 여기에 저장된다).
 function currentNoteOf(item: OrgReviewData, period: string): string | null {
   return item.rateHistory.find((h) => h.quarter === period)?.note ?? item.submittedNote ?? null;
+}
+
+function currentNoteEnOf(item: OrgReviewData, period: string): string | null {
+  return item.rateHistory.find((h) => h.quarter === period)?.noteEn ?? item.submittedNoteEn ?? null;
 }
 
 // ---------- 상위 집계 조직 (경영지원실 등) : 하위 조직 인원수 가중평균, 읽기 전용 + 확정 스냅샷 ----------
@@ -278,6 +292,7 @@ function ParentOrgDetail({ item, period, version }: { item: OrgReviewData; perio
     period,
     version,
     initial: currentNoteOf(item, period),
+    initialEn: currentNoteEnOf(item, period),
     rates: () => computed,
     headcount: () => computedHeadcount || null,
   });
@@ -331,7 +346,7 @@ function ParentOrgDetail({ item, period, version }: { item: OrgReviewData; perio
 
       <div className="tbl-scroll" style={{ marginBottom: 12 }}>
         <table className="rate-tbl">
-          <RateTableHead withNote />
+          <RateTableHead withNote withNoteEn={item.needsEnglishNote} />
           <tbody>
             {orderedQuarters(pastRateHistory.map((h) => h.quarter), period).map((q) =>
               q === period ? (
@@ -347,6 +362,9 @@ function ParentOrgDetail({ item, period, version }: { item: OrgReviewData; perio
                   onNoteCommit={note.commit}
                   noteSaveState={note.state}
                   noteDirty={note.dirty}
+                  withNoteEn={item.needsEnglishNote}
+                  noteEnValue={note.valueEn}
+                  onNoteEnChange={note.setValueEn}
                 />
               ) : (
                 <ReadOnlyRateRow
@@ -356,6 +374,8 @@ function ParentOrgDetail({ item, period, version }: { item: OrgReviewData; perio
                   headcount={sumOrgWeightsForQuarter(item.children, q)}
                   withNote
                   note={pastRateHistory.find((h) => h.quarter === q)!.note}
+                  withNoteEn={item.needsEnglishNote}
+                  noteEn={pastRateHistory.find((h) => h.quarter === q)!.noteEn}
                 />
               )
             )}
@@ -569,6 +589,8 @@ function OrgDetail({
   // 인원수를 비워두고 저장하면 0명으로 남긴다 (빈칸으로 두지 않는다).
   const [orgHeadcountInput, setOrgHeadcountInput] = useState(() => String(item.submittedHeadcount ?? 0));
   const [orgNoteInput, setOrgNoteInput] = useState(() => item.submittedNote ?? "");
+  // 링크가 영어로 나가는 조직에서만 쓰는 영문 코멘트 (한국어 코멘트와 함께 확정 시 저장된다).
+  const [orgNoteEnInput, setOrgNoteEnInput] = useState(() => item.submittedNoteEn ?? "");
   const [persons, setPersons] = useState<PersonEditRow[]>(() => initialPersons(item));
   const [confirming, setConfirming] = useState(false);
   const [confirmed, setConfirmed] = useState(item.confirmedThisPeriod && (!item.expat || item.expat.confirmedThisPeriod));
@@ -635,6 +657,7 @@ function OrgDetail({
     setOrgRates(toRateMap(previousOrgRate.rates));
     setOrgHeadcountInput(previousOrgRate.headcount != null ? String(previousOrgRate.headcount) : "");
     setOrgNoteInput(previousOrgRate.note ?? "");
+    setOrgNoteEnInput(previousOrgRate.noteEn ?? "");
   }
 
   const orgEditable = usesPersonTable ? false : confirmed ? orgUnlocked : true;
@@ -660,6 +683,7 @@ function OrgDetail({
     period,
     version,
     initial: currentNoteOf(item, period),
+    initialEn: currentNoteEnOf(item, period),
     rates: () => displayOrgRates,
     headcount: () => currentOrgHeadcount,
   });
@@ -694,6 +718,7 @@ function OrgDetail({
           persons: usesPersonTable ? toPersonPayload(legalPersons) : undefined,
           orgHeadcount: usesPersonTable ? undefined : Number(orgHeadcountInput) || 0,
           orgNote: usesPersonTable ? undefined : orgNoteInput || null,
+          orgNoteEn: usesPersonTable ? undefined : orgNoteEnInput || null,
         }),
       });
       const json = await res.json();
@@ -799,7 +824,7 @@ function OrgDetail({
       </div>
       <div className="tbl-scroll" style={{ marginBottom: 12 }}>
         <table className="rate-tbl">
-          <RateTableHead withClear={orgEditable} withNote />
+          <RateTableHead withClear={orgEditable} withNote withNoteEn={item.needsEnglishNote} />
           <tbody>
             {orderedQuarters(pastRateHistory.map((h) => h.quarter), period).map((q) => {
               if (q !== period) {
@@ -817,6 +842,8 @@ function OrgDetail({
                     showClearSlot={orgEditable}
                     withNote
                     note={h.note}
+                    withNoteEn={item.needsEnglishNote}
+                    noteEn={h.noteEn}
                   />
                 );
               }
@@ -834,6 +861,9 @@ function OrgDetail({
                   withNote
                   noteValue={orgNoteInput}
                   onNoteChange={setOrgNoteInput}
+                  withNoteEn={item.needsEnglishNote}
+                  noteEnValue={orgNoteEnInput}
+                  onNoteEnChange={setOrgNoteEnInput}
                 />
               ) : (
                 <ReadOnlyRateRow
@@ -850,6 +880,10 @@ function OrgDetail({
                   noteSaveState={autoNote.state}
                   noteDirty={autoNote.dirty}
                   note={orgNoteInput || null}
+                  withNoteEn={item.needsEnglishNote}
+                  noteEnValue={autoNote.valueEn}
+                  onNoteEnChange={autoNote.setValueEn}
+                  noteEn={orgNoteEnInput || null}
                 />
               );
             })}
@@ -918,7 +952,12 @@ function OrgDetail({
             )}
           </div>
           {personsEditable ? (
-            <PersonEditTable persons={persons} setPersons={setPersons} hasExpat={hasExpat} />
+            <PersonEditTable
+              persons={persons}
+              setPersons={setPersons}
+              hasExpat={hasExpat}
+              withNoteEn={item.needsEnglishNote}
+            />
           ) : (
             <PersonReadOnlyTable persons={persons} hasExpat={hasExpat} />
           )}

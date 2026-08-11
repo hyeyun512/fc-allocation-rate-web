@@ -4,6 +4,7 @@ import { latestByPerson, latestByPersonAndPeriod, latestOrgByPeriod, computeRoll
 import { HIDDEN_IN_CONFIRM } from "@/lib/autoAggregate";
 import { isOrgActiveIn } from "@/lib/orgLifespan";
 import { resolveManager, OrgManagerRow } from "@/lib/orgManager";
+import { needsEnglishNote } from "@/lib/englishOrgs";
 import { OrgReviewData } from "./ConfirmReview";
 import { SurveyOrgData } from "../SurveyOverview";
 import ConfirmTabs from "./ConfirmTabs";
@@ -131,6 +132,8 @@ export default async function AdminConfirmPage() {
         role: (p.sub_team === "주재원" ? "주재원" : "법인") as "법인" | "주재원",
       }));
 
+    const orgIsEnglish = needsEnglishNote(org.basis);
+
     return {
       org: {
         id: org.id,
@@ -149,11 +152,14 @@ export default async function AdminConfirmPage() {
       currentOrgSubmission: orgLevelRow ? toRateRecord(orgLevelRow) : null,
       submittedHeadcount: orgLevelRow?.headcount ?? null,
       submittedNote: orgLevelRow?.note ?? null,
+      submittedNoteEn: orgLevelRow?.note_en ?? null,
+      needsEnglishNote: orgIsEnglish,
       currentPersons: personRows.map((p) => ({
         name: p.person_name as string,
         headcount: p.headcount,
         rates: toRateRecord(p),
         note: p.note ?? null,
+        noteEn: p.note_en ?? null,
         role: (p.sub_team === "주재원" ? "주재원" : "법인") as "법인" | "주재원",
       })),
       currentRate: currentRateRow ? toRateRecord(currentRateRow) : null,
@@ -167,6 +173,7 @@ export default async function AdminConfirmPage() {
           total: Number(r.total) || 0,
           headcount: orgSubRow?.headcount ?? null,
           note: orgSubRow?.note ?? null,
+          noteEn: orgSubRow?.note_en ?? null,
         };
       }),
       expat: null,

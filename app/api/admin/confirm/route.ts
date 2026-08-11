@@ -4,18 +4,19 @@ import { TARGETS, TargetKey, sumTargets, normalizeTargets, RATE_TOTAL_TOLERANCE 
 import { recomputeAggregates } from "@/lib/autoAggregate";
 import { buildDeletionTombstones } from "@/lib/personTombstones";
 import { DELETED_STATUS } from "@/lib/rollup";
-import { warmNoteTranslations } from "@/lib/noteTranslate";
 
 interface PersonPayload {
   name: string;
   headcount?: number | string | null;
   note?: string | null;
+  /** 영어로 나가는 조직(HUK 등)에서 링크에 대신 보여줄 영문 코멘트. */
+  noteEn?: string | null;
   subTeam?: string | null;
   rates: Record<string, string | number>;
 }
 
 export async function POST(req: NextRequest) {
-  const { orgId, period, version, rates, persons, orgHeadcount, orgNote } = await req.json();
+  const { orgId, period, version, rates, persons, orgHeadcount, orgNote, orgNoteEn } = await req.json();
 
   if (!orgId || !period || !rates) {
     return NextResponse.json({ error: "필수 항목이 누락되었습니다." }, { status: 400 });
@@ -116,6 +117,7 @@ export async function POST(req: NextRequest) {
           ...personParsed,
           total: sumTargets(personParsed),
           note: p.note || null,
+          note_en: p.noteEn || null,
           submitted_by: "관리자 확정 (검토및확정)",
           status: "confirmed",
         };
@@ -144,7 +146,7 @@ export async function POST(req: NextRequest) {
 
   // 개인별 입력이 없는 조직(조직 단위 배부율)도 인원수·메모를 조직 단위 행(person_name=null)으로 남겨
   // 다음 라운드에 조회·재확정 시 이어서 볼 수 있게 한다.
-  if (!Array.isArray(persons) && (orgHeadcount !== undefined || orgNote !== undefined)) {
+  if (!Array.isArray(persons) && (orgHeadcount !== undefined || orgNote !== undefined || orgNoteEn !== undefined)) {
     const orgSubmissionRow = {
       org_id: orgId,
       period,
@@ -155,6 +157,7 @@ export async function POST(req: NextRequest) {
       ...parsed,
       total: sumTargets(parsed),
       note: orgNote || null,
+      note_en: orgNoteEn || null,
       submitted_by: "관리자 확정 (검토및확정)",
       status: "confirmed",
     };
@@ -175,12 +178,6 @@ export async function POST(req: NextRequest) {
   // 상위 집계 조직·HKR·사업총괄대표는 이 조직 값에서 파생되므로 여기서 같이 갱신한다
   // (예전에는 화면의 별도 '저장' 버튼을 눌러야 반영돼 누락되기 쉬웠다).
   const aggregateProblems = await recomputeAggregates(supabase, period, version);
-
-  // 영어로 나가는 조직이면 방금 적은 코멘트를 미리 번역해둔다 (담당자가 링크를 열 때 기다리지 않도록).
-  await warmNoteTranslations(supabase, org.basis, [
-    orgNote,
-    ...(Array.isArray(persons) ? (persons as PersonPayload[]).map((p) => p?.note) : []),
-  ]);
 
   return NextResponse.json({ ok: true, aggregateProblems, correctedFrom, basis: org.basis });
 }

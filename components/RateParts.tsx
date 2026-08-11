@@ -46,6 +46,8 @@ export interface RateHistoryEntry {
   total: number;
   headcount?: number | null;
   note?: string | null;
+  /** 링크가 영어로 나가는 조직에서만 쓰는 영문 코멘트. */
+  noteEn?: string | null;
 }
 
 export interface CurrentPerson {
@@ -53,6 +55,7 @@ export interface CurrentPerson {
   headcount: number | null;
   rates: Record<TargetKey, number>;
   note: string | null;
+  noteEn?: string | null;
   role: PersonRole;
 }
 
@@ -71,6 +74,8 @@ export interface PersonEditRow {
   name: string;
   headcount: string;
   note: string;
+  /** 영어로 나가는 조직(HUK 등)에서만 쓰는 영문 코멘트 — 링크에서 한국어 대신 이 글이 나간다. */
+  noteEn?: string;
   role: PersonRole;
   rates: RateMap;
 }
@@ -252,6 +257,7 @@ export function personRowFromCurrent(p: CurrentPerson, i: number): PersonEditRow
     name: p.name,
     headcount: "1",
     note: p.note ?? "",
+    noteEn: p.noteEn ?? "",
     role: p.role,
     rates: toRateMap(p.rates),
   };
@@ -266,6 +272,7 @@ export function toPersonPayload(list: PersonEditRow[]) {
       // 개인별 입력은 한 행 = 한 명이므로 항상 1로 저장한다.
       headcount: 1,
       note: p.note || null,
+      noteEn: p.noteEn || null,
       subTeam: p.role === "주재원" ? "주재원" : null,
       rates: p.rates,
     }));
@@ -274,8 +281,9 @@ export function toPersonPayload(list: PersonEditRow[]) {
 export function RateTableHead({
   withClear,
   withNote,
+  withNoteEn,
   lang = "ko",
-}: { withClear?: boolean; withNote?: boolean; lang?: SubmitLang } = {}) {
+}: { withClear?: boolean; withNote?: boolean; withNoteEn?: boolean; lang?: SubmitLang } = {}) {
   const s = submitStrings(lang);
   return (
     <thead>
@@ -290,8 +298,68 @@ export function RateTableHead({
         ))}
         <th>TOTAL</th>
         {withNote && <th>{s.colComment}</th>}
+        {/* 링크가 영어로 나가는 조직에서만 붙는 열 — 관리자 화면에만 보인다. */}
+        {withNoteEn && <th>코멘트(영문)</th>}
       </tr>
     </thead>
+  );
+}
+
+/**
+ * 표 안에서 바로 적고 초록 체크로 저장하는 코멘트 칸.
+ * 한국어 칸과 영문 칸이 같은 모습이어야 해서 한 곳에 모아둔다.
+ */
+function EditableNoteCell({
+  value,
+  onChange,
+  onCommit,
+  saveState,
+  dirty,
+  placeholder,
+  label,
+}: {
+  value?: string;
+  onChange?: (v: string) => void;
+  onCommit?: () => void;
+  saveState?: "idle" | "saving" | "saved" | "error";
+  /** 저장하지 않은 변경이 있으면 버튼을 짙게 칠해 눈에 띄게 한다. */
+  dirty?: boolean;
+  placeholder: string;
+  /** 버튼 설명에 쓰는 이름 ("코멘트" / "영문 코멘트"). */
+  label: string;
+}) {
+  return (
+    <div className="comment-cell">
+      <input
+        value={value ?? ""}
+        onChange={(e) => onChange?.(e.target.value)}
+        onBlur={() => onCommit?.()}
+        // 엔터로도 저장되게 한다 (표 안이라 폼 제출이 없다).
+        onKeyDown={(e) => {
+          if (e.key === "Enter") {
+            e.preventDefault();
+            onCommit?.();
+          }
+        }}
+        placeholder={placeholder}
+        // 숫자 칸은 오른쪽 정렬이 기본이지만 코멘트는 글이라 왼쪽부터 읽는다.
+        style={{ width: 120, textAlign: "left" }}
+      />
+      {/* 커서를 옮겨야 저장되는 게 불편해 눌러서 저장하는 버튼을 둔다. */}
+      <button
+        type="button"
+        className={`note-save-btn${dirty ? " is-dirty" : ""}`}
+        title={dirty ? "저장하지 않은 변경이 있습니다 — 눌러서 저장" : `${label} 저장`}
+        aria-label={`${label} 저장`}
+        disabled={saveState === "saving"}
+        onClick={() => onCommit?.()}
+      >
+        ✓
+      </button>
+      <span style={{ fontSize: 11, color: saveState === "error" ? "#dc2626" : "#94a3b8", whiteSpace: "nowrap" }}>
+        {saveState === "saving" ? "저장중" : saveState === "saved" ? "저장됨" : saveState === "error" ? "실패" : ""}
+      </span>
+    </div>
   );
 }
 
@@ -308,6 +376,10 @@ export function ReadOnlyRateRow({
   onNoteCommit,
   noteSaveState,
   noteDirty,
+  withNoteEn,
+  noteEn,
+  noteEnValue,
+  onNoteEnChange,
   lang = "ko",
 }: {
   label: string;
@@ -324,6 +396,11 @@ export function ReadOnlyRateRow({
   noteSaveState?: "idle" | "saving" | "saved" | "error";
   /** 저장하지 않은 변경이 있으면 버튼을 짙게 칠해 눈에 띄게 한다. */
   noteDirty?: boolean;
+  /** 링크가 영어로 나가는 조직에서만 붙는 '코멘트(영문)' 열 (관리자 화면 전용). */
+  withNoteEn?: boolean;
+  noteEn?: string | null;
+  noteEnValue?: string;
+  onNoteEnChange?: (v: string) => void;
   lang?: SubmitLang;
 }) {
   const s = submitStrings(lang);
@@ -340,39 +417,35 @@ export function ReadOnlyRateRow({
       {withNote && (
         <td>
           {noteEditable ? (
-            <div className="comment-cell">
-              <input
-                value={noteValue ?? ""}
-                onChange={(e) => onNoteChange?.(e.target.value)}
-                onBlur={() => onNoteCommit?.()}
-                // 엔터로도 저장되게 한다 (표 안이라 폼 제출이 없다).
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    e.preventDefault();
-                    onNoteCommit?.();
-                  }
-                }}
-                placeholder={s.colComment}
-                // 숫자 칸은 오른쪽 정렬이 기본이지만 코멘트는 글이라 왼쪽부터 읽는다.
-                style={{ width: 120, textAlign: "left" }}
-              />
-              {/* 커서를 옮겨야 저장되는 게 불편해 눌러서 저장하는 버튼을 둔다. */}
-              <button
-                type="button"
-                className={`note-save-btn${noteDirty ? " is-dirty" : ""}`}
-                title={noteDirty ? "저장하지 않은 변경이 있습니다 — 눌러서 저장" : "코멘트 저장"}
-                aria-label="코멘트 저장"
-                disabled={noteSaveState === "saving"}
-                onClick={() => onNoteCommit?.()}
-              >
-                ✓
-              </button>
-              <span style={{ fontSize: 11, color: noteSaveState === "error" ? "#dc2626" : "#94a3b8", whiteSpace: "nowrap" }}>
-                {noteSaveState === "saving" ? "저장중" : noteSaveState === "saved" ? "저장됨" : noteSaveState === "error" ? "실패" : ""}
-              </span>
-            </div>
+            <EditableNoteCell
+              value={noteValue}
+              onChange={onNoteChange}
+              onCommit={onNoteCommit}
+              saveState={noteSaveState}
+              dirty={noteDirty}
+              placeholder={s.colComment}
+              label="코멘트"
+            />
           ) : (
             note && <NoteTip text={note} />
+          )}
+        </td>
+      )}
+      {withNoteEn && (
+        <td>
+          {noteEditable ? (
+            // 한국어 칸과 같은 요청으로 함께 저장되므로 저장 상태 표시도 그 칸의 것을 그대로 쓴다.
+            <EditableNoteCell
+              value={noteEnValue}
+              onChange={onNoteEnChange}
+              onCommit={onNoteCommit}
+              saveState={noteSaveState}
+              dirty={noteDirty}
+              placeholder="영문"
+              label="영문 코멘트"
+            />
+          ) : (
+            noteEn && <NoteTip text={noteEn} />
           )}
         </td>
       )}
@@ -392,6 +465,9 @@ export function EditableRateRow({
   withNote,
   noteValue,
   onNoteChange,
+  withNoteEn,
+  noteEnValue,
+  onNoteEnChange,
   lang = "ko",
 }: {
   label: string;
@@ -405,6 +481,10 @@ export function EditableRateRow({
   withNote?: boolean;
   noteValue?: string;
   onNoteChange?: (value: string) => void;
+  /** 링크가 영어로 나가는 조직에서만 붙는 '코멘트(영문)' 열 (관리자 화면 전용). */
+  withNoteEn?: boolean;
+  noteEnValue?: string;
+  onNoteEnChange?: (value: string) => void;
   lang?: SubmitLang;
 }) {
   const s = submitStrings(lang);
@@ -474,6 +554,18 @@ export function EditableRateRow({
           </div>
         </td>
       )}
+      {withNoteEn && (
+        <td>
+          <div className="comment-cell">
+            <input
+              value={noteEnValue ?? ""}
+              onChange={(e) => onNoteEnChange?.(e.target.value)}
+              placeholder="영문"
+              style={{ width: 120, textAlign: "left" }}
+            />
+          </div>
+        </td>
+      )}
     </tr>
   );
 }
@@ -498,11 +590,14 @@ export function PersonEditTable({
   persons,
   setPersons,
   hasExpat,
+  withNoteEn,
   lang = "ko",
 }: {
   persons: PersonEditRow[];
   setPersons: (updater: (list: PersonEditRow[]) => PersonEditRow[]) => void;
   hasExpat: boolean;
+  /** 링크가 영어로 나가는 조직에서만 붙는 '코멘트(영문)' 열 (관리자 화면 전용). */
+  withNoteEn?: boolean;
   lang?: SubmitLang;
 }) {
   const s = submitStrings(lang);
@@ -558,6 +653,7 @@ export function PersonEditTable({
               ))}
               <th>TOTAL</th>
               <th>{s.colComment}</th>
+              {withNoteEn && <th>코멘트(영문)</th>}
             </tr>
           </thead>
           <tbody>
@@ -629,6 +725,18 @@ export function PersonEditTable({
                       />
                     </div>
                   </td>
+                  {withNoteEn && (
+                    <td>
+                      <div className="comment-cell">
+                        <input
+                          value={p.noteEn ?? ""}
+                          onChange={(e) => updatePerson(p.key, { noteEn: e.target.value })}
+                          placeholder="영문"
+                          style={{ width: 120, textAlign: "left" }}
+                        />
+                      </div>
+                    </td>
+                  )}
                 </tr>
               );
             })}

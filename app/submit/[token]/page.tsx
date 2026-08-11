@@ -3,16 +3,12 @@ import { TARGETS, TargetKey } from "@/lib/targets";
 import { latestByPerson, latestByPersonAndPeriod, latestOrgByPeriod, computeRollup, SubmissionRow } from "@/lib/rollup";
 import { mirrorSourceOf, MIRROR_HEADCOUNT } from "@/lib/autoAggregate";
 import { leaderFirst } from "@/lib/orgOrder";
-import { submitLangOf, orgLabelFor, submitterFor } from "@/lib/englishOrgs";
-import { translateNotes } from "@/lib/noteTranslate";
+import { submitLangOf, orgLabelFor, submitterFor, noteFor } from "@/lib/englishOrgs";
 import { submitStrings } from "@/lib/submitLang";
 import type { CurrentPerson, PersonHistoryEntry, RateHistoryEntry, PersonRole } from "@/components/RateParts";
 import SubmitForm, { SubmitOrgData, SubmitPageData } from "./SubmitForm";
 
 export const dynamic = "force-dynamic";
-// 아직 번역하지 않은 코멘트가 있으면 이 화면에서 번역까지 하고 나간다(캐시가 없을 때만, 보통 1~2회).
-// 기본 10초로는 모자랄 수 있어 여유를 준다.
-export const maxDuration = 30;
 
 function toRateRecord(row: Record<string, any>): Record<TargetKey, number> {
   return Object.fromEntries(TARGETS.map((t) => [t.key, Number(row[t.key]) || 0])) as Record<TargetKey, number>;
@@ -72,12 +68,6 @@ async function getData(token: string) {
 
   const subList = (allSubs ?? []) as SubmissionRow[];
 
-  // 화면에 보이는 코멘트는 모두 제출 이력(allocation_submissions)에서 나온다 —
-  // 영어 링크면 여기서 한 번에 번역해두고(캐시가 있으면 바로 나온다), 아래에서 표에 꽂아 넣는다.
-  const noteEn = await translateNotes(supabase, subList.map((s) => s.note), lang);
-  const noteFor = (note: string | null | undefined): string | null =>
-    note ? noteEn.get(note) ?? note : null;
-
   function buildOrg(o: any): SubmitOrgData {
     // basis만으로 거르면 다른 구분(division)의 동명 조직이 섞일 수 있어 셋 다 맞춘다.
     const orgRates = (rateRows ?? []).filter(
@@ -97,7 +87,11 @@ async function getData(token: string) {
       rates: toRateRecord(r),
       total: Number(r.total) || 0,
       headcount: orgLevelByPeriod.get(r.quarter as string)?.headcount ?? null,
-      note: noteFor(orgLevelByPeriod.get(r.quarter as string)?.note),
+      note: noteFor(
+        orgLevelByPeriod.get(r.quarter as string)?.note,
+        orgLevelByPeriod.get(r.quarter as string)?.note_en,
+        lang
+      ),
     }));
 
     const personHistory: PersonHistoryEntry[] = latestByPersonAndPeriod(orgSubs)
@@ -109,7 +103,7 @@ async function getData(token: string) {
         rates: toRateRecord(p),
         total: Number(p.total) || 0,
         submittedAt: p.submitted_at,
-        note: noteFor(p.note),
+        note: noteFor(p.note, p.note_en, lang),
         role: (p.sub_team === "주재원" ? "주재원" : "법인") as PersonRole,
       }));
 
@@ -132,12 +126,12 @@ async function getData(token: string) {
       rollup: computeRollup(orgLevelRow, personRows),
       currentOrgSubmission: orgLevelRow ? toRateRecord(orgLevelRow) : null,
       submittedHeadcount: orgLevelRow?.headcount ?? null,
-      submittedNote: noteFor(orgLevelRow?.note),
+      submittedNote: noteFor(orgLevelRow?.note, orgLevelRow?.note_en, lang),
       currentPersons: personRows.map<CurrentPerson>((p) => ({
         name: p.person_name as string,
         headcount: p.headcount,
         rates: toRateRecord(p),
-        note: noteFor(p.note),
+        note: noteFor(p.note, p.note_en, lang),
         role: (p.sub_team === "주재원" ? "주재원" : "법인") as PersonRole,
       })),
       currentRate: orgRates.length > 0 ? toRateRecord(orgRates[orgRates.length - 1]) : null,

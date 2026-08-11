@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { TARGETS, TargetKey, sumTargets } from "@/lib/targets";
-import { warmNoteTranslations } from "@/lib/noteTranslate";
 
 /**
  * 자동계산 조직(개인별 조직 · 상위 집계 조직)의 코멘트만 저장하는 라우트.
@@ -11,13 +10,16 @@ import { warmNoteTranslations } from "@/lib/noteTranslate";
  * (코멘트 저장이 '확정'으로 오해되지 않게 하기 위함.)
  */
 export async function POST(req: NextRequest) {
-  const { orgId, period, version, note, rates, headcount } = await req.json();
+  const { orgId, period, version, note, noteEn, rates, headcount } = await req.json();
 
   if (!orgId || !period) {
     return NextResponse.json({ error: "필수 항목이 누락되었습니다." }, { status: 400 });
   }
   if (note != null && String(note).length > 500) {
     return NextResponse.json({ error: "코멘트가 너무 깁니다 (500자 이내)." }, { status: 400 });
+  }
+  if (noteEn != null && String(noteEn).length > 500) {
+    return NextResponse.json({ error: "영문 코멘트가 너무 깁니다 (500자 이내)." }, { status: 400 });
   }
 
   const supabase = getSupabaseAdmin();
@@ -44,6 +46,8 @@ export async function POST(req: NextRequest) {
     ...parsed,
     total: sumTargets(parsed),
     note: note || null,
+    // 영어로 나가는 조직(HUK 등)에서만 채운다 — 링크에서 한국어 대신 이 글을 보여준다.
+    note_en: noteEn || null,
     submitted_by: "관리자 코멘트 (검토및확정)",
     status: "confirmed",
   });
@@ -51,9 +55,6 @@ export async function POST(req: NextRequest) {
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
-
-  // 영어로 나가는 조직이면 방금 적은 코멘트를 미리 번역해둔다 (담당자가 링크를 열 때 기다리지 않도록).
-  await warmNoteTranslations(supabase, org.basis, [note]);
 
   return NextResponse.json({ ok: true });
 }
