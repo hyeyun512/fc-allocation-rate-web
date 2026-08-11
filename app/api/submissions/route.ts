@@ -3,6 +3,7 @@ import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { TARGETS, TargetKey, sumTargets } from "@/lib/targets";
 import { recomputeAggregates } from "@/lib/autoAggregate";
 import { buildDeletionTombstones } from "@/lib/personTombstones";
+import { resolveTargetOrg } from "@/lib/submitScope";
 
 function parseRates(rates: Record<string, string>) {
   const out = {} as Record<TargetKey, number>;
@@ -21,7 +22,7 @@ function totalIsValid(parsed: Record<TargetKey, number>): boolean {
 
 export async function POST(req: NextRequest) {
   const body = await req.json();
-  const { token, submittedBy, headcount, note, orgRates, persons } = body ?? {};
+  const { token, orgId, submittedBy, headcount, note, orgRates, persons } = body ?? {};
 
   if (!token || !submittedBy || !orgRates) {
     return NextResponse.json({ error: "필수 항목이 누락되었습니다." }, { status: 400 });
@@ -29,15 +30,22 @@ export async function POST(req: NextRequest) {
 
   const supabase = getSupabaseAdmin();
 
-  const { data: org } = await supabase
+  const { data: linkOrg } = await supabase
     .from("allocation_orgs")
     .select("*")
     .eq("access_token", token)
     .eq("active", true)
     .maybeSingle();
 
-  if (!org) {
+  if (!linkOrg) {
     return NextResponse.json({ error: "유효하지 않은 링크입니다." }, { status: 404 });
+  }
+
+  // 집계 조직은 링크가 하나뿐이라 그 한 화면에서 하위 조직까지 입력한다 —
+  // 링크의 조직이거나 그 하위 조직일 때만 받아들인다(다른 조직으로는 저장할 수 없다).
+  const org = await resolveTargetOrg(supabase, linkOrg, orgId);
+  if (!org) {
+    return NextResponse.json({ error: "이 링크로 저장할 수 없는 조직입니다." }, { status: 403 });
   }
 
   const { data: settings } = await supabase

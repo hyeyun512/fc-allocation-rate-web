@@ -42,6 +42,7 @@ export interface SubmitDraft {
 }
 
 export interface SubmitOrgData {
+  orgId: number;
   orgBasis: string;
   division: string;
   requiresPersonDetail: boolean;
@@ -61,6 +62,17 @@ export interface SubmitOrgData {
   draftSavedAt: string | null;
 }
 
+export interface SubmitPageData {
+  /** 집계 조직(개발 그룹 등)일 때 그 조직 자체. 자기가 입력하는 자리가 아니라 하위 조직 값을 모으는 자리다. */
+  parent: SubmitOrgData | null;
+  /** 집계에 들어가는 하위 조직 이름 (안내문에 그대로 쓴다). */
+  parentChildNames: string[];
+  /** 입력란 없이 다른 조직 값을 따라가는 자리 — 각주로만 알린다. */
+  mirrors: { basis: string; source: string; headcount: number }[];
+  /** 실제로 입력받는 조직들 (단일 조직이면 1개). */
+  orgs: SubmitOrgData[];
+}
+
 const DRAFT_DEBOUNCE_MS = 1500;
 
 function fmtTime(iso: string | null): string {
@@ -69,23 +81,25 @@ function fmtTime(iso: string | null): string {
 }
 
 /**
- * 조사 링크 화면.
+ * 조직 하나의 입력 구역.
  *
- * 관리자 '검토 및 확정 > 리소스배부율'에서 조직을 선택했을 때와 **같은 구성**으로 보여준다
+ * 관리자 '검토 및 확정 > 리소스배부율'의 조직 상세(OrgDetail)와 같은 구성이다
  * (같은 표 컴포넌트를 @/components/RateParts에서 함께 쓴다).
- * 다만 이 화면은 담당자에게 나가므로 자기 조직 것만 보여주고, 다른 조직명은 어디에도 넣지 않는다.
- * 하단 버튼은 관리자 화면의 '저장'이 아니라 '제출하기'다.
+ * 다만 하단 버튼은 관리자 화면의 '저장'이 아니라 '제출하기'다.
  */
-export default function SubmitForm({
+function OrgSubmitSection({
   token,
   period,
   version,
   data,
+  showPeriodTag,
 }: {
   token: string;
   period: string;
   version: string;
   data: SubmitOrgData;
+  /** 조직이 하나뿐인 화면에서는 제목 옆에 분기를 함께 보여준다 (집계 화면은 맨 위에 이미 있다). */
+  showPeriodTag: boolean;
 }) {
   const draft = data.draft;
   const router = useRouter();
@@ -101,7 +115,9 @@ export default function SubmitForm({
     () => draft?.orgHeadcount ?? String(data.submittedHeadcount ?? 0)
   );
   const [orgNoteInput, setOrgNoteInput] = useState(() => draft?.orgNote ?? data.submittedNote ?? "");
-  const [persons, setPersons] = useState<PersonEditRow[]>(() => draft?.persons ?? data.currentPersons.map(personRowFromCurrent));
+  const [persons, setPersons] = useState<PersonEditRow[]>(
+    () => draft?.persons ?? data.currentPersons.map(personRowFromCurrent)
+  );
 
   const [submitted, setSubmitted] = useState(data.submittedThisPeriod);
   // 임시저장본이 남아 있으면 아직 제출 전 작업이 있는 것이므로 잠그지 않고 이어서 입력하게 한다.
@@ -173,12 +189,17 @@ export default function SubmitForm({
 
   // 제출 전에도 입력한 값이 남도록 편집이 멈추면 자동으로 임시저장한다.
   // 임시저장은 미제출 상태라 관리자 화면에는 보이지 않는다 (별도 테이블).
-  const skipFirstAutosave = useRef(true);
+  //
+  // 화면을 열어보기만 해도 저장되면 안 된다 — 손대지 않은 빈 임시저장본이 남아
+  // 다음에 열 때 제출한 조직이 '입력중'으로 풀려 보인다. 처음 값과 달라졌을 때만 저장한다.
+  const initialDraftJson = useRef<string | null>(null);
   useEffect(() => {
-    if (skipFirstAutosave.current) {
-      skipFirstAutosave.current = false;
+    const current = JSON.stringify(draftPayload());
+    if (initialDraftJson.current === null) {
+      initialDraftJson.current = current;
       return;
     }
+    if (current === initialDraftJson.current) return;
     if (!editable) return;
     const timer = setTimeout(async () => {
       setDraftState("saving");
@@ -186,7 +207,7 @@ export default function SubmitForm({
         const res = await fetch("/api/submissions/draft", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ token, payload: draftPayload() }),
+          body: JSON.stringify({ token, orgId: data.orgId, payload: draftPayload() }),
         });
         const json = await res.json();
         if (!res.ok) throw new Error(json.error ?? "임시저장 실패");
@@ -206,14 +227,15 @@ export default function SubmitForm({
   useEffect(() => {
     function flush() {
       if (!navigator.sendBeacon) return;
-      const blob = new Blob([JSON.stringify({ token, payload: draftPayloadRef.current() })], {
-        type: "application/json",
-      });
+      const payload = draftPayloadRef.current();
+      // 열어보기만 하고 닫은 경우에는 남기지 않는다 (위 자동저장과 같은 기준).
+      if (JSON.stringify(payload) === initialDraftJson.current) return;
+      const blob = new Blob([JSON.stringify({ token, orgId: data.orgId, payload })], { type: "application/json" });
       navigator.sendBeacon("/api/submissions/draft", blob);
     }
     window.addEventListener("pagehide", flush);
     return () => window.removeEventListener("pagehide", flush);
-  }, [token]);
+  }, [token, data.orgId]);
 
   async function handleSubmit() {
     setError("");
@@ -239,6 +261,7 @@ export default function SubmitForm({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           token,
+          orgId: data.orgId,
           submittedBy,
           headcount: currentOrgHeadcount,
           // 개인별 조직은 조직 단위 코멘트를 이 화면에서 고치지 않는다 —
@@ -288,150 +311,275 @@ export default function SubmitForm({
   );
 
   return (
-    <div className="page">
-      <div className="panel">
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 10, marginBottom: 14 }}>
-          <div>
-            <div className="panel-title">
-              {data.orgBasis} <span className="tag">{period} · {version}</span>{" "}
-              {submitted ? (
-                <span className="status-badge status-confirmed">제출됨 ({period})</span>
-              ) : (
-                <span className="status-badge" style={{ background: "#f1f5f9", color: "#64748b" }}>
-                  미제출
-                </span>
-              )}
-            </div>
-            <div className="panel-sub">
-              {data.division} · {usesPersonTable ? "개인별 확인 필요" : "조직 단위"}
-              {data.submittedBy ? ` · 제출자: ${data.submittedBy}` : ""}
-              {data.latestSubmittedAt ? ` · ${new Date(data.latestSubmittedAt).toLocaleString("ko-KR")}` : ""}
-            </div>
+    <div className="panel">
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 10, marginBottom: 14 }}>
+        <div>
+          <div className="panel-title">
+            {data.orgBasis} {showPeriodTag && <span className="tag">{period} · {version}</span>}{" "}
+            {submitted ? (
+              <span className="status-badge status-confirmed">제출됨 ({period})</span>
+            ) : (
+              <span className="status-badge" style={{ background: "#f1f5f9", color: "#64748b" }}>
+                미제출
+              </span>
+            )}
           </div>
-          <div className="field" style={{ minWidth: 200 }}>
-            <label>입력자 (책임자/담당자 이름) *</label>
-            <input
-              value={submittedBy}
-              onChange={(e) => setSubmittedBy(e.target.value)}
-              placeholder="이름"
-              disabled={!editable}
-            />
+          <div className="panel-sub">
+            {data.division} · {usesPersonTable ? "개인별 확인 필요" : "조직 단위"}
+            {data.submittedBy ? ` · 제출자: ${data.submittedBy}` : ""}
+            {data.latestSubmittedAt ? ` · ${new Date(data.latestSubmittedAt).toLocaleString("ko-KR")}` : ""}
           </div>
         </div>
+        <div className="field" style={{ minWidth: 200 }}>
+          <label>입력자 (책임자/담당자 이름) *</label>
+          <input value={submittedBy} onChange={(e) => setSubmittedBy(e.target.value)} placeholder="이름" disabled={!editable} />
+        </div>
+      </div>
 
-        {justSubmitted && (
-          <div className="callout success" style={{ marginBottom: 12 }}>
-            <b>제출이 완료되었습니다.</b> 담당자 검토 후 최종 반영됩니다. 수정이 필요하면 아래 '수정하기'를 눌러 다시 제출하실 수 있습니다.
-          </div>
+      {justSubmitted && (
+        <div className="callout success" style={{ marginBottom: 12 }}>
+          <b>제출이 완료되었습니다.</b> 담당자 검토 후 최종 반영됩니다. 수정이 필요하면 아래 '수정하기'를 눌러 다시 제출하실 수 있습니다.
+        </div>
+      )}
+
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8, marginBottom: 8 }}>
+        <div className="panel-sub" style={{ fontWeight: 700, color: "#1a202c", margin: 0 }}>
+          ■ 조직별 리소스 배부율
+        </div>
+        {!usesPersonTable && orgEditable && previousOrgRate && (
+          <button className="btn btn-secondary btn-sm" onClick={loadPreviousOrgRate}>
+            전분기 데이터 끌고오기
+          </button>
         )}
-
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8, marginBottom: 8 }}>
-          <div className="panel-sub" style={{ fontWeight: 700, color: "#1a202c", margin: 0 }}>
-            ■ 조직별 리소스 배부율
-          </div>
-          {!usesPersonTable && orgEditable && previousOrgRate && (
-            <button className="btn btn-secondary btn-sm" onClick={loadPreviousOrgRate}>
-              전분기 데이터 끌고오기
-            </button>
-          )}
-        </div>
-        <div className="tbl-scroll" style={{ marginBottom: 12 }}>
-          <table className="rate-tbl">
-            <RateTableHead withClear={orgEditable} withNote />
-            <tbody>
-              {orderedQuarters(pastRateHistory.map((h) => h.quarter), period).map((q) => {
-                if (q !== period) {
-                  const h = pastRateHistory.find((x) => x.quarter === q)!;
-                  return (
-                    <ReadOnlyRateRow
-                      key={q}
-                      label={h.quarter}
-                      rec={h.rates}
-                      headcount={
-                        usesPersonTable
-                          ? personHeadcountForQuarter(data.personHistory, h.quarter, isExpatOnlyOrg ? "all" : "legal")
-                          : h.headcount
-                      }
-                      showClearSlot={orgEditable}
-                      withNote
-                      note={h.note}
-                    />
-                  );
-                }
-                return orgEditable ? (
-                  <EditableRateRow
-                    key={q}
-                    label={`${period} (입력중)`}
-                    rates={orgRates}
-                    onChange={updateOrgRate}
-                    headcount={currentOrgHeadcount}
-                    onClear={() => setOrgRates(emptyRates())}
-                    headcountEditable
-                    headcountValue={orgHeadcountInput}
-                    onHeadcountChange={setOrgHeadcountInput}
-                    withNote
-                    noteValue={orgNoteInput}
-                    onNoteChange={setOrgNoteInput}
-                  />
-                ) : (
+      </div>
+      <div className="tbl-scroll" style={{ marginBottom: 12 }}>
+        <table className="rate-tbl">
+          <RateTableHead withClear={orgEditable} withNote />
+          <tbody>
+            {orderedQuarters(pastRateHistory.map((h) => h.quarter), period).map((q) => {
+              if (q !== period) {
+                const h = pastRateHistory.find((x) => x.quarter === q)!;
+                return (
                   <ReadOnlyRateRow
                     key={q}
-                    label={`${period}${usesPersonTable ? " (자동계산)" : ""}`}
-                    rec={toNumRec(computedOrgRates)}
-                    headcount={currentOrgHeadcount}
+                    label={h.quarter}
+                    rec={h.rates}
+                    headcount={
+                      usesPersonTable
+                        ? personHeadcountForQuarter(data.personHistory, h.quarter, isExpatOnlyOrg ? "all" : "legal")
+                        : h.headcount
+                    }
+                    showClearSlot={orgEditable}
                     withNote
-                    note={orgNoteInput || null}
+                    note={h.note}
                   />
                 );
-              })}
-            </tbody>
-          </table>
+              }
+              return orgEditable ? (
+                <EditableRateRow
+                  key={q}
+                  label={`${period} (입력중)`}
+                  rates={orgRates}
+                  onChange={updateOrgRate}
+                  headcount={currentOrgHeadcount}
+                  onClear={() => setOrgRates(emptyRates())}
+                  headcountEditable
+                  headcountValue={orgHeadcountInput}
+                  onHeadcountChange={setOrgHeadcountInput}
+                  withNote
+                  noteValue={orgNoteInput}
+                  onNoteChange={setOrgNoteInput}
+                />
+              ) : (
+                <ReadOnlyRateRow
+                  key={q}
+                  label={`${period}${usesPersonTable ? " (자동계산)" : ""}`}
+                  rec={toNumRec(computedOrgRates)}
+                  headcount={currentOrgHeadcount}
+                  withNote
+                  note={orgNoteInput || null}
+                />
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+      {!totalOk && (
+        <div className="field-hint" style={{ color: "#dc2626", marginBottom: 12 }}>
+          ⚠ {period} 합계가 100%가 아닙니다. 각 항목의 비율 합이 100%가 되도록 입력해주세요.
         </div>
-        {!totalOk && (
-          <div className="field-hint" style={{ color: "#dc2626", marginBottom: 12 }}>
-            ⚠ {period} 합계가 100%가 아닙니다. 각 항목의 비율 합이 100%가 되도록 입력해주세요.
+      )}
+
+      {usesPersonTable && (
+        <>
+          <div className="panel-sub" style={{ fontWeight: 700, color: "#1a202c", margin: "0 0 8px" }}>
+            ■ 개인별 리소스 배부율
           </div>
-        )}
+          <div className="field-hint" style={{ marginBottom: 8 }}>
+            관계사·계열사(H.Mobility~H.Networks)에 청구되는 조직이라 개인별 확인이 필요합니다. 팀원별로 행을 추가해 입력해주세요.
+            위 조직 단위 값은 아래 행들의 평균으로 자동 계산됩니다.
+          </div>
 
-        {usesPersonTable && (
-          <>
-            <div className="panel-sub" style={{ fontWeight: 700, color: "#1a202c", margin: "0 0 8px" }}>
-              ■ 개인별 리소스 배부율
-            </div>
-            <div className="field-hint" style={{ marginBottom: 8 }}>
-              관계사·계열사(H.Mobility~H.Networks)에 청구되는 조직이라 개인별 확인이 필요합니다. 팀원별로 행을 추가해 입력해주세요.
-              위 조직 단위 값은 아래 행들의 평균으로 자동 계산됩니다.
-            </div>
+          <PersonHistoryBlocks rows={beforePersonRows} quarterOrder={personQuarterOrder} hasExpat={false} />
 
-            <PersonHistoryBlocks rows={beforePersonRows} quarterOrder={personQuarterOrder} hasExpat={false} />
-
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8, marginBottom: 8 }}>
-              <div className="field-hint" style={{ fontWeight: 700, color: personsEditable ? "#2563eb" : "#1a202c", margin: 0 }}>
-                {period} {personsEditable ? "(입력중)" : "(제출됨)"}
-              </div>
-              {personsEditable && previousPersonsForOrg.length > 0 && (
-                <button className="btn btn-secondary btn-sm" onClick={loadPreviousPersons}>
-                  전분기 데이터 끌고오기 ({previousPersonsForOrg.length}명)
-                </button>
-              )}
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8, marginBottom: 8 }}>
+            <div className="field-hint" style={{ fontWeight: 700, color: personsEditable ? "#2563eb" : "#1a202c", margin: 0 }}>
+              {period} {personsEditable ? "(입력중)" : "(제출됨)"}
             </div>
-            {personsEditable ? (
-              <PersonEditTable persons={persons} setPersons={setPersons} hasExpat={false} />
-            ) : (
-              <PersonReadOnlyTable persons={persons} hasExpat={false} />
+            {personsEditable && previousPersonsForOrg.length > 0 && (
+              <button className="btn btn-secondary btn-sm" onClick={loadPreviousPersons}>
+                전분기 데이터 끌고오기 ({previousPersonsForOrg.length}명)
+              </button>
             )}
-            {error && <div className="callout alert" style={{ marginTop: 12, marginBottom: 12 }}>{error}</div>}
-            {actionButton}
-            <PersonHistoryBlocks rows={afterPersonRows} quarterOrder={personQuarterOrder} hasExpat={false} />
-          </>
-        )}
+          </div>
+          {personsEditable ? (
+            <PersonEditTable persons={persons} setPersons={setPersons} hasExpat={false} />
+          ) : (
+            <PersonReadOnlyTable persons={persons} hasExpat={false} />
+          )}
+          {error && <div className="callout alert" style={{ marginTop: 12, marginBottom: 12 }}>{error}</div>}
+          {actionButton}
+          <PersonHistoryBlocks rows={afterPersonRows} quarterOrder={personQuarterOrder} hasExpat={false} />
+        </>
+      )}
 
-        {!usesPersonTable && (
-          <>
-            {error && <div className="callout alert" style={{ marginTop: 12, marginBottom: 12 }}>{error}</div>}
-            {actionButton}
-          </>
-        )}
+      {!usesPersonTable && (
+        <>
+          {error && <div className="callout alert" style={{ marginTop: 12, marginBottom: 12 }}>{error}</div>}
+          {actionButton}
+        </>
+      )}
+    </div>
+  );
+}
+
+/**
+ * 집계 조직 화면 (개발 그룹·경영지원실 등).
+ *
+ * 관리자 화면(ParentOrgDetail)과 같은 구성 — 위에 자동계산된 집계 값을 보여주고,
+ * 그 아래에 하위 조직 입력란을 모두 펼친다. 조사 링크는 이 조직에 하나만 발급되므로
+ * 이 한 화면에서 하위 조직을 모두 입력한다.
+ */
+function ParentSummary({
+  data,
+  period,
+  version,
+}: {
+  data: SubmitPageData;
+  period: string;
+  version: string;
+}) {
+  const parent = data.parent!;
+  const pastRateHistory = parent.rateHistory.filter((h) => h.quarter !== period);
+  const currentRow = parent.rateHistory.find((h) => h.quarter === period) ?? null;
+
+  // 하위 조직 인원수의 합 (관리자 화면의 가중치와 같은 기준: 값이 채워진 개인 행 수 또는 조직 인원수).
+  function headcountOf(o: SubmitOrgData): number {
+    const fromPersons = o.currentPersons.filter((p) => Object.values(p.rates).reduce((s, v) => s + (v || 0), 0) > 0).length;
+    if (fromPersons > 0) return fromPersons;
+    return Number(o.submittedHeadcount) || 0;
+  }
+  const childHeadcount =
+    data.orgs.reduce((s, o) => s + headcountOf(o), 0) + data.mirrors.reduce((s, m) => s + m.headcount, 0);
+  const submittedChildren = data.orgs.filter((o) => o.submittedThisPeriod).length;
+
+  return (
+    <div className="panel">
+      <div style={{ marginBottom: 14 }}>
+        <div className="panel-title">
+          {parent.orgBasis} <span className="tag">{period} · {version}</span>{" "}
+          <span className="status-badge" style={{ background: "#eff6ff", color: "#2563eb" }}>
+            집계 조직
+          </span>{" "}
+          <span
+            className={`status-badge${submittedChildren === data.orgs.length ? " status-confirmed" : ""}`}
+            style={submittedChildren === data.orgs.length ? undefined : { background: "#f1f5f9", color: "#64748b" }}
+          >
+            하위 조직 {submittedChildren}/{data.orgs.length} 제출
+          </span>
+        </div>
+        <div className="panel-sub">
+          {parent.division} · 하위 조직({data.parentChildNames.join(" + ")})의 인원수 가중평균으로 자동 계산됩니다. 아래에서 하위 조직별로 입력해주세요.
+        </div>
+      </div>
+
+      <div className="tbl-scroll" style={{ marginBottom: 12 }}>
+        <table className="rate-tbl">
+          <RateTableHead withNote />
+          <tbody>
+            {orderedQuarters(pastRateHistory.map((h) => h.quarter), period).map((q) =>
+              q === period ? (
+                <ReadOnlyRateRow
+                  key={q}
+                  label={`${period} (자동계산)`}
+                  rec={currentRow ? currentRow.rates : toNumRec(emptyRates())}
+                  headcount={childHeadcount || null}
+                  withNote
+                  note={currentRow?.note ?? null}
+                />
+              ) : (
+                <ReadOnlyRateRow
+                  key={q}
+                  label={q}
+                  rec={pastRateHistory.find((h) => h.quarter === q)!.rates}
+                  headcount={pastRateHistory.find((h) => h.quarter === q)!.headcount ?? null}
+                  withNote
+                  note={pastRateHistory.find((h) => h.quarter === q)!.note}
+                />
+              )
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      {data.mirrors.map((m) => (
+        <div key={m.basis} className="field-hint" style={{ marginBottom: 6 }}>
+          ※ {m.basis}은(는) {m.source}과(와) 동일한 배부율을 적용하며, 인원수 {m.headcount}명으로 위 가중평균에 포함됩니다.
+          별도 입력란은 두지 않습니다.
+        </div>
+      ))}
+
+      <div className="field-hint">
+        아래 하위 조직을 제출하면 이 값도 자동으로 다시 계산되어 반영됩니다.
+      </div>
+    </div>
+  );
+}
+
+export default function SubmitForm({
+  token,
+  period,
+  version,
+  data,
+}: {
+  token: string;
+  period: string;
+  version: string;
+  data: SubmitPageData;
+}) {
+  const isParent = !!data.parent;
+
+  return (
+    <div className="page">
+      {isParent && <ParentSummary data={data} period={period} version={version} />}
+
+      {isParent && (
+        <div className="panel-sub" style={{ fontWeight: 700, color: "#1a202c", margin: "20px 0 12px" }}>
+          ■ 하위 조직 개별 입력 ({data.orgs.length}개)
+        </div>
+      )}
+
+      <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+        {data.orgs.map((o) => (
+          <OrgSubmitSection
+            key={o.orgId}
+            token={token}
+            period={period}
+            version={version}
+            data={o}
+            showPeriodTag={!isParent}
+          />
+        ))}
       </div>
     </div>
   );

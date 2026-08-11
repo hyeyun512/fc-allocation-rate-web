@@ -1,6 +1,5 @@
 "use client";
 
-import { groupDivisionLabel } from "@/lib/targets";
 import { leaderFirst, sortForOrgPicker } from "@/lib/orgOrder";
 
 export interface SurveyOrgData {
@@ -65,40 +64,36 @@ function OrgRow({ item }: { item: SurveyOrgData }) {
           <div className="list-item-title">
             {item.org.basis}{" "}
             {children.length > 0 ? (
-              // 집계 조직은 자기가 제출하는 대상이 아니라 하위 팀 값을 모으는 자리다 — 진행 상황으로 보여준다.
+              // 집계 조직은 자기가 제출하는 대상이 아니라 하위 조직 값을 모으는 자리다 — 진행 상황으로 보여준다.
               <span
                 className={`status-badge${submittedChildren === children.length ? " status-pending" : ""}`}
                 style={submittedChildren === children.length ? undefined : { background: "#f1f5f9", color: "#64748b" }}
               >
-                하위 팀 {submittedChildren}/{children.length} 제출
+                하위 조직 {submittedChildren}/{children.length} 제출
               </span>
             ) : (
               <SubmitBadge item={item} />
             )}
           </div>
           <div className="list-item-sub">
-            {item.org.division} · {children.length > 0 ? "하위 팀 값으로 자동 집계" : <SubInfo item={item} />}
+            {item.org.division} ·{" "}
+            {children.length > 0 ? "하위 조직 값으로 자동 집계 — 링크 하나에 하위 조직이 모두 들어 있습니다" : <SubInfo item={item} />}
           </div>
         </div>
-        {children.length === 0 && <CopyLinkButton token={item.org.access_token} />}
+        {/* 집계 조직은 링크가 하나다 — 그 링크 한 화면에서 하위 조직을 모두 입력한다. */}
+        <CopyLinkButton token={item.org.access_token} />
       </div>
 
       {children.length > 0 && (
         <div style={{ marginTop: 10, borderTop: "0.5px solid #f1f5f9", paddingTop: 10 }}>
           {children.map((c) => (
-            <div
-              key={c.org.id}
-              style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8, padding: "6px 0" }}
-            >
-              <div>
-                <div className="list-item-title" style={{ fontSize: 13.5 }}>
-                  {c.org.basis} <SubmitBadge item={c} />
-                </div>
-                <div className="list-item-sub">
-                  <SubInfo item={c} />
-                </div>
+            <div key={c.org.id} style={{ padding: "6px 0" }}>
+              <div className="list-item-title" style={{ fontSize: 13.5 }}>
+                {c.org.basis} <SubmitBadge item={c} />
               </div>
-              <CopyLinkButton token={c.org.access_token} />
+              <div className="list-item-sub">
+                <SubInfo item={c} />
+              </div>
             </div>
           ))}
         </div>
@@ -108,10 +103,10 @@ function OrgRow({ item }: { item: SurveyOrgData }) {
 }
 
 export default function SurveyOverview({ period, data }: { period: string; data: SurveyOrgData[] }) {
-  // 리소스배부율의 조직/팀 선택과 같은 순서(조직장 먼저 → 엑셀 표 순서)로 늘어놓는다.
+  // 리소스배부율의 조직/팀 선택과 같은 순서(본사 → 주재원 → 법인, 그 안에서 조직장 먼저 → 엑셀 표 순서).
   const ordered = sortForOrgPicker(data);
   const grouped = ordered.reduce<Record<string, SurveyOrgData[]>>((acc, item) => {
-    (acc[groupDivisionLabel(item.org.division)] ??= []).push(item);
+    (acc[item.org.division] ??= []).push(item);
     return acc;
   }, {});
 

@@ -1,8 +1,10 @@
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { TARGETS, TargetKey } from "@/lib/targets";
 import { latestByPerson, latestByPersonAndPeriod, latestOrgByPeriod, computeRollup, SubmissionRow } from "@/lib/rollup";
+import { mirrorSourceOf, MIRROR_HEADCOUNT } from "@/lib/autoAggregate";
+import { leaderFirst } from "@/lib/orgOrder";
 import type { CurrentPerson, PersonHistoryEntry, RateHistoryEntry, PersonRole } from "@/components/RateParts";
-import SubmitForm, { SubmitOrgData } from "./SubmitForm";
+import SubmitForm, { SubmitOrgData, SubmitPageData } from "./SubmitForm";
 
 export const dynamic = "force-dynamic";
 
@@ -15,7 +17,9 @@ function toRateRecord(row: Record<string, any>): Record<TargetKey, number> {
  *
  * 관리자 '검토 및 확정 > 리소스배부율'에서 조직을 선택했을 때와 **같은 화면 구성**을 쓰므로,
  * 그 화면이 쓰는 것과 같은 종류의 데이터(분기별 배부율 이력·개인별 이력·이번 분기 제출값)를 모은다.
- * 단, 이 링크는 담당자에게 나가므로 **자기 조직 것만** 조회한다 (다른 조직명은 화면에도 데이터에도 넣지 않는다).
+ * 집계 조직(개발 그룹 등)은 링크가 하나뿐이므로 그 한 화면에 하위 조직 입력란까지 함께 싣는다.
+ *
+ * 이 링크는 담당자에게 나가므로 **자기 조직과 그 하위 조직 것만** 조회한다.
  */
 async function getData(token: string) {
   const supabase = getSupabaseAdmin();
@@ -33,35 +37,46 @@ async function getData(token: string) {
   const period = settings?.current_period ?? "이번 분기";
   const version = settings?.current_version ?? "Forecast";
 
-  // 이 조직의 분기별 확정 배부율 (전 항목 0%인 행은 지운 흔적이라 이력에 넣지 않는다 — 관리자 화면과 같은 기준)
-  const { data: rateRows } = await supabase
-    .from("allocation_rate")
+  // 집계 조직이면 하위 조직도 같은 화면에서 입력받는다 (링크가 하나뿐이다).
+  const { data: childOrgs } = await supabase
+    .from("allocation_orgs")
     .select("*")
-    .eq("basis", org.basis)
-    .eq("division", org.division)
-    .eq("type", org.type)
-    .order("quarter", { ascending: true });
+    .eq("parent_basis", org.basis)
+    .eq("active", true);
 
-  // 이 조직의 제출 이력 전체 (분기별 개인 명단·조직 단위 인원수/코멘트)
-  const { data: allSubs } = await supabase
-    .from("allocation_submissions")
-    .select("*")
-    .eq("org_id", org.id)
-    .order("submitted_at", { ascending: false });
+  const children = childOrgs ?? [];
+  const isParent = children.length > 0;
+  // 다른 조직 값을 그대로 따라가는 자리(사업총괄대표)는 입력란을 두지 않고 각주로만 알린다 — 관리자 화면과 같다.
+  const editableOrgs = isParent ? children.filter((c) => !mirrorSourceOf(c.basis)) : [org];
+  const mirroredOrgs = isParent ? children.filter((c) => mirrorSourceOf(c.basis)) : [];
+
+  const orgIds = [org.id, ...children.map((c) => c.id)];
+  const basisList = [org.basis, ...children.map((c) => c.basis)];
+
+  // 필요한 조직의 배부율 이력·제출 이력·임시저장을 한 번에 가져와 조직별로 나눈다.
+  const [{ data: rateRows }, { data: allSubs }, { data: drafts }] = await Promise.all([
+    supabase.from("allocation_rate").select("*").in("basis", basisList).order("quarter", { ascending: true }),
+    supabase.from("allocation_submissions").select("*").in("org_id", orgIds).order("submitted_at", { ascending: false }),
+    supabase.from("allocation_submission_drafts").select("org_id,payload,updated_at").in("org_id", orgIds).eq("period", period),
+  ]);
 
   const subList = (allSubs ?? []) as SubmissionRow[];
-  const thisPeriodSubs = subList.filter((s) => s.period === period);
-  const deduped = latestByPerson(thisPeriodSubs);
-  const orgLevelRow = deduped.find((r) => r.person_name === null) ?? null;
-  // 이름 가나다순이 아니라 입력(저장)한 순서대로 (한 번에 insert되므로 id 오름차순이 곧 입력 순서).
-  const personRows = deduped.filter((r) => r.person_name !== null).sort((a, b) => a.id - b.id);
 
-  const orgLevelByPeriod = new Map<string, SubmissionRow>();
-  latestOrgByPeriod(subList).forEach((r) => orgLevelByPeriod.set(r.period as string, r));
+  function buildOrg(o: any): SubmitOrgData {
+    // basis만으로 거르면 다른 구분(division)의 동명 조직이 섞일 수 있어 셋 다 맞춘다.
+    const orgRates = (rateRows ?? []).filter(
+      (r) => r.basis === o.basis && r.division === o.division && r.type === o.type && (Number(r.total) || 0) > 0
+    );
+    const orgSubs = subList.filter((s) => s.org_id === o.id);
+    const deduped = latestByPerson(orgSubs.filter((s) => s.period === period));
+    const orgLevelRow = deduped.find((r) => r.person_name === null) ?? null;
+    // 이름 가나다순이 아니라 입력(저장)한 순서대로 (한 번에 insert되므로 id 오름차순이 곧 입력 순서).
+    const personRows = deduped.filter((r) => r.person_name !== null).sort((a, b) => a.id - b.id);
 
-  const rateHistory: RateHistoryEntry[] = (rateRows ?? [])
-    .filter((r) => (Number(r.total) || 0) > 0)
-    .map((r) => ({
+    const orgLevelByPeriod = new Map<string, SubmissionRow>();
+    latestOrgByPeriod(orgSubs).forEach((r) => orgLevelByPeriod.set(r.period as string, r));
+
+    const rateHistory: RateHistoryEntry[] = orgRates.map((r) => ({
       quarter: r.quarter as string,
       rates: toRateRecord(r),
       total: Number(r.total) || 0,
@@ -69,60 +84,66 @@ async function getData(token: string) {
       note: orgLevelByPeriod.get(r.quarter as string)?.note ?? null,
     }));
 
-  const personHistory: PersonHistoryEntry[] = latestByPersonAndPeriod(subList)
-    .sort((a, b) => a.period.localeCompare(b.period) || a.id - b.id)
-    .map((p) => ({
-      name: p.person_name as string,
-      period: p.period as string,
-      headcount: p.headcount,
-      rates: toRateRecord(p),
-      total: Number(p.total) || 0,
-      submittedAt: p.submitted_at,
-      note: p.note ?? null,
-      role: (p.sub_team === "주재원" ? "주재원" : "법인") as PersonRole,
-    }));
+    const personHistory: PersonHistoryEntry[] = latestByPersonAndPeriod(orgSubs)
+      .sort((a, b) => a.period.localeCompare(b.period) || a.id - b.id)
+      .map((p) => ({
+        name: p.person_name as string,
+        period: p.period as string,
+        headcount: p.headcount,
+        rates: toRateRecord(p),
+        total: Number(p.total) || 0,
+        submittedAt: p.submitted_at,
+        note: p.note ?? null,
+        role: (p.sub_team === "주재원" ? "주재원" : "법인") as PersonRole,
+      }));
 
-  const currentPersons: CurrentPerson[] = personRows.map((p) => ({
-    name: p.person_name as string,
-    headcount: p.headcount,
-    rates: toRateRecord(p),
-    note: p.note ?? null,
-    role: (p.sub_team === "주재원" ? "주재원" : "법인") as PersonRole,
-  }));
+    const draft = (drafts ?? []).find((d) => d.org_id === o.id) ?? null;
+    const hasAnyValue =
+      (orgLevelRow ? Number(orgLevelRow.total) || 0 : 0) > 0 || personRows.some((p) => (Number(p.total) || 0) > 0);
 
-  // 아직 제출하지 않고 자동 임시저장만 되어 있는 값 (관리자에게는 보이지 않는다).
-  const { data: draft } = await supabase
-    .from("allocation_submission_drafts")
-    .select("payload,updated_at")
-    .eq("org_id", org.id)
-    .eq("period", period)
-    .maybeSingle();
+    return {
+      orgId: o.id,
+      orgBasis: o.basis,
+      division: o.division,
+      requiresPersonDetail: o.requires_person_detail,
+      managerName: o.manager_name ?? null,
+      submittedThisPeriod: hasAnyValue,
+      submittedBy: orgLevelRow?.submitted_by ?? personRows[0]?.submitted_by ?? null,
+      latestSubmittedAt: deduped.reduce<string | null>((max, r) => {
+        if (!max || new Date(r.submitted_at) > new Date(max)) return r.submitted_at;
+        return max;
+      }, null),
+      rollup: computeRollup(orgLevelRow, personRows),
+      currentOrgSubmission: orgLevelRow ? toRateRecord(orgLevelRow) : null,
+      submittedHeadcount: orgLevelRow?.headcount ?? null,
+      submittedNote: orgLevelRow?.note ?? null,
+      currentPersons: personRows.map<CurrentPerson>((p) => ({
+        name: p.person_name as string,
+        headcount: p.headcount,
+        rates: toRateRecord(p),
+        note: p.note ?? null,
+        role: (p.sub_team === "주재원" ? "주재원" : "법인") as PersonRole,
+      })),
+      currentRate: orgRates.length > 0 ? toRateRecord(orgRates[orgRates.length - 1]) : null,
+      rateHistory,
+      personHistory,
+      draft: (draft?.payload as any) ?? null,
+      draftSavedAt: draft?.updated_at ?? null,
+    };
+  }
 
-  const hasAnyValue =
-    (orgLevelRow ? Number(orgLevelRow.total) || 0 : 0) > 0 || personRows.some((p) => (Number(p.total) || 0) > 0);
-  const currentRateRow = (rateRows ?? []).filter((r) => (Number(r.total) || 0) > 0).slice(-1)[0] ?? null;
+  const orgs = leaderFirst(editableOrgs.map((o) => ({ org: { basis: o.basis }, data: buildOrg(o) }))).map((x) => x.data);
 
-  const data: SubmitOrgData = {
-    orgBasis: org.basis,
-    division: org.division,
-    requiresPersonDetail: org.requires_person_detail,
-    managerName: org.manager_name ?? null,
-    submittedThisPeriod: hasAnyValue,
-    submittedBy: orgLevelRow?.submitted_by ?? personRows[0]?.submitted_by ?? null,
-    latestSubmittedAt: deduped.reduce<string | null>((max, r) => {
-      if (!max || new Date(r.submitted_at) > new Date(max)) return r.submitted_at;
-      return max;
-    }, null),
-    rollup: computeRollup(orgLevelRow, personRows),
-    currentOrgSubmission: orgLevelRow ? toRateRecord(orgLevelRow) : null,
-    submittedHeadcount: orgLevelRow?.headcount ?? null,
-    submittedNote: orgLevelRow?.note ?? null,
-    currentPersons,
-    currentRate: currentRateRow ? toRateRecord(currentRateRow) : null,
-    rateHistory,
-    personHistory,
-    draft: (draft?.payload as any) ?? null,
-    draftSavedAt: draft?.updated_at ?? null,
+  const data: SubmitPageData = {
+    // 집계 조직은 자기가 입력하는 자리가 아니라 하위 조직 값을 모으는 자리다.
+    parent: isParent ? buildOrg(org) : null,
+    parentChildNames: isParent ? children.map((c) => c.basis) : [],
+    mirrors: mirroredOrgs.map((c) => ({
+      basis: c.basis as string,
+      source: mirrorSourceOf(c.basis) as string,
+      headcount: MIRROR_HEADCOUNT,
+    })),
+    orgs,
   };
 
   return { data, period, version };

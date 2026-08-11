@@ -32,10 +32,19 @@ export function leaderFirst<T extends { org: { basis: string } }>(items: T[]): T
   return [...items].sort((a, b) => Number(isLeaderOrg(b.org.basis)) - Number(isLeaderOrg(a.org.basis)));
 }
 
-/** 조직/팀 선택에 노출하는 순서 — 조직장 먼저, 그 다음 엑셀 표 순서. */
-export function sortForOrgPicker<T extends { org: { basis: string } }>(items: T[]): T[] {
+/** 구분(division) 표시 순서 — 위에서부터 본사 → 주재원 → 법인. */
+export const DIVISION_ORDER = ["본사", "주재원", "법인"];
+
+export function divisionRank(division: string): number {
+  const i = DIVISION_ORDER.indexOf(division);
+  return i === -1 ? DIVISION_ORDER.length : i;
+}
+
+/** 조직/팀 선택에 노출하는 순서 — 구분(본사→주재원→법인) 먼저, 그 안에서 조직장 먼저, 그 다음 엑셀 표 순서. */
+export function sortForOrgPicker<T extends { org: { basis: string; division: string } }>(items: T[]): T[] {
   return [...items].sort(
     (a, b) =>
+      divisionRank(a.org.division) - divisionRank(b.org.division) ||
       Number(isLeaderOrg(b.org.basis)) - Number(isLeaderOrg(a.org.basis)) ||
       orgOrderIndex(a.org.basis) - orgOrderIndex(b.org.basis)
   );
