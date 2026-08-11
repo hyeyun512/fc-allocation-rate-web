@@ -23,6 +23,7 @@ import {
 } from "@/lib/targets";
 import { sortQuarters } from "@/lib/quarter";
 import { readPasteGrid, shouldHandlePaste } from "@/lib/paste";
+import { SubmitLang, submitStrings, targetLabel } from "@/lib/submitLang";
 
 export type PersonRole = "법인" | "주재원";
 
@@ -270,20 +271,25 @@ export function toPersonPayload(list: PersonEditRow[]) {
     }));
 }
 
-export function RateTableHead({ withClear, withNote }: { withClear?: boolean; withNote?: boolean } = {}) {
+export function RateTableHead({
+  withClear,
+  withNote,
+  lang = "ko",
+}: { withClear?: boolean; withNote?: boolean; lang?: SubmitLang } = {}) {
+  const s = submitStrings(lang);
   return (
     <thead>
       <tr>
         {withClear && <th></th>}
         <th></th>
-        <th>인원수</th>
+        <th>{s.colHeadcount}</th>
         {TARGETS.map((t) => (
           <th key={t.key} className={t.group === "humax" ? "grp-humax" : "grp-affiliate"}>
-            {t.label}
+            {targetLabel(t, lang)}
           </th>
         ))}
         <th>TOTAL</th>
-        {withNote && <th>코멘트</th>}
+        {withNote && <th>{s.colComment}</th>}
       </tr>
     </thead>
   );
@@ -302,6 +308,7 @@ export function ReadOnlyRateRow({
   onNoteCommit,
   noteSaveState,
   noteDirty,
+  lang = "ko",
 }: {
   label: string;
   rec: Record<TargetKey, number>;
@@ -317,13 +324,15 @@ export function ReadOnlyRateRow({
   noteSaveState?: "idle" | "saving" | "saved" | "error";
   /** 저장하지 않은 변경이 있으면 버튼을 짙게 칠해 눈에 띄게 한다. */
   noteDirty?: boolean;
+  lang?: SubmitLang;
 }) {
+  const s = submitStrings(lang);
   const total = recTotal(rec);
   return (
     <tr className="ro-row">
       {showClearSlot && <td></td>}
       <td>{label}</td>
-      <td>{headcount != null ? `${headcount}명` : "-"}</td>
+      <td>{headcount != null ? s.headcountValue(headcount) : "-"}</td>
       {TARGETS.map((t) => (
         <td key={t.key}>{((rec[t.key] || 0) * 100).toFixed(1)}%</td>
       ))}
@@ -343,7 +352,7 @@ export function ReadOnlyRateRow({
                     onNoteCommit?.();
                   }
                 }}
-                placeholder="코멘트"
+                placeholder={s.colComment}
                 // 숫자 칸은 오른쪽 정렬이 기본이지만 코멘트는 글이라 왼쪽부터 읽는다.
                 style={{ width: 120, textAlign: "left" }}
               />
@@ -383,6 +392,7 @@ export function EditableRateRow({
   withNote,
   noteValue,
   onNoteChange,
+  lang = "ko",
 }: {
   label: string;
   rates: RateMap;
@@ -395,14 +405,16 @@ export function EditableRateRow({
   withNote?: boolean;
   noteValue?: string;
   onNoteChange?: (value: string) => void;
+  lang?: SubmitLang;
 }) {
+  const s = submitStrings(lang);
   const total = totalOf(rates);
   const ok = Math.abs(total - 1) < 0.005 || total === 0;
   return (
     <tr>
       {onClear && (
         <td>
-          <button type="button" className="row-clear-btn" title="입력값 지우기" onClick={onClear}>
+          <button type="button" className="row-clear-btn" title={s.clearRow} onClick={onClear}>
             ✕
           </button>
         </td>
@@ -418,7 +430,7 @@ export function EditableRateRow({
             style={{ width: 48 }}
           />
         ) : headcount != null ? (
-          `${headcount}명`
+          s.headcountValue(headcount)
         ) : (
           "-"
         )}
@@ -455,7 +467,7 @@ export function EditableRateRow({
             <input
               value={noteValue ?? ""}
               onChange={(e) => onNoteChange?.(e.target.value)}
-              placeholder="코멘트"
+              placeholder={s.colComment}
               // 숫자 칸은 오른쪽 정렬이 기본이지만 코멘트는 글이라 왼쪽부터 읽는다.
               style={{ width: 120, textAlign: "left" }}
             />
@@ -486,11 +498,14 @@ export function PersonEditTable({
   persons,
   setPersons,
   hasExpat,
+  lang = "ko",
 }: {
   persons: PersonEditRow[];
   setPersons: (updater: (list: PersonEditRow[]) => PersonEditRow[]) => void;
   hasExpat: boolean;
+  lang?: SubmitLang;
 }) {
+  const s = submitStrings(lang);
   function updatePerson(key: string, patch: Partial<PersonEditRow>) {
     setPersons((list) => list.map((p) => (p.key === key ? { ...p, ...patch } : p)));
   }
@@ -534,15 +549,15 @@ export function PersonEditTable({
             <tr>
               <th></th>
               {/* 개인별 입력은 한 행 = 한 명이라 인원수 열을 두지 않는다 (이름+배부율이 있으면 1명으로 센다). */}
-              <th>이름</th>
-              {hasExpat && <th>구분</th>}
+              <th>{s.colName}</th>
+              {hasExpat && <th>{s.colRole}</th>}
               {TARGETS.map((t) => (
                 <th key={t.key} className={t.group === "humax" ? "grp-humax" : "grp-affiliate"}>
-                  {t.label}
+                  {targetLabel(t, lang)}
                 </th>
               ))}
               <th>TOTAL</th>
-              <th>코멘트</th>
+              <th>{s.colComment}</th>
             </tr>
           </thead>
           <tbody>
@@ -552,7 +567,7 @@ export function PersonEditTable({
               return (
                 <tr key={p.key}>
                   <td>
-                    <button type="button" className="row-clear-btn" title="행 삭제" onClick={() => removePerson(p.key)}>
+                    <button type="button" className="row-clear-btn" title={s.deleteRow} onClick={() => removePerson(p.key)}>
                       ✕
                     </button>
                   </td>
@@ -560,7 +575,7 @@ export function PersonEditTable({
                     <input
                       value={p.name}
                       onChange={(e) => updatePerson(p.key, { name: e.target.value })}
-                      placeholder="이름"
+                      placeholder={s.colName}
                       style={{ width: 100, textAlign: "center" }}
                       onPaste={(e) => {
                         if (!shouldHandlePaste(e.clipboardData)) return;
@@ -572,8 +587,8 @@ export function PersonEditTable({
                   {hasExpat && (
                     <td>
                       <select value={p.role} onChange={(e) => updatePerson(p.key, { role: e.target.value as PersonRole })}>
-                        <option value="법인">법인</option>
-                        <option value="주재원">주재원</option>
+                        <option value="법인">{s.roleLegal}</option>
+                        <option value="주재원">{s.roleExpat}</option>
                       </select>
                     </td>
                   )}
@@ -603,7 +618,7 @@ export function PersonEditTable({
                       <input
                         value={p.note}
                         onChange={(e) => updatePerson(p.key, { note: e.target.value })}
-                        placeholder="코멘트"
+                        placeholder={s.colComment}
                         // 숫자 칸은 오른쪽 정렬이 기본이지만 코멘트는 글이라 왼쪽부터 읽는다.
                         style={{ width: 120, textAlign: "left" }}
                         onPaste={(e) => {
@@ -622,7 +637,7 @@ export function PersonEditTable({
       </div>
       <div className="person-row-actions">
         <button className="btn btn-secondary btn-sm" onClick={addPerson}>
-          + {hasExpat ? "인원" : "팀원"} 추가
+          {s.addPerson(hasExpat)}
         </button>
       </div>
     </>
@@ -630,28 +645,37 @@ export function PersonEditTable({
 }
 
 /** 개인별 표 (읽기 전용) — 확정/제출이 끝나 잠긴 분기. */
-export function PersonReadOnlyTable({ persons, hasExpat }: { persons: PersonEditRow[]; hasExpat: boolean }) {
+export function PersonReadOnlyTable({
+  persons,
+  hasExpat,
+  lang = "ko",
+}: {
+  persons: PersonEditRow[];
+  hasExpat: boolean;
+  lang?: SubmitLang;
+}) {
+  const s = submitStrings(lang);
   return (
     <div className="tbl-scroll" style={{ marginBottom: 12 }}>
       <table className="rate-tbl">
         <thead>
           <tr>
-            <th>이름</th>
-            {hasExpat && <th>구분</th>}
+            <th>{s.colName}</th>
+            {hasExpat && <th>{s.colRole}</th>}
             {TARGETS.map((t) => (
               <th key={t.key} className={t.group === "humax" ? "grp-humax" : "grp-affiliate"}>
-                {t.label}
+                {targetLabel(t, lang)}
               </th>
             ))}
             <th>TOTAL</th>
-            <th>코멘트</th>
+            <th>{s.colComment}</th>
           </tr>
         </thead>
         <tbody>
           {persons.map((p) => (
             <tr key={p.key} className="ro-row">
               <td>{p.name}</td>
-              {hasExpat && <td>{p.role}</td>}
+              {hasExpat && <td>{p.role === "주재원" ? s.roleExpat : s.roleLegal}</td>}
               {TARGETS.map((t) => (
                 <td key={t.key}>{(Number(p.rates[t.key] || 0) * 100).toFixed(1)}%</td>
               ))}
@@ -678,11 +702,14 @@ export function PersonHistoryBlocks({
   rows,
   quarterOrder,
   hasExpat,
+  lang = "ko",
 }: {
   rows: PersonHistoryRow[];
   quarterOrder: string[];
   hasExpat: boolean;
+  lang?: SubmitLang;
 }) {
+  const s = submitStrings(lang);
   const byQuarter = new Map<string, PersonHistoryRow[]>();
   rows.forEach((p) => {
     const list = byQuarter.get(p.period) ?? [];
@@ -695,28 +722,28 @@ export function PersonHistoryBlocks({
       {quarters.map((q) => (
         <div key={q}>
           <div className="field-hint" style={{ fontWeight: 700, color: "#1a202c", margin: "0 0 8px" }}>
-            {q} (확정됨)
+            {s.quarterConfirmed(q)}
           </div>
           <div className="tbl-scroll" style={{ marginBottom: 12 }}>
             <table className="rate-tbl">
               <thead>
                 <tr>
-                  <th>이름</th>
-                  {hasExpat && <th>구분</th>}
+                  <th>{s.colName}</th>
+                  {hasExpat && <th>{s.colRole}</th>}
                   {TARGETS.map((t) => (
                     <th key={t.key} className={t.group === "humax" ? "grp-humax" : "grp-affiliate"}>
-                      {t.label}
+                      {targetLabel(t, lang)}
                     </th>
                   ))}
                   <th>TOTAL</th>
-                  <th>코멘트</th>
+                  <th>{s.colComment}</th>
                 </tr>
               </thead>
               <tbody>
                 {byQuarter.get(q)!.map((p) => (
                   <tr key={`${p.name}-${p.role}`} className="ro-row">
                     <td>{p.name}</td>
-                    {hasExpat && <td>{p.role}</td>}
+                    {hasExpat && <td>{p.role === "주재원" ? s.roleExpat : s.roleLegal}</td>}
                     {TARGETS.map((t) => (
                       <td key={t.key}>{((p.rates[t.key] || 0) * 100).toFixed(1)}%</td>
                     ))}

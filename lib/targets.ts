@@ -20,23 +20,25 @@ export type TargetKey =
 export interface TargetDef {
   key: TargetKey;
   label: string;
+  /** 담당자가 현지인이라 영어로 나가는 조사 링크에서 쓰는 표기 (lib/submitLang.ts 참고). */
+  labelEn: string;
   group: "humax" | "affiliate";
 }
 
 export const TARGETS: TargetDef[] = [
-  { key: "stb", label: "STB", group: "humax" },
-  { key: "mobility", label: "Mobility", group: "humax" },
-  { key: "evcs_domestic", label: "EVCS(국내)", group: "humax" },
-  { key: "evcs_overseas", label: "EVCS(해외)", group: "humax" },
-  { key: "humax_common", label: "Humax(공통)", group: "humax" },
-  { key: "building", label: "건물", group: "humax" },
-  { key: "h_mobility", label: "H.Mobility", group: "affiliate" },
-  { key: "h_ev", label: "H.EV", group: "affiliate" },
-  { key: "hiparking", label: "하이파킹", group: "affiliate" },
-  { key: "peoplecar", label: "피플카", group: "affiliate" },
-  { key: "winercom", label: "위너콤", group: "affiliate" },
-  { key: "holdings", label: "홀딩스", group: "affiliate" },
-  { key: "h_networks", label: "H.Networks", group: "affiliate" },
+  { key: "stb", label: "STB", labelEn: "STB", group: "humax" },
+  { key: "mobility", label: "Mobility", labelEn: "Mobility", group: "humax" },
+  { key: "evcs_domestic", label: "EVCS(국내)", labelEn: "EVCS (Domestic)", group: "humax" },
+  { key: "evcs_overseas", label: "EVCS(해외)", labelEn: "EVCS (Overseas)", group: "humax" },
+  { key: "humax_common", label: "Humax(공통)", labelEn: "Humax (Common)", group: "humax" },
+  { key: "building", label: "건물", labelEn: "Building", group: "humax" },
+  { key: "h_mobility", label: "H.Mobility", labelEn: "H.Mobility", group: "affiliate" },
+  { key: "h_ev", label: "H.EV", labelEn: "H.EV", group: "affiliate" },
+  { key: "hiparking", label: "하이파킹", labelEn: "Hiparking", group: "affiliate" },
+  { key: "peoplecar", label: "피플카", labelEn: "Peoplecar", group: "affiliate" },
+  { key: "winercom", label: "위너콤", labelEn: "Winercom", group: "affiliate" },
+  { key: "holdings", label: "홀딩스", labelEn: "Holdings", group: "affiliate" },
+  { key: "h_networks", label: "H.Networks", labelEn: "H.Networks", group: "affiliate" },
 ];
 
 export function sumTargets(row: Partial<Record<TargetKey, number | null | undefined>>): number {

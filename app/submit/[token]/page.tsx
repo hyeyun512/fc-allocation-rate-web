@@ -3,6 +3,8 @@ import { TARGETS, TargetKey } from "@/lib/targets";
 import { latestByPerson, latestByPersonAndPeriod, latestOrgByPeriod, computeRollup, SubmissionRow } from "@/lib/rollup";
 import { mirrorSourceOf, MIRROR_HEADCOUNT } from "@/lib/autoAggregate";
 import { leaderFirst } from "@/lib/orgOrder";
+import { submitLangOf, orgLabelFor, noteFor, submitterFor } from "@/lib/englishOrgs";
+import { submitStrings } from "@/lib/submitLang";
 import type { CurrentPerson, PersonHistoryEntry, RateHistoryEntry, PersonRole } from "@/components/RateParts";
 import SubmitForm, { SubmitOrgData, SubmitPageData } from "./SubmitForm";
 
@@ -32,6 +34,10 @@ async function getData(token: string) {
     .maybeSingle();
 
   if (!org) return null;
+
+  // 담당자가 현지인이라 화면 전체가 영어여야 하는 조직(HUK 등). 조직명·과거 코멘트를 영어로 바꾸는 일은
+  // 여기(서버)에서 끝내고, 화면에는 lang만 넘긴다 — 다른 조직 이름이 링크 번들에 섞이지 않게 하기 위함이다.
+  const lang = submitLangOf(org.basis);
 
   const { data: settings } = await supabase.from("allocation_settings").select("*").eq("id", 1).single();
   const period = settings?.current_period ?? "이번 분기";
@@ -81,7 +87,7 @@ async function getData(token: string) {
       rates: toRateRecord(r),
       total: Number(r.total) || 0,
       headcount: orgLevelByPeriod.get(r.quarter as string)?.headcount ?? null,
-      note: orgLevelByPeriod.get(r.quarter as string)?.note ?? null,
+      note: noteFor(orgLevelByPeriod.get(r.quarter as string)?.note, lang),
     }));
 
     const personHistory: PersonHistoryEntry[] = latestByPersonAndPeriod(orgSubs)
@@ -93,7 +99,7 @@ async function getData(token: string) {
         rates: toRateRecord(p),
         total: Number(p.total) || 0,
         submittedAt: p.submitted_at,
-        note: p.note ?? null,
+        note: noteFor(p.note, lang),
         role: (p.sub_team === "주재원" ? "주재원" : "법인") as PersonRole,
       }));
 
@@ -103,12 +109,12 @@ async function getData(token: string) {
 
     return {
       orgId: o.id,
-      orgBasis: o.basis,
+      orgBasis: orgLabelFor(o.basis, lang),
       division: o.division,
       requiresPersonDetail: o.requires_person_detail,
       managerName: o.manager_name ?? null,
       submittedThisPeriod: hasAnyValue,
-      submittedBy: orgLevelRow?.submitted_by ?? personRows[0]?.submitted_by ?? null,
+      submittedBy: submitterFor(orgLevelRow?.submitted_by ?? personRows[0]?.submitted_by, lang),
       latestSubmittedAt: deduped.reduce<string | null>((max, r) => {
         if (!max || new Date(r.submitted_at) > new Date(max)) return r.submitted_at;
         return max;
@@ -116,12 +122,12 @@ async function getData(token: string) {
       rollup: computeRollup(orgLevelRow, personRows),
       currentOrgSubmission: orgLevelRow ? toRateRecord(orgLevelRow) : null,
       submittedHeadcount: orgLevelRow?.headcount ?? null,
-      submittedNote: orgLevelRow?.note ?? null,
+      submittedNote: noteFor(orgLevelRow?.note, lang),
       currentPersons: personRows.map<CurrentPerson>((p) => ({
         name: p.person_name as string,
         headcount: p.headcount,
         rates: toRateRecord(p),
-        note: p.note ?? null,
+        note: noteFor(p.note, lang),
         role: (p.sub_team === "주재원" ? "주재원" : "법인") as PersonRole,
       })),
       currentRate: orgRates.length > 0 ? toRateRecord(orgRates[orgRates.length - 1]) : null,
@@ -137,16 +143,27 @@ async function getData(token: string) {
   const data: SubmitPageData = {
     // 집계 조직은 자기가 입력하는 자리가 아니라 하위 조직 값을 모으는 자리다.
     parent: isParent ? buildOrg(org) : null,
-    parentChildNames: isParent ? children.map((c) => c.basis) : [],
+    parentChildNames: isParent ? children.map((c) => orgLabelFor(c.basis, lang)) : [],
     mirrors: mirroredOrgs.map((c) => ({
-      basis: c.basis as string,
-      source: mirrorSourceOf(c.basis) as string,
+      basis: orgLabelFor(c.basis, lang),
+      source: orgLabelFor(mirrorSourceOf(c.basis) as string, lang),
       headcount: MIRROR_HEADCOUNT,
     })),
     orgs,
   };
 
-  return { data, period, version };
+  return { data, period, version, lang };
+}
+
+/** 탭 제목도 링크 언어에 맞춘다 — 루트 레이아웃의 제목은 한국어로 고정돼 있다. */
+export async function generateMetadata({ params }: { params: { token: string } }) {
+  const { data: org } = await getSupabaseAdmin()
+    .from("allocation_orgs")
+    .select("basis")
+    .eq("access_token", params.token)
+    .maybeSingle();
+  const s = submitStrings(org ? submitLangOf(org.basis) : "ko");
+  return { title: s.pageTitle, description: s.pageDescription };
 }
 
 export default async function SubmitPage({ params }: { params: { token: string } }) {
@@ -165,5 +182,13 @@ export default async function SubmitPage({ params }: { params: { token: string }
     );
   }
 
-  return <SubmitForm token={params.token} period={result.period} version={result.version} data={result.data} />;
+  return (
+    <SubmitForm
+      token={params.token}
+      period={result.period}
+      version={result.version}
+      data={result.data}
+      lang={result.lang}
+    />
+  );
 }
