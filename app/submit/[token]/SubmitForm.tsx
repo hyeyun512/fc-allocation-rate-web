@@ -587,7 +587,8 @@ export default function SubmitForm({
   }, [lang]);
 
   return (
-    <div className="page">
+    // page-form: 배부대상 13개가 들어가도록 폭을 넓게, submit-tight: 표를 압축해 가로 스크롤을 없앤다.
+    <div className="page page-form submit-tight">
       {isParent && <ParentSummary data={data} period={period} version={version} lang={lang} />}
 
       {isParent && (

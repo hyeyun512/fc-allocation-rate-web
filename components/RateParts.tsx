@@ -287,19 +287,20 @@ export function RateTableHead({
   const s = submitStrings(lang);
   return (
     <thead>
+      {/* 열 이름(col-*)은 좁은 화면용 압축 표기가 열 너비를 잡는 데 쓴다 (globals.css의 .submit-tight). */}
       <tr>
-        {withClear && <th></th>}
-        <th></th>
-        <th>{s.colHeadcount}</th>
+        {withClear && <th className="col-clear"></th>}
+        <th className="col-label"></th>
+        <th className="col-hc">{s.colHeadcount}</th>
         {TARGETS.map((t) => (
           <th key={t.key} className={t.group === "humax" ? "grp-humax" : "grp-affiliate"}>
             {targetLabel(t, lang)}
           </th>
         ))}
-        <th>TOTAL</th>
-        {withNote && <th>{s.colComment}</th>}
+        <th className="col-total">TOTAL</th>
+        {withNote && <th className="col-note">{s.colComment}</th>}
         {/* 링크가 영어로 나가는 조직에서만 붙는 열 — 관리자 화면에만 보인다. */}
-        {withNoteEn && <th>코멘트(영문)</th>}
+        {withNoteEn && <th className="col-note">코멘트(영문)</th>}
       </tr>
     </thead>
   );
@@ -342,8 +343,6 @@ function EditableNoteCell({
           }
         }}
         placeholder={placeholder}
-        // 숫자 칸은 오른쪽 정렬이 기본이지만 코멘트는 글이라 왼쪽부터 읽는다.
-        style={{ width: 120, textAlign: "left" }}
       />
       {/* 커서를 옮겨야 저장되는 게 불편해 눌러서 저장하는 버튼을 둔다. */}
       <button
@@ -507,7 +506,7 @@ export function EditableRateRow({
             min="0"
             value={headcountValue ?? ""}
             onChange={(e) => onHeadcountChange?.(e.target.value)}
-            style={{ width: 48 }}
+            className="hc-field"
           />
         ) : headcount != null ? (
           s.headcountValue(headcount)
@@ -548,8 +547,6 @@ export function EditableRateRow({
               value={noteValue ?? ""}
               onChange={(e) => onNoteChange?.(e.target.value)}
               placeholder={s.colComment}
-              // 숫자 칸은 오른쪽 정렬이 기본이지만 코멘트는 글이라 왼쪽부터 읽는다.
-              style={{ width: 120, textAlign: "left" }}
             />
           </div>
         </td>
@@ -561,7 +558,6 @@ export function EditableRateRow({
               value={noteEnValue ?? ""}
               onChange={(e) => onNoteEnChange?.(e.target.value)}
               placeholder="영문"
-              style={{ width: 120, textAlign: "left" }}
             />
           </div>
         </td>
@@ -642,18 +638,18 @@ export function PersonEditTable({
         <table className="rate-tbl">
           <thead>
             <tr>
-              <th></th>
+              <th className="col-clear"></th>
               {/* 개인별 입력은 한 행 = 한 명이라 인원수 열을 두지 않는다 (이름+배부율이 있으면 1명으로 센다). */}
-              <th>{s.colName}</th>
-              {hasExpat && <th>{s.colRole}</th>}
+              <th className="col-name">{s.colName}</th>
+              {hasExpat && <th className="col-role">{s.colRole}</th>}
               {TARGETS.map((t) => (
                 <th key={t.key} className={t.group === "humax" ? "grp-humax" : "grp-affiliate"}>
                   {targetLabel(t, lang)}
                 </th>
               ))}
-              <th>TOTAL</th>
-              <th>{s.colComment}</th>
-              {withNoteEn && <th>코멘트(영문)</th>}
+              <th className="col-total">TOTAL</th>
+              <th className="col-note">{s.colComment}</th>
+              {withNoteEn && <th className="col-note">코멘트(영문)</th>}
             </tr>
           </thead>
           <tbody>
@@ -672,7 +668,7 @@ export function PersonEditTable({
                       value={p.name}
                       onChange={(e) => updatePerson(p.key, { name: e.target.value })}
                       placeholder={s.colName}
-                      style={{ width: 100, textAlign: "center" }}
+                      className="name-field"
                       onPaste={(e) => {
                         if (!shouldHandlePaste(e.clipboardData)) return;
                         e.preventDefault();
@@ -715,8 +711,6 @@ export function PersonEditTable({
                         value={p.note}
                         onChange={(e) => updatePerson(p.key, { note: e.target.value })}
                         placeholder={s.colComment}
-                        // 숫자 칸은 오른쪽 정렬이 기본이지만 코멘트는 글이라 왼쪽부터 읽는다.
-                        style={{ width: 120, textAlign: "left" }}
                         onPaste={(e) => {
                           if (!shouldHandlePaste(e.clipboardData)) return;
                           e.preventDefault();
@@ -732,7 +726,6 @@ export function PersonEditTable({
                           value={p.noteEn ?? ""}
                           onChange={(e) => updatePerson(p.key, { noteEn: e.target.value })}
                           placeholder="영문"
-                          style={{ width: 120, textAlign: "left" }}
                         />
                       </div>
                     </td>
@@ -768,15 +761,15 @@ export function PersonReadOnlyTable({
       <table className="rate-tbl">
         <thead>
           <tr>
-            <th>{s.colName}</th>
-            {hasExpat && <th>{s.colRole}</th>}
+            <th className="col-name">{s.colName}</th>
+            {hasExpat && <th className="col-role">{s.colRole}</th>}
             {TARGETS.map((t) => (
               <th key={t.key} className={t.group === "humax" ? "grp-humax" : "grp-affiliate"}>
                 {targetLabel(t, lang)}
               </th>
             ))}
-            <th>TOTAL</th>
-            <th>{s.colComment}</th>
+            <th className="col-total">TOTAL</th>
+            <th className="col-note">{s.colComment}</th>
           </tr>
         </thead>
         <tbody>
@@ -836,15 +829,15 @@ export function PersonHistoryBlocks({
             <table className="rate-tbl">
               <thead>
                 <tr>
-                  <th>{s.colName}</th>
-                  {hasExpat && <th>{s.colRole}</th>}
+                  <th className="col-name">{s.colName}</th>
+                  {hasExpat && <th className="col-role">{s.colRole}</th>}
                   {TARGETS.map((t) => (
                     <th key={t.key} className={t.group === "humax" ? "grp-humax" : "grp-affiliate"}>
                       {targetLabel(t, lang)}
                     </th>
                   ))}
-                  <th>TOTAL</th>
-                  <th>{s.colComment}</th>
+                  <th className="col-total">TOTAL</th>
+                  <th className="col-note">{s.colComment}</th>
                 </tr>
               </thead>
               <tbody>
