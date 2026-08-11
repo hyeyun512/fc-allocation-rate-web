@@ -8,34 +8,6 @@ a{color:inherit}
 /* 조사 링크 — 배부대상이 13개라 960px 안에서는 표가 화면 밖으로 밀린다. 폭을 넓게 잡는다. */
 .page-form{max-width:1280px}
 
-/* ================= 조사 링크 표 — 가로 스크롤 없이 한눈에 =================
-   기본 표 크기로는 13개 배부대상이 화면을 넘겨서, 값을 보려면 표를 옆으로 밀어야 했다.
-   링크 화면에서만 머리글을 두 줄로 접고 글자·여백·입력칸을 줄여 한 화면에 담는다.
-   (관리자 화면은 폭이 넓고 열도 더 많아 그대로 둔다.)
-   창을 아주 좁게 쓰는 경우를 위해 가로 스크롤(.tbl-scroll)은 그대로 남겨둔다. */
-/* 표를 화면 폭에 맞춰 고정한다(table-layout:fixed) — 열이 몇 개든 표가 화면을 넘지 않는다.
-   배부대상 13개 열은 아래에서 폭을 지정하지 않아, 남은 폭을 똑같이 나눠 갖는다. */
-.submit-tight .rate-tbl{table-layout:fixed;width:100%}
-.submit-tight .rate-tbl th{padding:5px 2px;font-size:10.5px;line-height:1.25;white-space:normal;overflow-wrap:anywhere}
-.submit-tight .rate-tbl td{padding:4px 2px;font-size:11.5px}
-/* 분기 이름 칸은 "2026-Q3 (입력중)"처럼 길어 한 줄로 두면 열을 밀어낸다 — 두 줄로 접는다. */
-.submit-tight .rate-tbl td:first-child{font-size:11.5px;padding-right:6px;white-space:normal;line-height:1.3}
-.submit-tight .rate-tbl th.col-clear{width:22px}
-.submit-tight .rate-tbl th.col-label{width:92px}
-.submit-tight .rate-tbl th.col-hc{width:42px}
-.submit-tight .rate-tbl th.col-name{width:76px}
-.submit-tight .rate-tbl th.col-role{width:58px}
-.submit-tight .rate-tbl th.col-total{width:46px}
-.submit-tight .rate-tbl th.col-note{width:92px}
-/* 칸 너비가 고정이므로 입력칸은 남은 자리를 채우게 둔다 (고정 px면 칸 밖으로 삐져나온다). */
-.submit-tight .rate-tbl input{width:100%;min-width:0;font-size:11px;padding:4px 3px}
-.submit-tight .pct-input{display:flex;align-items:center;gap:1px}
-.submit-tight .pct-input span{font-size:9.5px;flex:none}
-.submit-tight .comment-cell{display:flex;width:100%}
-.submit-tight .comment-cell input{flex:1 1 auto;width:auto;font-size:11px;padding:4px 5px}
-.submit-tight .note-save-btn{width:18px;height:18px;font-size:11px}
-.submit-tight .row-clear-btn{width:17px;height:17px;line-height:15px;font-size:10px}
-
 .topbar{background:#fff;border-bottom:0.5px solid #e2e8f0;padding:14px 20px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px}
 .topbar-title{font-size:16px;font-weight:700;color:#1a202c}
 .tag{background:#eff6ff;color:#2563eb;font-size:12px;padding:3px 10px;border-radius:20px;font-weight:600;border:0.5px solid #bfdbfe;white-space:nowrap}
@@ -325,3 +297,34 @@ footer{text-align:center;padding:22px;color:#94a3b8;font-size:11.5px}
 @media (max-width:720px){
   .av-stats{grid-template-columns:repeat(2,minmax(0,1fr))}
 }
+
+/* ================= 조사 링크 표 — 가로 스크롤 없이 한눈에 =================
+   기본 표 크기로는 배부대상 13개가 화면을 넘겨서, 값을 보려면 표를 옆으로 밀어야 했다.
+   링크 화면(.submit-tight)에서만 표를 화면 폭에 맞춰 고정하고 글자·여백을 줄여 한눈에 담는다.
+   관리자 화면은 폭이 넓고 열도 더 많아 그대로 둔다.
+
+   이 묶음은 파일 맨 끝에 둔다 — 위의 기본 표 규칙(.rate-tbl input 등)과 우선순위가 같아서,
+   앞에 두면 뒤에 오는 기본 규칙에 덮인다(입력칸이 고정 폭으로 남아 칸 밖으로 삐져나온다). */
+.submit-tight .rate-tbl{table-layout:fixed;width:100%}
+.submit-tight .rate-tbl th{padding:5px 2px;font-size:10.5px;line-height:1.25;white-space:normal;overflow-wrap:anywhere}
+.submit-tight .rate-tbl td{padding:4px 2px;font-size:11.5px}
+/* 분기 이름 칸은 "2026-Q3 (입력중)"처럼 길어 한 줄로 두면 열을 밀어낸다 — 두 줄로 접는다. */
+.submit-tight .rate-tbl td:first-child{font-size:11.5px;padding-right:6px;white-space:normal;line-height:1.3}
+/* 폭을 정해두는 열은 이것뿐 — 배부대상 13개는 남은 폭을 똑같이 나눠 갖는다. */
+.submit-tight .rate-tbl th.col-clear{width:22px}
+.submit-tight .rate-tbl th.col-label{width:92px}
+.submit-tight .rate-tbl th.col-hc{width:42px}
+.submit-tight .rate-tbl th.col-name{width:76px}
+.submit-tight .rate-tbl th.col-role{width:58px}
+.submit-tight .rate-tbl th.col-total{width:46px}
+.submit-tight .rate-tbl th.col-note{width:92px}
+/* 칸 너비가 고정이므로 입력칸은 남은 자리를 채우게 둔다 (고정 px면 칸 밖으로 삐져나온다). */
+.submit-tight .rate-tbl input,
+.submit-tight .rate-tbl input.hc-field,
+.submit-tight .rate-tbl input.name-field{width:100%;min-width:0;font-size:11px;padding:4px 3px}
+.submit-tight .pct-input{display:flex;align-items:center;gap:1px}
+.submit-tight .pct-input span{font-size:9.5px;flex:none}
+.submit-tight .comment-cell{display:flex;width:100%}
+.submit-tight .comment-cell input{flex:1 1 auto;width:auto;font-size:11px;padding:4px 5px}
+.submit-tight .note-save-btn{width:18px;height:18px;font-size:11px}
+.submit-tight .row-clear-btn{width:17px;height:17px;line-height:15px;font-size:10px}
