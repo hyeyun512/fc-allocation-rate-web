@@ -53,7 +53,16 @@ export async function POST(req: NextRequest) {
     // 배부율 표에 남는 값은 항상 합계 100%여야 한다. 입력 단계에서 ±0.5%p까지 허용한 오차가
     // 여기까지 흘러오므로, 저장 직전에 비율을 유지한 채 100%로 맞춘다.
     // (제출 이력 allocation_submissions에는 입력한 값을 그대로 남긴다 — 무엇을 적었는지 추적해야 한다.)
+    const enteredTotal = sumTargets(parsed);
     const normalized = normalizeTargets(parsed);
+
+    // 화면 검증(totalIsValid)이 ±0.5%p까지만 통과시키므로 그보다 큰 편차는 정상 경로로는 오지 않는다.
+    // 그런데도 들어왔다면 입력 실수일 가능성이 크다 — 100%로 맞춰 저장하되 흔적은 로그에 남긴다.
+    if (Math.abs(enteredTotal - 1) > 0.005) {
+      console.warn(
+        `[allocation] 합계 이상: ${period} ${org.basis} 입력 ${(enteredTotal * 100).toFixed(4)}% -> 100%로 보정해 저장`
+      );
+    }
     const { error: upsertError } = await supabase.from("allocation_rate").upsert(
       {
         quarter: period,
