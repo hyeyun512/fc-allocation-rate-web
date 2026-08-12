@@ -9,7 +9,7 @@
  * 전부 순수 함수라 /api/admin/selftest에서 그대로 검증한다.
  */
 
-import { prettyQuarterLabel } from "./quarter";
+import { prettyQuarterLabel, parseQuarter } from "./quarter";
 
 export type MailLang = "ko" | "en";
 
@@ -96,26 +96,33 @@ export function maskToken(token: string): string {
 
 export const MAIL_PLACEHOLDERS: { key: string; desc: string }[] = [
   { key: "{분기}", desc: "2026-3Q" },
+  { key: "{분기숫자}", desc: "3 (‘3분기’처럼 쓸 때)" },
+  { key: "{연도2}", desc: "26 (‘26년’처럼 쓸 때)" },
   { key: "{조직}", desc: "링크를 가진 조직 이름" },
   { key: "{담당자}", desc: "수신자 이름 (여러 명이면 함께)" },
   { key: "{링크}", desc: "조사 입력 링크 — 반드시 넣어야 합니다" },
-  { key: "{마감}", desc: "마감 안내 (비우면 그 줄이 사라짐)" },
+  { key: "{마감}", desc: "제출 기한 (분기가 바뀌면 ‘재설정 필요’)" },
   { key: "{범위안내}", desc: "이 링크가 어디까지 여는지 자동 안내" },
 ];
 
-export const DEFAULT_MAIL_SUBJECT = "[리소스배부율] {분기} {조직} 조사 입력 요청";
+/** 제출 기한을 아직 이번 분기 것으로 정하지 않았을 때 본문에 대신 들어가는 말. */
+export const DEADLINE_UNSET = "재설정 필요";
+
+/* 기본 문구는 실제로 쓰던 협조요청 메일에서 가져왔다.
+   분기와 제출 기한만 자리표시자로 바꿔, 분기가 넘어가면 저절로 따라가고 기한은 다시 묻게 했다. */
+export const DEFAULT_MAIL_SUBJECT = "[협조요청] 부서별 투입리소스 작성 ({연도2}년 {분기숫자}Q)";
 
 export const DEFAULT_MAIL_BODY = [
-  "안녕하세요, {담당자}.",
+  "안녕하세요,",
+  "경영지원실 주혜윤입니다.",
   "",
-  "{분기} 리소스배부율 조사 입력을 요청드립니다.",
-  "아래 링크에서 {조직}의 배부율을 입력해 주세요.",
+  "고정비 실적 보고를 위해 부서별 리소스 현황 작성 요청 드립니다.",
+  "아래 링크 접속하시어 {분기숫자}분기 리소스 배부율 작성 후 ‘제출하기’ 버튼 클릭하시면 완료됩니다.",
   "",
   "{링크}",
   "",
-  "· 입력 마감: {마감}",
+  "· 제출 기한: {마감}",
   "{범위안내}",
-  "· 다른 분께 전달하지 말아 주세요. 문의사항은 이 메일에 회신해 주세요.",
   "",
   "감사합니다.",
 ].join("\n");
@@ -203,12 +210,17 @@ export function buildLinkMail(input: LinkMailInput): LinkMail {
     };
   }
 
+  const parsed = parseQuarter(input.period);
   const vars: Record<string, string> = {
     "{분기}": q,
+    "{분기숫자}": parsed.year ? String(parsed.q) : "",
+    "{연도2}": parsed.year ? String(parsed.year).slice(-2) : "",
     "{조직}": orgLabel,
     "{담당자}": names.map((n) => `${n}님`).join(", "),
     "{링크}": input.url,
-    "{마감}": deadline,
+    // 기한을 아직 이번 분기 것으로 정하지 않았으면 줄을 지우지 않고 눈에 띄게 남긴다 —
+    // 조용히 사라지면 기한 없는 메일이 나간 걸 아무도 모른다.
+    "{마감}": deadline || DEADLINE_UNSET,
     "{범위안내}": opensOthers
       ? `· 이 링크는 ${orgLabel}과 그 하위 조직 전체의 입력·열람 화면입니다.`
       : `· 이 링크는 ${orgLabel} 전용입니다.`,

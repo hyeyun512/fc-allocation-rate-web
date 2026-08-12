@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
-import { mailTemplateProblem } from "@/lib/linkMail";
+import { mailTemplateProblem, isValidDeadline } from "@/lib/linkMail";
 
 /**
  * 조사 링크 안내 메일의 제목·본문 문구 저장.
@@ -13,6 +13,29 @@ import { mailTemplateProblem } from "@/lib/linkMail";
 export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => null);
   const reset = body?.reset === true;
+  const supabase = getSupabaseAdmin();
+
+  // 제출 기한만 따로 저장하는 요청 (문구는 건드리지 않는다).
+  if (body?.only === "deadline") {
+    const deadline = String(body?.deadline ?? "").trim();
+    if (!isValidDeadline(deadline)) {
+      return NextResponse.json(
+        { error: "제출 기한은 40자 이내의 한 줄이어야 하고 링크를 넣을 수 없습니다." },
+        { status: 400 }
+      );
+    }
+    const period = String(body?.period ?? "").trim();
+    if (!period) return NextResponse.json({ error: "기간이 필요합니다." }, { status: 400 });
+
+    const { error } = await supabase
+      .from("allocation_settings")
+      // 어느 분기에 정한 기한인지 함께 남긴다 — 분기가 바뀌면 저절로 무효가 되어 다시 묻는다.
+      .update({ mail_deadline: deadline, mail_deadline_period: deadline ? period : null, updated_at: new Date().toISOString() })
+      .eq("id", 1);
+
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ ok: true, deadline });
+  }
 
   const subject = String(body?.subject ?? "");
   const text = String(body?.body ?? "");
@@ -22,7 +45,6 @@ export async function POST(req: NextRequest) {
     if (problem) return NextResponse.json({ error: problem }, { status: 400 });
   }
 
-  const supabase = getSupabaseAdmin();
   const { error } = await supabase
     .from("allocation_settings")
     .update({

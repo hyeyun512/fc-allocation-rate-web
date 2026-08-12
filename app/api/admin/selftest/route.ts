@@ -114,11 +114,15 @@ function runCases(): Case[] {
     lang: "ko",
     opensOthers: false,
   });
-  c.push(ok("ko subject has quarter+org", koSolo.subject.includes("2026-3Q") && koSolo.subject.includes("재무팀")));
-  c.push(ok("ko greets by name", koSolo.body.startsWith("안녕하세요, 홍길동님.")));
+  // 기본 문구는 실제로 쓰던 협조요청 메일이다 — 분기 표기가 그 형식(26년 3Q / 3분기)대로 채워져야 한다.
+  c.push(eq("default subject is the real mail's", koSolo.subject, "[협조요청] 부서별 투입리소스 작성 (26년 3Q)"));
+  c.push(ok("default keeps the original greeting", koSolo.body.startsWith("안녕하세요,")));
+  c.push(ok("default names the sender", koSolo.body.includes("경영지원실 주혜윤입니다.")));
+  c.push(ok("default says N분기", koSolo.body.includes("3분기 리소스 배부율")));
   c.push(ok("ko solo says 전용", koSolo.body.includes("재무팀 전용입니다")));
   c.push(ok("ko url appears exactly once", koSolo.body.split("https://x/submit/tok").length - 1 === 1));
-  c.push(ok("ko no deadline line when unset", !koSolo.body.includes("입력 마감")));
+  // 기한을 정하지 않았으면 줄이 사라지는 게 아니라 '재설정 필요'가 찍혀야 한다.
+  c.push(ok("unset deadline shows 재설정 필요", koSolo.body.includes("제출 기한: 재설정 필요")));
   c.push(ok("body has no CR", !koSolo.body.includes("\r")));
 
   const koWide = buildLinkMail({
@@ -133,8 +137,7 @@ function runCases(): Case[] {
   // 상위 조직 링크는 하위 팀 전체를 여는 광역 링크다 — "전용"이라 쓰면 거짓말이 된다.
   c.push(ok("wide link never says 전용", !koWide.body.includes("전용")));
   c.push(ok("wide link names the owner org", koWide.body.includes("HR실과 그 하위 조직 전체")));
-  c.push(ok("deadline line appears when set", koWide.body.includes("입력 마감: 9월 30일까지")));
-  c.push(ok("greets both recipients", koWide.body.startsWith("안녕하세요, 이채아 팀장님, 최광수 팀장님.")));
+  c.push(ok("deadline line appears when set", koWide.body.includes("제출 기한: 9월 30일까지")));
 
   // 관리자가 화면에서 고친 문구가 있으면 그것을 쓴다.
   const koCustom = buildLinkMail({
@@ -158,9 +161,46 @@ function runCases(): Case[] {
     lang: "ko",
     opensOthers: false,
   });
-  c.push(ok("empty name drops greeting line", !koNoName.body.includes("안녕하세요,")));
-  c.push(ok("empty name never renders '님'", !koNoName.body.includes("님.")));
-  c.push(ok("empty name still has the link", koNoName.body.includes("https://x/submit/tok")));
+  c.push(ok("no recipient name still renders", koNoName.body.includes("https://x/submit/tok")));
+
+  // {담당자}를 쓰는 문구에서는 수신자 여러 명이 함께 들어가고, 이름이 없으면 그 줄이 통째로 빠진다
+  // (", 님." 같은 문장이 나가지 않게).
+  const twoNames = buildLinkMail({
+    orgLabel: "HR실",
+    recipientNames: ["이채아 팀장", "최광수 팀장"],
+    period: Q3,
+    url: "https://x/submit/tok",
+    lang: "ko",
+    opensOthers: true,
+    subjectTemplate: "s",
+    bodyTemplate: "안녕하세요, {담당자}.\n{링크}",
+  });
+  c.push(eq("both recipients in one greeting", twoNames.body, "안녕하세요, 이채아 팀장님, 최광수 팀장님.\nhttps://x/submit/tok"));
+
+  const zeroNames = buildLinkMail({
+    orgLabel: "재무팀",
+    recipientNames: [],
+    period: Q3,
+    url: "https://x/submit/tok",
+    lang: "ko",
+    opensOthers: false,
+    subjectTemplate: "s",
+    bodyTemplate: "안녕하세요, {담당자}.\n{링크}",
+  });
+  c.push(eq("empty name drops that line", zeroNames.body, "https://x/submit/tok"));
+
+  /* ── 분기 자리표시자 ── 분기가 바뀌면 문구가 저절로 따라가야 한다. */
+  const q4 = buildLinkMail({
+    orgLabel: "재무팀",
+    recipientNames: [],
+    period: "2026-Q4",
+    url: "https://x/submit/tok",
+    lang: "ko",
+    opensOthers: false,
+  });
+  c.push(eq("next quarter subject follows", q4.subject, "[협조요청] 부서별 투입리소스 작성 (26년 4Q)"));
+  c.push(ok("next quarter body follows", q4.body.includes("4분기 리소스 배부율")));
+  c.push(ok("next quarter deadline needs resetting", q4.body.includes("제출 기한: 재설정 필요")));
 
   const en = buildLinkMail({
     orgLabel: "HUK Expatriates",

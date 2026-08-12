@@ -344,6 +344,8 @@ export default async function AdminConfirmPage() {
       version={version}
       mailSubject={settings?.mail_subject_template ?? ""}
       mailBody={settings?.mail_body_template ?? ""}
+      // 지난 분기에 정한 기한은 이번 분기 것이 아니다 — 빈 값으로 내려 '재설정 필요'가 뜨게 한다.
+      initialDeadline={settings?.mail_deadline_period === period ? settings?.mail_deadline ?? "" : ""}
       surveyData={surveyData}
       resourceData={finalData}
       hkrHistory={hkrHistory}

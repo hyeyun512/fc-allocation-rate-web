@@ -9,7 +9,6 @@ import {
   isValidEmail,
   isAllowedDomain,
   parseAllowedDomains,
-  isValidDeadline,
   maskEmail,
   maskToken,
 } from "@/lib/linkMail";
@@ -54,13 +53,6 @@ export async function POST(req: NextRequest) {
   if (!Array.isArray(orgIds) || orgIds.length === 0 || !period) {
     return NextResponse.json({ error: "조직과 기간이 필요합니다.", code: "bad-request" }, { status: 400 });
   }
-  const deadline = typeof body?.deadline === "string" ? body.deadline.trim() : "";
-  if (!isValidDeadline(deadline)) {
-    return NextResponse.json(
-      { error: "마감 안내는 40자 이내의 한 줄이어야 하고 링크를 넣을 수 없습니다.", code: "bad-deadline" },
-      { status: 400 }
-    );
-  }
 
   // ── 3. 링크에 박을 정규 도메인. 복사 버튼과 달리 메일에 담긴 링크는 남으므로,
   //      프리뷰 배포 주소가 들어가면 그 배포가 정리될 때 수신자 손의 링크가 죽는다.
@@ -76,8 +68,17 @@ export async function POST(req: NextRequest) {
   const [{ data: orgRows }, { data: managerRows }, { data: settings }] = await Promise.all([
     supabase.from("allocation_orgs").select("id,basis,parent_basis,access_token,active"),
     supabase.from("allocation_org_managers").select("org_id,period,manager_name,manager_email,email_set_period"),
-    supabase.from("allocation_settings").select("mail_subject_template,mail_body_template").eq("id", 1).single(),
+    supabase
+      .from("allocation_settings")
+      .select("mail_subject_template,mail_body_template,mail_deadline,mail_deadline_period")
+      .eq("id", 1)
+      .single(),
   ]);
+
+  // 제출 기한은 클라이언트가 보내지 않는다 — 관리자가 저장해 둔 값을 서버가 읽는다.
+  // 지난 분기에 정한 기한은 쓰지 않는다(그대로 나가면 이미 지난 날짜를 보내게 된다).
+  const deadline =
+    settings?.mail_deadline_period === period ? String(settings?.mail_deadline ?? "").trim() : "";
 
   const orgs = (orgRows ?? []) as OrgLite[];
   const managers = (managerRows ?? []) as OrgManagerRow[];

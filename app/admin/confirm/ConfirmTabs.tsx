@@ -29,6 +29,7 @@ export default function ConfirmTabs({
   version,
   mailSubject,
   mailBody,
+  initialDeadline,
   surveyData,
   resourceData,
   hkrHistory,
@@ -44,6 +45,8 @@ export default function ConfirmTabs({
   /** 조사 링크 안내 메일 문구 (비어 있으면 기본 문구). */
   mailSubject: string;
   mailBody: string;
+  /** 이번 분기 제출 기한 (지난 분기 값이면 빈 문자열). */
+  initialDeadline: string;
   surveyData: SurveyOrgData[];
   resourceData: OrgReviewData[];
   hkrHistory: RateHistoryEntry[];
@@ -139,7 +142,13 @@ export default function ConfirmTabs({
       </div>
 
       {subTab === "survey" && (
-        <SurveyOverview period={period} data={surveyData} mailSubject={mailSubject} mailBody={mailBody} />
+        <SurveyOverview
+          period={period}
+          data={surveyData}
+          mailSubject={mailSubject}
+          mailBody={mailBody}
+          initialDeadline={initialDeadline}
+        />
       )}
       {subTab === "resource" && (
         <ConfirmReview period={period} version={version} data={resourceData} hkrHistory={hkrHistory} hkrConfirmedThisPeriod={hkrConfirmedThisPeriod} />

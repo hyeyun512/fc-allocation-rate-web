@@ -9,6 +9,7 @@ import {
   MAIL_PLACEHOLDERS,
   DEFAULT_MAIL_SUBJECT,
   DEFAULT_MAIL_BODY,
+  DEADLINE_UNSET,
 } from "@/lib/linkMail";
 import type { ResolvedManager } from "@/lib/orgManager";
 
@@ -167,7 +168,6 @@ function SendDialog({
         body: JSON.stringify({
           orgIds: [state.owner.org.id],
           period,
-          deadline: deadline || undefined,
           recipientOrgIds: chosen.map((c) => c.orgId),
         }),
       });
@@ -541,10 +541,12 @@ function MailTemplateEditor({
   initialSubject,
   initialBody,
   period,
+  deadline,
 }: {
   initialSubject: string;
   initialBody: string;
   period: string;
+  deadline: string;
 }) {
   const [open, setOpen] = useState(false);
   const [subject, setSubject] = useState(initialSubject || DEFAULT_MAIL_SUBJECT);
@@ -554,16 +556,19 @@ function MailTemplateEditor({
 
   // 자리표시자가 실제로 어떻게 채워지는지 눈으로 보고 고칠 수 있게 예시로 미리 보여준다.
   const preview = useMemo(() => {
+    const m = /^(\d{4})-Q(\d)$/.exec(period);
     const vars: Record<string, string> = {
-      "{분기}": period.replace(/^(\d{4})-Q(\d)$/, "$1-$2Q"),
+      "{분기}": m ? `${m[1]}-${m[2]}Q` : period,
+      "{분기숫자}": m ? m[2] : "",
+      "{연도2}": m ? m[1].slice(-2) : "",
       "{조직}": "HR실",
       "{담당자}": "이채아 팀장님, 최광수 팀장님",
       "{링크}": "https://…/submit/c4bab112da0eaa7a04",
-      "{마감}": "9월 30일까지",
+      "{마감}": deadline || DEADLINE_UNSET,
       "{범위안내}": "· 이 링크는 HR실과 그 하위 조직 전체의 입력·열람 화면입니다.",
     };
     return { subject: renderMailTemplate(subject, vars), body: renderMailTemplate(body, vars) };
-  }, [subject, body, period]);
+  }, [subject, body, period, deadline]);
 
   async function save(reset = false) {
     const problem = reset ? null : mailTemplateProblem(subject, body);
@@ -655,20 +660,42 @@ export default function SurveyOverview({
   data,
   mailSubject,
   mailBody,
+  initialDeadline,
 }: {
   period: string;
   data: SurveyOrgData[];
   mailSubject: string;
   mailBody: string;
+  /** 이번 분기에 정해 둔 제출 기한. 분기가 바뀌었으면 서버가 빈 값으로 내려준다. */
+  initialDeadline: string;
 }) {
   // 담당자 칸 상태는 행이 아니라 **화면 전체**가 들고 있다. 발송 버튼은 링크 주인 행에 있는데
   // 주소는 하위 행에 입력될 수 있어(HR실·Staff(CEO)) 행 안에 상태를 가두면 버튼이 갱신되지 않는다.
   const [cells, setCells] = useState<CellMap>(() => initialCells(data));
   const [send, setSend] = useState<SendState | null>(null);
-  const [deadline, setDeadline] = useState<string>(() => {
-    if (typeof window === "undefined") return "";
-    return window.localStorage.getItem(`survey-deadline:${period}`) ?? "";
-  });
+  // 제출 기한은 DB에 분기와 함께 저장한다. 분기가 바뀌면 지난 기한은 무효가 되어 빈 값으로 내려오고,
+  // 메일에는 '재설정 필요'가 찍혀 기한 없는 메일이 조용히 나가는 걸 막는다.
+  const [deadline, setDeadline] = useState(initialDeadline);
+  const [deadlineSaved, setDeadlineSaved] = useState(initialDeadline);
+  const [deadlineState, setDeadlineState] = useState<"idle" | "saving" | "saved" | "error">("idle");
+
+  async function saveDeadline() {
+    if (deadline === deadlineSaved) return;
+    setDeadlineState("saving");
+    try {
+      const res = await fetch("/api/admin/mail-template", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ only: "deadline", deadline, period }),
+      });
+      if (!res.ok) throw new Error();
+      setDeadlineSaved(deadline);
+      setDeadlineState("saved");
+      setTimeout(() => setDeadlineState("idle"), 1500);
+    } catch {
+      setDeadlineState("error");
+    }
+  }
 
   function patch(orgId: number, next: Partial<CellState>) {
     setCells((prev) => ({ ...prev, [orgId]: { ...prev[orgId], ...next } }));
@@ -791,19 +818,40 @@ export default function SurveyOverview({
           )}
         </div>
         <div className="survey-deadline">
-          <label htmlFor="survey-deadline-input">마감 안내</label>
+          <label htmlFor="survey-deadline-input">제출 기한</label>
           <input
             id="survey-deadline-input"
+            className={deadlineSaved === "" ? "needs-set" : undefined}
             value={deadline}
             maxLength={40}
-            placeholder="예: 9월 30일까지 (비우면 메일에서 빠집니다)"
-            onChange={(e) => {
-              setDeadline(e.target.value);
-              window.localStorage.setItem(`survey-deadline:${period}`, e.target.value);
+            placeholder="예: 8/14(금)"
+            onChange={(e) => setDeadline(e.target.value)}
+            onBlur={saveDeadline}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                saveDeadline();
+              }
             }}
           />
+          <span className="survey-save-state" style={deadlineState === "error" ? { color: "#dc2626" } : undefined}>
+            {deadlineState === "saving"
+              ? "저장중"
+              : deadlineState === "saved"
+              ? "저장됨"
+              : deadlineState === "error"
+              ? "실패"
+              : deadlineSaved === ""
+              ? "메일에 ‘재설정 필요’로 나갑니다"
+              : ""}
+          </span>
         </div>
-        <MailTemplateEditor initialSubject={mailSubject} initialBody={mailBody} period={period} />
+        <MailTemplateEditor
+          initialSubject={mailSubject}
+          initialBody={mailBody}
+          period={period}
+          deadline={deadlineSaved}
+        />
       </div>
 
       {divisions.map((division) => (
