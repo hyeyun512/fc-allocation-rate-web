@@ -65,14 +65,11 @@ export async function POST(req: NextRequest) {
   }
 
   const supabase = getSupabaseAdmin();
-  const [{ data: orgRows }, { data: managerRows }, { data: settings }] = await Promise.all([
+  const [{ data: orgRows }, { data: managerRows }, { data: settings }, { data: tpl }] = await Promise.all([
     supabase.from("allocation_orgs").select("id,basis,parent_basis,access_token,active"),
     supabase.from("allocation_org_managers").select("org_id,period,manager_name,manager_email,email_set_period"),
-    supabase
-      .from("allocation_settings")
-      .select("mail_subject_template,mail_body_template,mail_deadline,mail_deadline_period")
-      .eq("id", 1)
-      .single(),
+    supabase.from("allocation_settings").select("mail_deadline,mail_deadline_period").eq("id", 1).single(),
+    supabase.from("allocation_mail_templates").select("period,subject,body").eq("period", period).maybeSingle(),
   ]);
 
   // 제출 기한은 클라이언트가 보내지 않는다 — 관리자가 저장해 둔 값을 서버가 읽는다.
@@ -187,8 +184,10 @@ export async function POST(req: NextRequest) {
           lang,
           deadline: deadline || undefined,
           opensOthers,
-          subjectTemplate: lang === "ko" ? settings?.mail_subject_template ?? null : null,
-          bodyTemplate: lang === "ko" ? settings?.mail_body_template ?? null : null,
+          // 관리자가 이번 분기에 적어 둔 문구. 없으면 기본 문구를 쓴다.
+          // 영어로 나가는 조직에는 한국어 문구를 적용하지 않는다.
+          subjectTemplate: lang === "ko" ? tpl?.subject ?? null : null,
+          bodyTemplate: lang === "ko" ? tpl?.body ?? null : null,
         })
       : null;
 

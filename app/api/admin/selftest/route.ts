@@ -16,6 +16,7 @@ import {
   DEFAULT_MAIL_BODY,
 } from "@/lib/linkMail";
 import { matchPastedManagers, applicableRows, buildPasteTemplate, PasteOrg } from "@/lib/managerPaste";
+import { templateFor, previousTemplate, MailTemplateRow } from "@/lib/mailTemplateStore";
 
 /**
  * 순수 함수 자가검증. 브라우저에서 /api/admin/selftest 를 열면 pass/fail이 나온다.
@@ -399,6 +400,19 @@ function runCases(): Case[] {
   ])).length, 1));
 
   c.push(ok("paste: template has header + rows", buildPasteTemplate(P).split("\n").length === 3));
+
+  /* ── 분기별 메일 문구 ── */
+  const T: MailTemplateRow[] = [
+    { period: "2026-Q2", subject: "q2", body: "b2" },
+    { period: "2026-Q3", subject: "q3", body: "b3" },
+  ];
+  c.push(eq("mailTpl: this quarter", templateFor(T, "2026-Q3")?.subject, "q3"));
+  c.push(eq("mailTpl: none saved for this quarter", templateFor(T, "2026-Q4"), null));
+  // 새 분기에는 저장된 문구가 없어도 '전분기 불러오기'로 지난 분기 것을 가져올 수 있어야 한다.
+  c.push(eq("mailTpl: previous from Q4 is Q3", previousTemplate(T, "2026-Q4")?.period, "2026-Q3"));
+  c.push(eq("mailTpl: previous from Q3 is Q2", previousTemplate(T, "2026-Q3")?.period, "2026-Q2"));
+  c.push(eq("mailTpl: nothing before Q2", previousTemplate(T, "2026-Q2"), null));
+  c.push(eq("mailTpl: unparseable period has no previous", previousTemplate(T, "임시"), null));
 
   return c;
 }

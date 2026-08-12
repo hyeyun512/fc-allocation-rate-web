@@ -29,6 +29,7 @@ export default function ConfirmTabs({
   version,
   mailSubject,
   mailBody,
+  hasPreviousMail,
   initialDeadline,
   surveyData,
   resourceData,
@@ -45,6 +46,8 @@ export default function ConfirmTabs({
   /** 조사 링크 안내 메일 문구 (비어 있으면 기본 문구). */
   mailSubject: string;
   mailBody: string;
+  /** 이전 분기에 저장해 둔 문구가 있는지 — 있을 때만 불러오기 버튼을 보여준다. */
+  hasPreviousMail: boolean;
   /** 이번 분기 제출 기한 (지난 분기 값이면 빈 문자열). */
   initialDeadline: string;
   surveyData: SurveyOrgData[];
@@ -147,6 +150,7 @@ export default function ConfirmTabs({
           data={surveyData}
           mailSubject={mailSubject}
           mailBody={mailBody}
+          hasPreviousMail={hasPreviousMail}
           initialDeadline={initialDeadline}
         />
       )}

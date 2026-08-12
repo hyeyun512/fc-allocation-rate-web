@@ -6,6 +6,7 @@ import { isOrgActiveIn } from "@/lib/orgLifespan";
 import { resolveManagerPair, OrgManagerRow } from "@/lib/orgManager";
 import { linkTokenOf, isTokenOwner, OrgLite } from "@/lib/orgLink";
 import { needsEnglishNote, submitLangOf, orgLabelFor } from "@/lib/englishOrgs";
+import { templateFor, previousTemplate, MailTemplateRow } from "@/lib/mailTemplateStore";
 import { OrgReviewData } from "./ConfirmReview";
 import { SurveyOrgData } from "../SurveyOverview";
 import ConfirmTabs from "./ConfirmTabs";
@@ -22,6 +23,12 @@ export default async function AdminConfirmPage() {
   const { data: settings } = await supabase.from("allocation_settings").select("*").eq("id", 1).single();
   const period = settings?.current_period ?? "";
   const version = settings?.current_version ?? "Forecast";
+
+  // 메일 문구는 분기별로 남긴다 — 새 분기 문구를 저장해도 지난 분기에 뭐라고 보냈는지가 남아 있어야
+  // 그걸 그대로 불러다 쓸 수 있다.
+  const { data: mailTplRows } = await supabase.from("allocation_mail_templates").select("period,subject,body");
+  const mailTpl = templateFor((mailTplRows ?? []) as MailTemplateRow[], period);
+  const hasPreviousMail = previousTemplate((mailTplRows ?? []) as MailTemplateRow[], period) != null;
 
   const { data: orgs } = await supabase
     .from("allocation_orgs")
@@ -342,8 +349,9 @@ export default async function AdminConfirmPage() {
     <ConfirmTabs
       period={period}
       version={version}
-      mailSubject={settings?.mail_subject_template ?? ""}
-      mailBody={settings?.mail_body_template ?? ""}
+      mailSubject={mailTpl?.subject ?? ""}
+      mailBody={mailTpl?.body ?? ""}
+      hasPreviousMail={hasPreviousMail}
       // 지난 분기에 정한 기한은 이번 분기 것이 아니다 — 빈 값으로 내려 '재설정 필요'가 뜨게 한다.
       initialDeadline={settings?.mail_deadline_period === period ? settings?.mail_deadline ?? "" : ""}
       surveyData={surveyData}

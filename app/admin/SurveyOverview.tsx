@@ -693,11 +693,13 @@ function MailTemplateEditor({
   initialBody,
   period,
   deadline,
+  hasPreviousMail,
 }: {
   initialSubject: string;
   initialBody: string;
   period: string;
   deadline: string;
+  hasPreviousMail: boolean;
 }) {
   // 기본으로 펼쳐 둔다 — 접어 두면 여기서 문구를 고칠 수 있다는 걸 아무도 모른다.
   const [open, setOpen] = useState(true);
@@ -707,29 +709,31 @@ function MailTemplateEditor({
   const [error, setError] = useState("");
   const [imported, setImported] = useState("");
 
-  /** Outlook에서 저장한 .msg를 읽어 문구 칸을 채운다. 저장은 사람이 확인한 뒤에 한다. */
-  async function importMsg(file: File) {
+  /** 지난 분기에 보냈던 문구를 그대로 가져온다. 저장은 사람이 확인한 뒤에 한다. */
+  async function loadPrevious() {
     setError("");
     setImported("");
     setState("saving");
     try {
-      const fd = new FormData();
-      fd.append("file", file);
-      const res = await fetch("/api/admin/mail-template/import", { method: "POST", body: fd });
+      const res = await fetch("/api/admin/mail-template", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ only: "previous", period }),
+      });
       const json = await res.json();
       if (!res.ok) {
-        setError(json?.error ?? "파일을 읽지 못했습니다.");
+        setError(json?.error ?? "이전 분기 문구를 불러오지 못했습니다.");
         setState("error");
         return;
       }
-      setSubject(json.subject);
-      setBody(json.body);
+      setSubject(json.subject || DEFAULT_MAIL_SUBJECT);
+      setBody(json.body || DEFAULT_MAIL_BODY);
       setState("idle");
       setImported(
-        "메일을 읽었습니다. 분기와 날짜는 자리표시자로 바꿔 뒀으니 확인 후 ‘문구 저장’을 눌러 주세요."
+        `${json.period}에 보낸 문구를 가져왔습니다. 분기는 자리표시자라 저절로 바뀝니다 — 확인 후 ‘문구 저장’을 눌러 주세요.`
       );
     } catch {
-      setError("파일을 읽지 못했습니다.");
+      setError("이전 분기 문구를 불러오지 못했습니다.");
       setState("error");
     }
   }
@@ -763,7 +767,7 @@ function MailTemplateEditor({
       const res = await fetch("/api/admin/mail-template", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(reset ? { reset: true } : { subject, body }),
+        body: JSON.stringify(reset ? { reset: true, period } : { subject, body, period }),
       });
       const json = await res.json();
       if (!res.ok) {
@@ -791,25 +795,14 @@ function MailTemplateEditor({
 
       {open && (
         <div className="mail-tpl-body">
-          <div className="mail-tpl-import">
-            <label className="btn btn-secondary btn-sm">
-              Outlook 메일(.msg) 불러오기
-              <input
-                type="file"
-                accept=".msg"
-                style={{ display: "none" }}
-                onChange={(e) => {
-                  const f = e.target.files?.[0];
-                  if (f) importMsg(f);
-                  e.target.value = "";
-                }}
-              />
-            </label>
-            <span className="field-hint">
-              Outlook에서 <b>다른 이름으로 저장 → Outlook 메시지 형식(.msg)</b>으로 저장한 파일을 올리면 제목·본문이
-              그대로 들어옵니다.
-            </span>
-          </div>
+          {hasPreviousMail && (
+            <div className="mail-tpl-import">
+              <button type="button" className="btn btn-secondary btn-sm" onClick={loadPrevious} disabled={state === "saving"}>
+                전분기 메일 내용 불러오기
+              </button>
+              <span className="field-hint">지난 분기에 보낸 제목·본문을 그대로 가져옵니다.</span>
+            </div>
+          )}
           {imported && <p className="mail-tpl-ok">{imported}</p>}
 
           <div className="mail-tpl-keys">
@@ -861,12 +854,15 @@ export default function SurveyOverview({
   data,
   mailSubject,
   mailBody,
+  hasPreviousMail,
   initialDeadline,
 }: {
   period: string;
   data: SurveyOrgData[];
   mailSubject: string;
   mailBody: string;
+  /** 이전 분기에 저장해 둔 문구가 있는지 — 있을 때만 불러오기 버튼을 보여준다. */
+  hasPreviousMail: boolean;
   /** 이번 분기에 정해 둔 제출 기한. 분기가 바뀌었으면 서버가 빈 값으로 내려준다. */
   initialDeadline: string;
 }) {
@@ -1062,6 +1058,7 @@ export default function SurveyOverview({
           initialBody={mailBody}
           period={period}
           deadline={deadlineSaved}
+          hasPreviousMail={hasPreviousMail}
         />
       </div>
 
