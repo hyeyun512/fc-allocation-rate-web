@@ -934,7 +934,12 @@ export default function SurveyOverview({
         email: json.email ?? cell.email,
         emailInherited: !!json.emailInherited,
         emailFromPeriod: json.emailFromPeriod ?? null,
-        nameChanged: field === "name" ? cell.savedName !== cell.name && cell.savedName !== "" : cell.nameChanged,
+        // 이름을 바꾸면 '주소도 확인하세요' 표시를 켜고, 주소를 새로 넣으면 끈다 —
+        // 방금 직접 적은 주소한테까지 확인하라고 하면 그 표시를 아무도 안 믿게 된다.
+        nameChanged:
+          field === "name"
+            ? cell.savedName !== cell.name && cell.savedName !== ""
+            : false,
       });
       setTimeout(() => patch(orgId, { status: "idle" }), 1500);
     } catch {
