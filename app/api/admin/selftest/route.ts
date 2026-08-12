@@ -15,6 +15,7 @@ import {
   DEFAULT_MAIL_SUBJECT,
   DEFAULT_MAIL_BODY,
 } from "@/lib/linkMail";
+import { matchPastedManagers, applicableRows, buildPasteTemplate, PasteOrg } from "@/lib/managerPaste";
 
 /**
  * 순수 함수 자가검증. 브라우저에서 /api/admin/selftest 를 열면 pass/fail이 나온다.
@@ -359,6 +360,45 @@ function runCases(): Case[] {
       ["", false, null]
     )
   );
+
+  /* ── 엑셀 붙여넣기 ── */
+  const P: PasteOrg[] = [
+    { id: 1, basis: "개발 그룹", currentName: "오인희 그룹장", currentEmail: "" },
+    { id: 4, basis: "재무팀", currentName: "박재무", currentEmail: "park@company.com" },
+  ];
+  const pm = (grid: string[][]) => matchPastedManagers(grid, P);
+
+  c.push(eq("paste: matches org + email", pm([["개발 그룹", "오인희 그룹장", "oh@company.com"]])[0].status, "ok"));
+  // 열 순서가 달라도 읽는다 — 사람이 순서를 맞추게 하면 그 자체가 또 일이다.
+  c.push(eq("paste: column order free", pm([["oh@company.com", "개발 그룹"]])[0].orgBasis, "개발 그룹"));
+  c.push(eq("paste: normalizes org spacing", pm([["개발그룹", "oh@company.com"]])[0].orgId, 1));
+  c.push(eq("paste: unknown org", pm([["없는조직", "x@company.com"]])[0].status, "no-org"));
+  c.push(eq("paste: header row skipped", pm([["조직", "담당자", "Outlook 메일"]]).length, 0));
+  c.push(eq("paste: unchanged row is 'same'", pm([["재무팀", "박재무", "park@company.com"]])[0].status, "same"));
+
+  // 실제로 났던 사고: @를 빠뜨린 주소가 조용히 '담당자 이름'으로 저장됐다.
+  const broken = pm([["재무팀", "", "not-an-email"]])[0];
+  c.push(eq("paste: broken email is not saved as a name", broken.status, "bad-email"));
+  c.push(ok("paste: broken email never becomes the name", broken.name !== "not-an-email"));
+  const brokenDotted = pm([["재무팀", "hong.gildong.company.com"]])[0];
+  c.push(eq("paste: dotted non-email flagged too", brokenDotted.status, "bad-email"));
+  // 사람 이름은 이름으로 남아야 한다 (과잉 차단 방지).
+  c.push(eq("paste: real name still reads as a name", pm([["재무팀", "홍길동", "hong@company.com"]])[0].name, "홍길동"));
+
+  // 머리글이 있으면 열 위치를 그대로 믿는다.
+  const withHeader = pm([
+    ["조직", "담당자", "Outlook 메일"],
+    ["재무팀", "김재무", "kim@company.com"],
+  ]);
+  c.push(eq("paste: header locks columns", [withHeader.length, withHeader[0].name, withHeader[0].email], [1, "김재무", "kim@company.com"]));
+
+  c.push(eq("paste: applicable filters to ok only", applicableRows(pm([
+    ["개발 그룹", "oh@company.com"],
+    ["재무팀", "박재무", "park@company.com"],
+    ["없는조직", "x@company.com"],
+  ])).length, 1));
+
+  c.push(ok("paste: template has header + rows", buildPasteTemplate(P).split("\n").length === 3));
 
   return c;
 }

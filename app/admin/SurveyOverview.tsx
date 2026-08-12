@@ -11,6 +11,8 @@ import {
   DEFAULT_MAIL_BODY,
   DEADLINE_UNSET,
 } from "@/lib/linkMail";
+import { matchPastedManagers, buildPasteTemplate, applicableRows, PasteMatch, PasteOrg } from "@/lib/managerPaste";
+import { parsePasteText, readPasteGrid } from "@/lib/paste";
 import type { ResolvedManager } from "@/lib/orgManager";
 
 export interface SurveyOrgData {
@@ -537,6 +539,155 @@ function DivisionTable({
    조직마다 문구가 거의 같아서 여기서 한 번 고쳐 두고 전 조직에 쓴다.
    영어 링크 조직(HUK 등)은 코드의 영문 문구를 그대로 쓴다. */
 
+/* ─────────────────── 담당자 한 번에 붙여넣기 ───────────────────
+   조직이 서른 곳이 넘어서 칸마다 하나씩 치는 건 현실적이지 않다.
+   조직 목록을 엑셀로 가져가 메일 열만 채운 뒤 통째로 붙여넣게 한다. */
+
+function BulkPasteDialog({
+  orgs,
+  period,
+  onClose,
+  onSaved,
+}: {
+  orgs: PasteOrg[];
+  period: string;
+  onClose: () => void;
+  onSaved: (saved: { orgId: number; name: string; email: string }[]) => void;
+}) {
+  const [text, setText] = useState("");
+  const [copied, setCopied] = useState(false);
+  const [state, setState] = useState<"idle" | "saving" | "error">("idle");
+  const [error, setError] = useState("");
+
+  const grid = useMemo(() => parsePasteText(text), [text]);
+  const matches: PasteMatch[] = useMemo(() => matchPastedManagers(grid, orgs), [grid, orgs]);
+  const willSave = applicableRows(matches);
+  const problems = matches.filter((m) => m.status === "no-org" || m.status === "bad-email");
+
+  async function apply() {
+    setState("saving");
+    setError("");
+    try {
+      const res = await fetch("/api/admin/org-manager/bulk", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ grid, period }),
+      });
+      const json = await res.json();
+      if (!res.ok) {
+        setError(json?.error ?? "저장하지 못했습니다.");
+        setState("error");
+        return;
+      }
+      onSaved(
+        willSave.map((m) => ({
+          orgId: m.orgId as number,
+          name: m.name !== "" ? m.name : m.currentName,
+          email: m.email !== "" ? m.email : m.currentEmail,
+        }))
+      );
+      onClose();
+    } catch {
+      setError("저장하지 못했습니다.");
+      setState("error");
+    }
+  }
+
+  const label: Record<PasteMatch["status"], string> = {
+    ok: "저장됨",
+    same: "그대로",
+    "no-org": "조직 못 찾음",
+    "bad-email": "메일 형식 오류",
+    empty: "값 없음",
+  };
+
+  return (
+    <div className="send-backdrop" role="dialog" aria-modal="true" aria-label="담당자 한 번에 입력">
+      <div className="send-dialog bulk-dialog">
+        <div className="send-title">담당자 · 메일 한 번에 입력</div>
+        <p className="send-lead">
+          ① 아래 <b>조직 목록 복사</b>를 눌러 엑셀에 붙여넣고 ② <b>Outlook 메일</b> 열만 채운 뒤 ③ 표 전체를
+          복사해 아래 칸에 붙여넣으세요. 열 순서는 달라도 됩니다.
+        </p>
+
+        <div className="send-actions" style={{ justifyContent: "flex-start", marginTop: 0, marginBottom: 10 }}>
+          <button
+            className="btn btn-secondary btn-sm"
+            onClick={async () => {
+              await navigator.clipboard?.writeText(buildPasteTemplate(orgs));
+              setCopied(true);
+              setTimeout(() => setCopied(false), 1500);
+            }}
+          >
+            {copied ? "복사됨 — 엑셀에 붙여넣으세요" : `조직 목록 복사 (${orgs.length}개)`}
+          </button>
+        </div>
+
+        <textarea
+          className="mail-tpl-area bulk-area"
+          rows={8}
+          value={text}
+          placeholder={"여기에 엑셀 표를 붙여넣으세요\n예)  개발 그룹\t오인희 그룹장\toh@company.com"}
+          onChange={(e) => setText(e.target.value)}
+          onPaste={(e) => {
+            // 엑셀에서 온 표는 탭/줄바꿈이 살아 있는 원문으로 받아야 열이 안 뭉개진다.
+            const rows = readPasteGrid(e.clipboardData);
+            if (rows.length > 1 || (rows[0]?.length ?? 0) > 1) {
+              e.preventDefault();
+              setText(rows.map((r) => r.join("\t")).join("\n"));
+            }
+          }}
+        />
+
+        {matches.length > 0 && (
+          <>
+            <div className="send-sub">
+              읽은 결과 — <b>{willSave.length}곳 저장</b>
+              {problems.length > 0 && <span className="bulk-warn"> · 확인 필요 {problems.length}곳</span>}
+            </div>
+            <div className="bulk-scroll">
+              <table className="bulk-tbl">
+                <thead>
+                  <tr>
+                    <th>조직</th>
+                    <th>담당자</th>
+                    <th>Outlook 메일</th>
+                    <th>상태</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {matches.map((m, i) => (
+                    <tr key={i} className={m.status === "no-org" || m.status === "bad-email" ? "is-bad" : undefined}>
+                      <td>{m.orgBasis || m.inputOrg}</td>
+                      <td>{m.name || m.currentName || "—"}</td>
+                      <td>{m.email || m.currentEmail || "—"}</td>
+                      <td className={`bulk-status s-${m.status}`}>{label[m.status]}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
+        )}
+
+        {error && <p className="send-error">{error}</p>}
+        <div className="send-actions">
+          <button
+            className="btn btn-primary btn-sm"
+            disabled={willSave.length === 0 || state === "saving"}
+            onClick={apply}
+          >
+            {state === "saving" ? "저장 중..." : `${willSave.length}곳 저장`}
+          </button>
+          <button className="btn btn-secondary btn-sm" onClick={onClose}>
+            취소
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function MailTemplateEditor({
   initialSubject,
   initialBody,
@@ -548,11 +699,40 @@ function MailTemplateEditor({
   period: string;
   deadline: string;
 }) {
-  const [open, setOpen] = useState(false);
+  // 기본으로 펼쳐 둔다 — 접어 두면 여기서 문구를 고칠 수 있다는 걸 아무도 모른다.
+  const [open, setOpen] = useState(true);
   const [subject, setSubject] = useState(initialSubject || DEFAULT_MAIL_SUBJECT);
   const [body, setBody] = useState(initialBody || DEFAULT_MAIL_BODY);
   const [state, setState] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [error, setError] = useState("");
+  const [imported, setImported] = useState("");
+
+  /** Outlook에서 저장한 .msg를 읽어 문구 칸을 채운다. 저장은 사람이 확인한 뒤에 한다. */
+  async function importMsg(file: File) {
+    setError("");
+    setImported("");
+    setState("saving");
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const res = await fetch("/api/admin/mail-template/import", { method: "POST", body: fd });
+      const json = await res.json();
+      if (!res.ok) {
+        setError(json?.error ?? "파일을 읽지 못했습니다.");
+        setState("error");
+        return;
+      }
+      setSubject(json.subject);
+      setBody(json.body);
+      setState("idle");
+      setImported(
+        "메일을 읽었습니다. 분기와 날짜는 자리표시자로 바꿔 뒀으니 확인 후 ‘문구 저장’을 눌러 주세요."
+      );
+    } catch {
+      setError("파일을 읽지 못했습니다.");
+      setState("error");
+    }
+  }
 
   // 자리표시자가 실제로 어떻게 채워지는지 눈으로 보고 고칠 수 있게 예시로 미리 보여준다.
   const preview = useMemo(() => {
@@ -606,11 +786,32 @@ function MailTemplateEditor({
   return (
     <div className="mail-tpl">
       <button type="button" className="mail-tpl-toggle" onClick={() => setOpen(!open)}>
-        {open ? "▾" : "▸"} 메일 문구 {open ? "" : "— 제목·본문을 여기서 고칩니다"}
+        {open ? "▾" : "▸"} 메일 제목·본문 설정 {open ? "" : "— 눌러서 펼치기"}
       </button>
 
       {open && (
         <div className="mail-tpl-body">
+          <div className="mail-tpl-import">
+            <label className="btn btn-secondary btn-sm">
+              Outlook 메일(.msg) 불러오기
+              <input
+                type="file"
+                accept=".msg"
+                style={{ display: "none" }}
+                onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  if (f) importMsg(f);
+                  e.target.value = "";
+                }}
+              />
+            </label>
+            <span className="field-hint">
+              Outlook에서 <b>다른 이름으로 저장 → Outlook 메시지 형식(.msg)</b>으로 저장한 파일을 올리면 제목·본문이
+              그대로 들어옵니다.
+            </span>
+          </div>
+          {imported && <p className="mail-tpl-ok">{imported}</p>}
+
           <div className="mail-tpl-keys">
             {MAIL_PLACEHOLDERS.map((p) => (
               <button
@@ -673,6 +874,7 @@ export default function SurveyOverview({
   // 주소는 하위 행에 입력될 수 있어(HR실·Staff(CEO)) 행 안에 상태를 가두면 버튼이 갱신되지 않는다.
   const [cells, setCells] = useState<CellMap>(() => initialCells(data));
   const [send, setSend] = useState<SendState | null>(null);
+  const [bulkOpen, setBulkOpen] = useState(false);
   // 제출 기한은 DB에 분기와 함께 저장한다. 분기가 바뀌면 지난 기한은 무효가 되어 빈 값으로 내려오고,
   // 메일에는 '재설정 필요'가 찍혀 기한 없는 메일이 조용히 나가는 걸 막는다.
   const [deadline, setDeadline] = useState(initialDeadline);
@@ -816,6 +1018,10 @@ export default function SurveyOverview({
               <b>메일 미등록 {missingEmail}곳</b>
             </>
           )}
+          {"  "}
+          <button type="button" className="bulk-open-btn" onClick={() => setBulkOpen(true)}>
+            엑셀로 한 번에 입력
+          </button>
         </div>
         <div className="survey-deadline">
           <label htmlFor="survey-deadline-input">제출 기한</label>
@@ -865,6 +1071,38 @@ export default function SurveyOverview({
           onSend={openSend}
         />
       ))}
+
+      {bulkOpen && (
+        <BulkPasteDialog
+          period={period}
+          orgs={flatten(ordered).map((i) => ({
+            id: i.org.id,
+            basis: i.org.basis,
+            currentName: cells[i.org.id]?.savedName ?? "",
+            currentEmail: cells[i.org.id]?.savedEmail ?? "",
+          }))}
+          onClose={() => setBulkOpen(false)}
+          onSaved={(rows) =>
+            // 표를 다시 읽지 않고 저장된 값만 화면에 반영한다 — 새로고침 없이 ✉가 바로 켜진다.
+            setCells((prev) => {
+              const next = { ...prev };
+              rows.forEach((r) => {
+                if (!next[r.orgId]) return;
+                next[r.orgId] = {
+                  ...next[r.orgId],
+                  name: r.name,
+                  savedName: r.name,
+                  email: r.email,
+                  savedEmail: r.email,
+                  emailInherited: false,
+                  emailFromPeriod: period,
+                };
+              });
+              return next;
+            })
+          }
+        />
+      )}
 
       {send && (
         <SendDialog
