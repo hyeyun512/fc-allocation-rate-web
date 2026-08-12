@@ -176,7 +176,7 @@ export async function POST(req: NextRequest) {
           lang,
           // 관리자가 이번 분기에 적어 둔 문구. 영어로 나가는 조직에는 적용하지 않는다.
           subject: lang === "ko" ? tpl?.subject ?? null : null,
-          body: lang === "ko" ? tpl?.body ?? null : null,
+          bodyHtml: lang === "ko" ? tpl?.body ?? null : null,
         })
       : null;
 
@@ -206,8 +206,10 @@ export async function POST(req: NextRequest) {
       // 초안 하나에 수신인 여러 명. mailto는 쉼표로 여러 주소를 받는다.
       to: recipients.map((r) => r.to),
       subject: mail?.subject ?? "",
-      body: mail?.body ?? "",
-      mailtoUrl: mail ? mailtoUrl(recipients.map((r) => r.to), mail.subject, mail.body) : null,
+      // 초안(mailto)에는 평문만 담을 수 있다. 서식이 살아 있는 본문은 화면이 클립보드로 넘긴다.
+      body: mail?.text ?? "",
+      bodyHtml: mail?.html ?? "",
+      mailtoUrl: mail ? mailtoUrl(recipients.map((r) => r.to), mail.subject, mail.text) : null,
       recipients,
       skipped,
     });

@@ -2,7 +2,8 @@
 
 import { Fragment, useMemo, useState } from "react";
 import { leaderFirst, sortForOrgPicker, DIVISION_ORDER } from "@/lib/orgOrder";
-import { isValidEmail, mailTemplateProblem, LINK_PLACEHOLDER } from "@/lib/linkMail";
+import { useEffect, useRef } from "react";
+import { isValidEmail, mailTemplateProblem, LINK_PLACEHOLDER, MAIL_FONT_CSS } from "@/lib/linkMail";
 import type { ResolvedManager } from "@/lib/orgManager";
 
 export interface SurveyOrgData {
@@ -120,9 +121,31 @@ interface SendState {
   opensOthers: boolean;
   childLabels: string[];
   /** 서버가 만들어준 초안 — 같은 링크를 쓰는 담당자는 한 통에 함께 넣으므로 하나뿐이다. */
-  draft: { to: string[]; subject: string; body: string; url: string } | null;
+  draft: { to: string[]; subject: string; body: string; bodyHtml: string; url: string } | null;
+  /** 서식 있는 본문을 클립보드에 넣었는지 — 넣었으면 초안에서 Ctrl+V 하면 된다. */
+  copied: boolean;
   phase: "confirm" | "ready" | "sending" | "error";
   message: string;
+}
+
+/** 서식 있는 본문을 클립보드에 넣는다. HTML 방식이 막히면 평문으로라도 넣는다. */
+async function copyRichText(html: string, text: string): Promise<boolean> {
+  try {
+    const anyNav = navigator as any;
+    if (anyNav.clipboard?.write && typeof ClipboardItem !== "undefined") {
+      await anyNav.clipboard.write([
+        new ClipboardItem({
+          "text/html": new Blob([html], { type: "text/html" }),
+          "text/plain": new Blob([text], { type: "text/plain" }),
+        }),
+      ]);
+      return true;
+    }
+    await navigator.clipboard?.writeText(text);
+    return false;
+  } catch {
+    return false;
+  }
 }
 
 function openDraft(url: string) {
@@ -171,10 +194,18 @@ function SendDialog({
         setState({ ...state, phase: "error", message: "보낼 수 있는 주소가 없습니다." });
         return;
       }
-      const draft = { to: result.to as string[], subject: result.subject, body: result.body, url: result.mailtoUrl };
-      // 확인창에서 이미 한 번 확인했으므로 클릭을 또 요구하지 않는다.
+      const draft = {
+        to: result.to as string[],
+        subject: result.subject,
+        body: result.body,
+        bodyHtml: result.bodyHtml,
+        url: result.mailtoUrl,
+      };
+      // mailto 초안의 본문은 규격상 평문뿐이다. 서식을 살리려면 사람이 붙여넣어야 하므로
+      // 서식 있는 본문을 클립보드에 미리 넣어 둔다(실패해도 평문 초안은 그대로 열린다).
+      const copied = await copyRichText(draft.bodyHtml, draft.body);
       openDraft(draft.url);
-      setState({ ...state, draft, phase: "ready", message: "" });
+      setState({ ...state, draft, copied, phase: "ready", message: "" });
     } catch {
       setState({ ...state, phase: "error", message: "초안을 만들지 못했습니다." });
     }
@@ -186,9 +217,18 @@ function SendDialog({
         {state.phase === "ready" && state.draft ? (
           <>
             <div className="send-title">Outlook 초안을 열었습니다</div>
-            <p className="send-lead">
-              내용을 확인하고 <b>[보내기]</b>를 눌러 주세요. 초안을 열었을 뿐 아직 발송되지 않았습니다.
-            </p>
+            {state.copied ? (
+              <p className="send-lead">
+                초안 본문은 <b>서식 없는 글자</b>입니다. 서식(굵게·색)을 살리려면 본문에서{" "}
+                <b>Ctrl+A → Ctrl+V</b> 하세요 — 서식 있는 본문을 클립보드에 넣어 두었습니다.
+                <br />
+                확인 후 <b>[보내기]</b>를 눌러 주세요. 아직 발송되지 않았습니다.
+              </p>
+            ) : (
+              <p className="send-lead">
+                내용을 확인하고 <b>[보내기]</b>를 눌러 주세요. 초안을 열었을 뿐 아직 발송되지 않았습니다.
+              </p>
+            )}
             <div className="send-sub">수신인 {state.draft.to.length}명</div>
             <ul className="send-list">
               {state.draft.to.map((addr) => (
@@ -203,6 +243,12 @@ function SendDialog({
               <pre>{state.draft.body}</pre>
             </div>
             <div className="send-actions">
+              <button
+                className="btn btn-secondary btn-sm"
+                onClick={() => copyRichText(state.draft!.bodyHtml, state.draft!.body)}
+              >
+                서식 본문 다시 복사
+              </button>
               <button className="btn btn-secondary btn-sm" onClick={() => openDraft(state.draft!.url)}>
                 초안 다시 열기
               </button>
@@ -423,6 +469,7 @@ function DivisionTable({
   patch,
   save,
   onSend,
+  hasTemplate,
 }: {
   title: string;
   items: SurveyOrgData[];
@@ -430,6 +477,7 @@ function DivisionTable({
   patch: (orgId: number, next: Partial<CellState>) => void;
   save: (orgId: number, field: "name" | "email") => void;
   onSend: (owner: SurveyOrgData) => void;
+  hasTemplate: boolean;
 }) {
   const submitting = items.flatMap((i) => (i.children.length > 0 ? i.children : [i]));
   const done = submitting.filter((d) => d.hasSubmission).length;
@@ -447,6 +495,7 @@ function DivisionTable({
       return c && c.savedEmail !== "" && isValidEmail(c.savedEmail);
     });
     if (usable.length === 0) return { canSend: false, hint: "이 링크로 보낼 메일 주소가 아직 없습니다" };
+    if (!hasTemplate) return { canSend: false, hint: "메일 제목·본문을 먼저 저장해 주세요" };
     return { canSend: true, hint: `조사 링크 메일 초안 열기 (보낼 수 있는 담당자 ${usable.length}명)` };
   }
 
@@ -524,27 +573,46 @@ function DivisionTable({
 }
 
 /* ─────────────────── 메일 문구 ───────────────────
-   제목·본문을 관리자가 직접 적는다. 분기·제출 기한도 그때그때 손으로 적으므로 자리표시자를 두지 않았다.
-   딱 하나 조직마다 달라지는 링크만 서버가 채운다 — 본문에 {링크}가 있으면 그 자리에, 없으면 끝에 붙는다. */
+   제목 한 줄과 본문 한 칸. 분기·제출 기한도 손으로 적으므로 자리표시자는 두지 않았다.
+   본문은 서식(굵게·글자색·배경색)을 쓸 수 있어야 해서 contenteditable로 받아 HTML로 저장한다.
+   글꼴은 Outlook에서 그대로 보이도록 맑은 고딕 10pt를 인라인으로 고정한다. */
+
+const SWATCHES = ["#1a202c", "#dc2626", "#2563eb", "#16a34a", "#b45309"];
+const HILITES = ["#fef08a", "#bbf7d0", "#bfdbfe", "#fecaca", "transparent"];
 
 function MailTemplateEditor({
   initialSubject,
   initialBody,
   period,
   hasPreviousMail,
+  onSaved,
 }: {
   initialSubject: string;
   initialBody: string;
   period: string;
   hasPreviousMail: boolean;
+  onSaved: (subject: string, bodyHtml: string) => void;
 }) {
   const [subject, setSubject] = useState(initialSubject);
-  const [body, setBody] = useState(initialBody);
   const [state, setState] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const bodyRef = useRef<HTMLDivElement>(null);
 
-  /** 지난 분기에 보냈던 문구를 그대로 가져온다. 저장은 사람이 확인한 뒤에 한다. */
+  // 편집기 안의 HTML은 React가 아니라 브라우저가 들고 있다. 처음 한 번만 채워 넣는다 —
+  // 매 렌더마다 덮어쓰면 타이핑 중 커서가 맨 앞으로 튄다.
+  useEffect(() => {
+    if (bodyRef.current && bodyRef.current.innerHTML === "") {
+      bodyRef.current.innerHTML = initialBody;
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  function exec(cmd: string, value?: string) {
+    bodyRef.current?.focus();
+    document.execCommand(cmd, false, value);
+  }
+
   async function loadPrevious() {
     setError("");
     setNotice("");
@@ -562,7 +630,7 @@ function MailTemplateEditor({
         return;
       }
       setSubject(json.subject ?? "");
-      setBody(json.body ?? "");
+      if (bodyRef.current) bodyRef.current.innerHTML = json.body ?? "";
       setState("idle");
       setNotice(`${json.period} 문구를 가져왔습니다. 분기와 제출 기한을 고친 뒤 저장해 주세요.`);
     } catch {
@@ -572,7 +640,8 @@ function MailTemplateEditor({
   }
 
   async function save() {
-    const problem = mailTemplateProblem(subject, body);
+    const bodyHtml = bodyRef.current?.innerHTML ?? "";
+    const problem = mailTemplateProblem(subject, bodyHtml);
     if (problem) {
       setError(problem);
       setState("error");
@@ -585,7 +654,7 @@ function MailTemplateEditor({
       const res = await fetch("/api/admin/mail-template", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ subject, body, period }),
+        body: JSON.stringify({ subject, body: bodyHtml, period }),
       });
       const json = await res.json();
       if (!res.ok) {
@@ -593,6 +662,7 @@ function MailTemplateEditor({
         setState("error");
         return;
       }
+      onSaved(subject, bodyHtml);
       setState("saved");
       setTimeout(() => setState("idle"), 1500);
     } catch {
@@ -623,13 +693,54 @@ function MailTemplateEditor({
       />
 
       <label className="mail-tpl-label">본문</label>
-      <textarea
-        className="mail-tpl-area"
-        rows={12}
-        value={body}
-        placeholder={"메일 본문을 적어 주세요." + "\n" + "조사 링크는 본문 끝에 자동으로 붙습니다. 위치를 정하려면 " + LINK_PLACEHOLDER + " 를 적으세요."}
-        onChange={(e) => setBody(e.target.value)}
+      <div className="mail-tpl-toolbar">
+        <button type="button" title="굵게" className="is-bold" onMouseDown={(e) => e.preventDefault()} onClick={() => exec("bold")}>
+          가
+        </button>
+        <span className="mail-tpl-sep" />
+        <span className="mail-tpl-swatches">
+          글자
+          {SWATCHES.map((color) => (
+            <button
+              key={color}
+              type="button"
+              title={`글자색 ${color}`}
+              style={{ background: color }}
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => exec("foreColor", color)}
+            />
+          ))}
+        </span>
+        <span className="mail-tpl-sep" />
+        <span className="mail-tpl-swatches">
+          배경
+          {HILITES.map((color) => (
+            <button
+              key={color}
+              type="button"
+              title={color === "transparent" ? "배경 없음" : `배경색 ${color}`}
+              className={color === "transparent" ? "is-none" : undefined}
+              style={color === "transparent" ? undefined : { background: color }}
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => exec("hiliteColor", color)}
+            />
+          ))}
+        </span>
+        <span className="mail-tpl-sep" />
+        <button type="button" title="서식 지우기" onMouseDown={(e) => e.preventDefault()} onClick={() => exec("removeFormat")}>
+          서식 지우기
+        </button>
+      </div>
+      <div
+        ref={bodyRef}
+        className="mail-tpl-body"
+        contentEditable
+        suppressContentEditableWarning
+        data-placeholder="메일 본문을 적어 주세요. 조사 링크는 본문 끝에 자동으로 붙습니다."
       />
+      <p className="field-hint">
+        글꼴은 <b>맑은 고딕 10pt</b>로 나갑니다. 링크 위치를 정하려면 본문에 {LINK_PLACEHOLDER} 를 적으세요.
+      </p>
 
       {error && <p className="send-error">{error}</p>}
       <div className="mail-tpl-actions">
@@ -659,6 +770,8 @@ export default function SurveyOverview({
   // 주소는 하위 행에 입력될 수 있어(HR실·Staff(CEO)) 행 안에 상태를 가두면 버튼이 갱신되지 않는다.
   const [cells, setCells] = useState<CellMap>(() => initialCells(data));
   const [send, setSend] = useState<SendState | null>(null);
+  // 문구를 저장하기 전에는 ✉를 눌러도 보낼 게 없다 — 버튼을 막고 이유를 알려준다.
+  const [hasTemplate, setHasTemplate] = useState(mailSubject.trim() !== "" && mailBody.trim() !== "");
   function patch(orgId: number, next: Partial<CellState>) {
     setCells((prev) => ({ ...prev, [orgId]: { ...prev[orgId], ...next } }));
   }
@@ -740,6 +853,7 @@ export default function SurveyOverview({
       opensOthers: owner.children.length > 0,
       childLabels: owner.children.map((c) => c.org.basis),
       draft: null,
+      copied: false,
       phase: "confirm",
       message: "",
     });
@@ -780,6 +894,7 @@ export default function SurveyOverview({
           initialBody={mailBody}
           period={period}
           hasPreviousMail={hasPreviousMail}
+          onSaved={() => setHasTemplate(true)}
         />
       </div>
 
@@ -792,6 +907,7 @@ export default function SurveyOverview({
           patch={patch}
           save={save}
           onSend={openSend}
+          hasTemplate={hasTemplate}
         />
       ))}
 

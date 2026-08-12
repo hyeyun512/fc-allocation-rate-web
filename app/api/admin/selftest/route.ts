@@ -7,6 +7,8 @@ import {
   isAllowedDomain,
   buildLinkMail,
   insertLink,
+  insertLinkHtml,
+  htmlToPlainText,
   mailtoUrl,
   maskEmail,
   maskToken,
@@ -82,17 +84,25 @@ function runCases(): Case[] {
   c.push(eq("maskEmail", maskEmail("hong@company.com"), "h***@company.com"));
   c.push(eq("maskToken", maskToken("a1b2c3d4e5f6g7h8i9"), "…8i9"));
 
-  /* ── 링크 삽입 ── 본문은 자유 텍스트이고, 조직마다 달라지는 링크만 서버가 채운다. */
+  /* ── 링크 삽입 ── 본문은 자유 텍스트/서식이고, 조직마다 달라지는 링크만 서버가 채운다. */
   c.push(eq("link: placeholder position honoured", insertLink("앞\n{링크}\n뒤", "URL"), "앞\nURL\n뒤"));
   c.push(eq("link: appended when absent", insertLink("본문", "URL"), "본문\n\nURL"));
-  c.push(eq("link: trailing blank lines collapsed", insertLink("본문\n\n\n", "URL"), "본문\n\nURL"));
+  c.push(ok("link(html): anchor at placeholder", insertLinkHtml("<div>{링크}</div>", "https://u").includes('<a href="https://u">')));
+  c.push(ok("link(html): appended when absent", insertLinkHtml("<div>본문</div>", "https://u").endsWith("</div>")));
 
-  /* ── mailTemplateProblem ── 자리표시자는 더 이상 요구하지 않는다. */
-  c.push(eq("tpl: plain text is fine", mailTemplateProblem("제목", "본문"), null));
-  c.push(eq("tpl: no link placeholder required", mailTemplateProblem("제목", "링크 없는 본문"), null));
-  c.push(ok("tpl: rejects empty subject", !!mailTemplateProblem("", "본문")));
-  c.push(ok("tpl: rejects empty body", !!mailTemplateProblem("제목", "")));
-  c.push(ok("tpl: rejects multiline subject", !!mailTemplateProblem("a\nb", "본문")));
+  /* ── HTML → 평문 ── mailto 초안에는 평문만 담을 수 있다. */
+  c.push(eq("html: divs become lines", htmlToPlainText("<div>가</div><div>나</div>"), "가\n나"));
+  c.push(eq("html: br becomes line", htmlToPlainText("가<br>나"), "가\n나"));
+  c.push(eq("html: tags stripped, text kept", htmlToPlainText("<b>굵게</b>와 <span style=\"color:red\">빨강</span>"), "굵게와 빨강"));
+  c.push(eq("html: entities decoded", htmlToPlainText("a&nbsp;&amp;&lt;b&gt;"), "a &<b>"));
+  c.push(eq("html: empty markup is empty", htmlToPlainText("<div><br></div>"), ""));
+
+  /* ── mailTemplateProblem ── */
+  c.push(eq("tpl: plain html is fine", mailTemplateProblem("제목", "<div>본문</div>"), null));
+  c.push(ok("tpl: rejects empty subject", !!mailTemplateProblem("", "<div>본문</div>")));
+  // 태그만 있고 글자가 없으면 빈 본문이다.
+  c.push(ok("tpl: rejects markup-only body", !!mailTemplateProblem("제목", "<div><br></div>")));
+  c.push(ok("tpl: rejects multiline subject", !!mailTemplateProblem("a\nb", "<div>본문</div>")));
 
   /* ── buildLinkMail ── */
   const saved = buildLinkMail({
@@ -100,33 +110,31 @@ function runCases(): Case[] {
     url: "https://x/submit/tok",
     lang: "ko",
     subject: "[협조요청] 26년 3Q",
-    body: "안녕하세요.\n8/14(금)까지 부탁드립니다.",
+    bodyHtml: "<div><b>안녕하세요.</b></div><div>8/14(금)까지 부탁드립니다.</div>",
   });
-  c.push(eq("mail: uses the saved subject as-is", saved?.subject, "[협조요청] 26년 3Q"));
-  c.push(ok("mail: link appended to saved body", (saved?.body ?? "").endsWith("https://x/submit/tok")));
-  c.push(ok("mail: saved text kept verbatim", (saved?.body ?? "").startsWith("안녕하세요.")));
+  c.push(eq("mail: subject as-is", saved?.subject, "[협조요청] 26년 3Q"));
+  c.push(ok("mail: text is plain and keeps the words", (saved?.text ?? "").startsWith("안녕하세요.")));
+  c.push(ok("mail: text has no tags", !(saved?.text ?? "").includes("<")));
+  c.push(ok("mail: text ends with the link", (saved?.text ?? "").endsWith("https://x/submit/tok")));
+  c.push(ok("mail: html keeps bold", (saved?.html ?? "").includes("<b>")));
+  c.push(ok("mail: html carries the default font", (saved?.html ?? "").includes("맑은 고딕")));
+  c.push(ok("mail: html links the url", (saved?.html ?? "").includes('<a href="https://x/submit/tok">')));
 
-  // 적어 둔 문구가 없으면 빈 메일을 만들지 않는다 — 화면이 "문구를 먼저 저장하라"고 말하게 한다.
+  // 적어 둔 문구가 없으면 빈 메일을 만들지 않는다.
   c.push(eq("mail: no template -> null", buildLinkMail({ orgLabel: "개발 그룹", url: "u", lang: "ko" }), null));
-  c.push(eq("mail: blank template -> null", buildLinkMail({ orgLabel: "개발 그룹", url: "u", lang: "ko", subject: " ", body: " " }), null));
+  c.push(eq("mail: markup-only template -> null", buildLinkMail({ orgLabel: "x", url: "u", lang: "ko", subject: "s", bodyHtml: "<div><br></div>" }), null));
 
   // 영어로 나가는 조직은 관리자가 적은 한국어 문구를 쓰지 않는다.
-  const en = buildLinkMail({
-    orgLabel: "HUK Expatriates",
-    url: "https://x/submit/tok",
-    lang: "en",
-    subject: "무시되어야 함",
-    body: "무시되어야 함",
-  });
-  c.push(ok("mail: en ignores the korean template", !(en?.body ?? "").includes("무시")));
-  c.push(ok("mail: en has no korean", /[가-힣]/.test(en?.body ?? "") === false));
-  c.push(ok("mail: en still carries the link", (en?.body ?? "").includes("https://x/submit/tok")));
+  const en = buildLinkMail({ orgLabel: "HUK Expatriates", url: "https://x/submit/tok", lang: "en", subject: "무시", bodyHtml: "<div>무시</div>" });
+  c.push(ok("mail: en ignores the korean template", !(en?.text ?? "").includes("무시")));
+  c.push(ok("mail: en has no korean", !/[가-힣]/.test(en?.text ?? "")));
+  c.push(ok("mail: en carries the link", (en?.text ?? "").includes("https://x/submit/tok")));
 
   /* ── mailtoUrl ── */
   const url = mailtoUrl("a@b.com", "제목 x", "1줄\n2줄");
   c.push(ok("mailto encodes newline", url.includes("%0A")));
   c.push(ok("mailto has subject+body", url.includes("?subject=") && url.includes("&body=")));
-  c.push(ok("mailto under 1800 chars", mailtoUrl("a@b.com", saved?.subject ?? "", saved?.body ?? "").length < 1800));
+  c.push(ok("mailto under 1800 chars", mailtoUrl("a@b.com", saved?.subject ?? "", saved?.text ?? "").length < 1800));
   // 수신인 여러 명은 쉼표로 잇되 쉼표 자체는 인코딩하지 않는다 — %2C면 Outlook이 주소 하나로 읽는다.
   const multi = mailtoUrl(["a@b.com", "c@d.com"], "s", "b");
   c.push(ok("mailto joins addresses with raw comma", multi.startsWith("mailto:a@b.com,c@d.com?")));

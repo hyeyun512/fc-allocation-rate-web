@@ -68,30 +68,75 @@ export function maskToken(token: string): string {
 /* ─────────────────────────── 본문 ─────────────────────────── */
 
 /* ── 문구 ──
-   제목·본문은 관리자가 화면에서 직접 적는다. 분기·제출 기한 같은 것도 그때그때 손으로 적으므로
-   자리표시자는 두지 않는다 — 딱 하나, **조직마다 달라지는 링크**만 서버가 채운다.
+   제목·본문은 관리자가 화면에서 직접 적는다. 분기·제출 기한도 손으로 적으므로 자리표시자는 두지 않는다 —
+   딱 하나, **조직마다 달라지는 링크**만 서버가 채운다.
 
-   영어로 나가는 조직(HUK 등)은 담당자가 한국어를 읽지 못하므로 아래 영문 문구를 그대로 쓴다. */
+   본문은 서식(굵게·글자색·배경색)을 쓸 수 있어야 해서 HTML로 저장한다. 그런데 `mailto:`로 여는
+   초안의 본문은 규격상 **평문만** 담을 수 있다(RFC 6068). 그래서 두 가지를 함께 만든다 —
+   초안에는 평문을 넣어 두고, 서식이 살아 있는 HTML은 클립보드로 넘겨 붙여넣게 한다. */
 
-/** 본문에서 링크 자리를 직접 정하고 싶을 때 쓰는 유일한 자리표시자. 없으면 본문 끝에 붙인다. */
+/** 본문에서 링크 자리를 직접 정하고 싶을 때 쓰는 유일한 자리표시자. 없으면 본문 끝에 붙는다. */
 export const LINK_PLACEHOLDER = "{링크}";
 
-/** 본문에 링크를 넣는다. 자리표시자가 있으면 그 자리에, 없으면 끝에. */
+/** 메일 본문 기본 글꼴 — Outlook에서 그대로 보이도록 인라인 스타일로 넣는다. */
+export const MAIL_FONT_CSS = "font-family:'맑은 고딕','Malgun Gothic',sans-serif;font-size:10pt";
+
+const BLOCK_END = /<\/(p|div|li|h[1-6]|tr)\s*>/gi;
+const BR = /<br\s*\/?>/gi;
+
+/** HTML 본문을 평문으로. 초안(mailto)에는 평문만 들어가므로 서식을 걷어낸 형태가 필요하다. */
+export function htmlToPlainText(html: string): string {
+  return String(html ?? "")
+    .replace(BR, "\n")
+    .replace(BLOCK_END, "\n")
+    .replace(/<[^>]*>/g, "")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/gi, "'")
+    .replace(/[ 	]+\n/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
+/** 본문(HTML)에 링크를 넣는다. 자리표시자가 있으면 그 자리에, 없으면 끝에. */
+export function insertLinkHtml(bodyHtml: string, url: string): string {
+  const anchor = `<a href="${escapeHtml(url)}">${escapeHtml(url)}</a>`;
+  const b = String(bodyHtml ?? "");
+  if (b.includes(LINK_PLACEHOLDER)) return b.split(LINK_PLACEHOLDER).join(anchor);
+  return `${b}<div>&nbsp;</div><div>${anchor}</div>`;
+}
+
+/** 평문 본문에 링크를 넣는다. */
 export function insertLink(body: string, url: string): string {
   const b = String(body ?? "");
   if (b.includes(LINK_PLACEHOLDER)) return b.split(LINK_PLACEHOLDER).join(url);
   return `${b.trimEnd()}\n\n${url}`;
 }
 
+/** Outlook에 붙여넣을 수 있도록 기본 글꼴을 입힌 조각으로 감싼다. */
+export function wrapMailHtml(bodyHtml: string): string {
+  return `<div style="${MAIL_FONT_CSS}">${bodyHtml}</div>`;
+}
+
 /** 저장 전 검사. 문제가 없으면 null. */
-export function mailTemplateProblem(subject: string, body: string): string | null {
+export function mailTemplateProblem(subject: string, bodyHtml: string): string | null {
   const s = String(subject ?? "").trim();
-  const b = String(body ?? "").trim();
+  const plain = htmlToPlainText(bodyHtml);
   if (!s) return "제목을 입력해 주세요.";
   if (s.length > 200) return "제목이 너무 깁니다 (200자 이내).";
   if (s.includes("\n")) return "제목은 한 줄이어야 합니다.";
-  if (!b) return "본문을 입력해 주세요.";
-  if (b.length > 4000) return "본문이 너무 깁니다 (4000자 이내).";
+  if (!plain) return "본문을 입력해 주세요.";
+  if (String(bodyHtml ?? "").length > 20000) return "본문이 너무 깁니다.";
   return null;
 }
 
@@ -100,14 +145,17 @@ export interface LinkMailInput {
   orgLabel: string;
   url: string;
   lang: MailLang;
-  /** 관리자가 이번 분기에 적어 둔 문구. 한국어 조직은 이게 없으면 메일을 만들지 않는다. */
+  /** 관리자가 이번 분기에 적어 둔 문구(본문은 HTML). 한국어 조직은 이게 없으면 메일을 만들지 않는다. */
   subject?: string | null;
-  body?: string | null;
+  bodyHtml?: string | null;
 }
 
 export interface LinkMail {
   subject: string;
-  body: string;
+  /** 초안(mailto)에 넣을 평문. */
+  text: string;
+  /** 클립보드로 넘겨 붙여넣을 서식 있는 본문. */
+  html: string;
 }
 
 /**
@@ -117,27 +165,30 @@ export interface LinkMail {
 export function buildLinkMail(input: LinkMailInput): LinkMail | null {
   if (input.lang === "en") {
     // 영문은 코드에 한 벌 둔다. 관리자가 한국어로 적은 문구를 영국 담당자에게 보낼 수는 없다.
+    const lines = [
+      "Hello,",
+      "",
+      `Please complete the resource allocation survey for ${input.orgLabel} using the link below.`,
+      "",
+      input.url,
+      "",
+      "Please do not forward this link. Reply to this email if you have any questions.",
+      "",
+      "Thank you.",
+    ];
     return {
       subject: `[Resource Allocation] Survey input request - ${input.orgLabel}`,
-      body: [
-        "Hello,",
-        "",
-        `Please complete the resource allocation survey for ${input.orgLabel} using the link below.`,
-        "",
-        input.url,
-        "",
-        "Please do not forward this link. Reply to this email if you have any questions.",
-        "",
-        "Thank you.",
-      ].join("\n"),
+      text: lines.join("\n"),
+      html: wrapMailHtml(lines.map((l) => `<div>${l === "" ? "&nbsp;" : escapeHtml(l)}</div>`).join("")),
     };
   }
 
   const subject = String(input.subject ?? "").trim();
-  const body = String(input.body ?? "").trim();
-  if (!subject || !body) return null;
+  const bodyHtml = String(input.bodyHtml ?? "");
+  if (!subject || !htmlToPlainText(bodyHtml)) return null;
 
-  return { subject, body: insertLink(body, input.url) };
+  const html = wrapMailHtml(insertLinkHtml(bodyHtml, input.url));
+  return { subject, text: insertLink(htmlToPlainText(bodyHtml), input.url), html };
 }
 
 /**
