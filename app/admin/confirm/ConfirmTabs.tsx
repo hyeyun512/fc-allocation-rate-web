@@ -30,7 +30,6 @@ export default function ConfirmTabs({
   mailSubject,
   mailBody,
   hasPreviousMail,
-  initialDeadline,
   surveyData,
   resourceData,
   hkrHistory,
@@ -48,8 +47,6 @@ export default function ConfirmTabs({
   mailBody: string;
   /** 이전 분기에 저장해 둔 문구가 있는지 — 있을 때만 불러오기 버튼을 보여준다. */
   hasPreviousMail: boolean;
-  /** 이번 분기 제출 기한 (지난 분기 값이면 빈 문자열). */
-  initialDeadline: string;
   surveyData: SurveyOrgData[];
   resourceData: OrgReviewData[];
   hkrHistory: RateHistoryEntry[];
@@ -151,7 +148,6 @@ export default function ConfirmTabs({
           mailSubject={mailSubject}
           mailBody={mailBody}
           hasPreviousMail={hasPreviousMail}
-          initialDeadline={initialDeadline}
         />
       )}
       {subTab === "resource" && (

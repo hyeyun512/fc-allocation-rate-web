@@ -2,17 +2,7 @@
 
 import { Fragment, useMemo, useState } from "react";
 import { leaderFirst, sortForOrgPicker, DIVISION_ORDER } from "@/lib/orgOrder";
-import {
-  isValidEmail,
-  renderMailTemplate,
-  mailTemplateProblem,
-  MAIL_PLACEHOLDERS,
-  DEFAULT_MAIL_SUBJECT,
-  DEFAULT_MAIL_BODY,
-  DEADLINE_UNSET,
-} from "@/lib/linkMail";
-import { matchPastedManagers, buildPasteTemplate, applicableRows, PasteMatch, PasteOrg } from "@/lib/managerPaste";
-import { parsePasteText, readPasteGrid } from "@/lib/paste";
+import { isValidEmail, mailTemplateProblem, LINK_PLACEHOLDER } from "@/lib/linkMail";
 import type { ResolvedManager } from "@/lib/orgManager";
 
 export interface SurveyOrgData {
@@ -149,13 +139,11 @@ function SendDialog({
   state,
   setState,
   period,
-  deadline,
   onClose,
 }: {
   state: SendState;
   setState: (s: SendState) => void;
   period: string;
-  deadline: string;
   onClose: () => void;
 }) {
   const chosen = state.candidates.filter((c) => state.checked[c.orgId]);
@@ -535,184 +523,31 @@ function DivisionTable({
   );
 }
 
-/* ─────────────────── 메일 문구 편집 ───────────────────
-   조직마다 문구가 거의 같아서 여기서 한 번 고쳐 두고 전 조직에 쓴다.
-   영어 링크 조직(HUK 등)은 코드의 영문 문구를 그대로 쓴다. */
-
-/* ─────────────────── 담당자 한 번에 붙여넣기 ───────────────────
-   조직이 서른 곳이 넘어서 칸마다 하나씩 치는 건 현실적이지 않다.
-   조직 목록을 엑셀로 가져가 메일 열만 채운 뒤 통째로 붙여넣게 한다. */
-
-function BulkPasteDialog({
-  orgs,
-  period,
-  onClose,
-  onSaved,
-}: {
-  orgs: PasteOrg[];
-  period: string;
-  onClose: () => void;
-  onSaved: (saved: { orgId: number; name: string; email: string }[]) => void;
-}) {
-  const [text, setText] = useState("");
-  const [copied, setCopied] = useState(false);
-  const [state, setState] = useState<"idle" | "saving" | "error">("idle");
-  const [error, setError] = useState("");
-
-  const grid = useMemo(() => parsePasteText(text), [text]);
-  const matches: PasteMatch[] = useMemo(() => matchPastedManagers(grid, orgs), [grid, orgs]);
-  const willSave = applicableRows(matches);
-  const problems = matches.filter((m) => m.status === "no-org" || m.status === "bad-email");
-
-  async function apply() {
-    setState("saving");
-    setError("");
-    try {
-      const res = await fetch("/api/admin/org-manager/bulk", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ grid, period }),
-      });
-      const json = await res.json();
-      if (!res.ok) {
-        setError(json?.error ?? "저장하지 못했습니다.");
-        setState("error");
-        return;
-      }
-      onSaved(
-        willSave.map((m) => ({
-          orgId: m.orgId as number,
-          name: m.name !== "" ? m.name : m.currentName,
-          email: m.email !== "" ? m.email : m.currentEmail,
-        }))
-      );
-      onClose();
-    } catch {
-      setError("저장하지 못했습니다.");
-      setState("error");
-    }
-  }
-
-  const label: Record<PasteMatch["status"], string> = {
-    ok: "저장됨",
-    same: "그대로",
-    "no-org": "조직 못 찾음",
-    "bad-email": "메일 형식 오류",
-    empty: "값 없음",
-  };
-
-  return (
-    <div className="send-backdrop" role="dialog" aria-modal="true" aria-label="담당자 한 번에 입력">
-      <div className="send-dialog bulk-dialog">
-        <div className="send-title">담당자 · 메일 한 번에 입력</div>
-        <p className="send-lead">
-          ① 아래 <b>조직 목록 복사</b>를 눌러 엑셀에 붙여넣고 ② <b>Outlook 메일</b> 열만 채운 뒤 ③ 표 전체를
-          복사해 아래 칸에 붙여넣으세요. 열 순서는 달라도 됩니다.
-        </p>
-
-        <div className="send-actions" style={{ justifyContent: "flex-start", marginTop: 0, marginBottom: 10 }}>
-          <button
-            className="btn btn-secondary btn-sm"
-            onClick={async () => {
-              await navigator.clipboard?.writeText(buildPasteTemplate(orgs));
-              setCopied(true);
-              setTimeout(() => setCopied(false), 1500);
-            }}
-          >
-            {copied ? "복사됨 — 엑셀에 붙여넣으세요" : `조직 목록 복사 (${orgs.length}개)`}
-          </button>
-        </div>
-
-        <textarea
-          className="mail-tpl-area bulk-area"
-          rows={8}
-          value={text}
-          placeholder={"여기에 엑셀 표를 붙여넣으세요\n예)  개발 그룹\t오인희 그룹장\toh@company.com"}
-          onChange={(e) => setText(e.target.value)}
-          onPaste={(e) => {
-            // 엑셀에서 온 표는 탭/줄바꿈이 살아 있는 원문으로 받아야 열이 안 뭉개진다.
-            const rows = readPasteGrid(e.clipboardData);
-            if (rows.length > 1 || (rows[0]?.length ?? 0) > 1) {
-              e.preventDefault();
-              setText(rows.map((r) => r.join("\t")).join("\n"));
-            }
-          }}
-        />
-
-        {matches.length > 0 && (
-          <>
-            <div className="send-sub">
-              읽은 결과 — <b>{willSave.length}곳 저장</b>
-              {problems.length > 0 && <span className="bulk-warn"> · 확인 필요 {problems.length}곳</span>}
-            </div>
-            <div className="bulk-scroll">
-              <table className="bulk-tbl">
-                <thead>
-                  <tr>
-                    <th>조직</th>
-                    <th>담당자</th>
-                    <th>Outlook 메일</th>
-                    <th>상태</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {matches.map((m, i) => (
-                    <tr key={i} className={m.status === "no-org" || m.status === "bad-email" ? "is-bad" : undefined}>
-                      <td>{m.orgBasis || m.inputOrg}</td>
-                      <td>{m.name || m.currentName || "—"}</td>
-                      <td>{m.email || m.currentEmail || "—"}</td>
-                      <td className={`bulk-status s-${m.status}`}>{label[m.status]}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </>
-        )}
-
-        {error && <p className="send-error">{error}</p>}
-        <div className="send-actions">
-          <button
-            className="btn btn-primary btn-sm"
-            disabled={willSave.length === 0 || state === "saving"}
-            onClick={apply}
-          >
-            {state === "saving" ? "저장 중..." : `${willSave.length}곳 저장`}
-          </button>
-          <button className="btn btn-secondary btn-sm" onClick={onClose}>
-            취소
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
+/* ─────────────────── 메일 문구 ───────────────────
+   제목·본문을 관리자가 직접 적는다. 분기·제출 기한도 그때그때 손으로 적으므로 자리표시자를 두지 않았다.
+   딱 하나 조직마다 달라지는 링크만 서버가 채운다 — 본문에 {링크}가 있으면 그 자리에, 없으면 끝에 붙는다. */
 
 function MailTemplateEditor({
   initialSubject,
   initialBody,
   period,
-  deadline,
   hasPreviousMail,
 }: {
   initialSubject: string;
   initialBody: string;
   period: string;
-  deadline: string;
   hasPreviousMail: boolean;
 }) {
-  // 기본으로 펼쳐 둔다 — 접어 두면 여기서 문구를 고칠 수 있다는 걸 아무도 모른다.
-  const [open, setOpen] = useState(true);
-  const [subject, setSubject] = useState(initialSubject || DEFAULT_MAIL_SUBJECT);
-  const [body, setBody] = useState(initialBody || DEFAULT_MAIL_BODY);
+  const [subject, setSubject] = useState(initialSubject);
+  const [body, setBody] = useState(initialBody);
   const [state, setState] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [error, setError] = useState("");
-  const [imported, setImported] = useState("");
+  const [notice, setNotice] = useState("");
 
   /** 지난 분기에 보냈던 문구를 그대로 가져온다. 저장은 사람이 확인한 뒤에 한다. */
   async function loadPrevious() {
     setError("");
-    setImported("");
+    setNotice("");
     setState("saving");
     try {
       const res = await fetch("/api/admin/mail-template", {
@@ -726,36 +561,18 @@ function MailTemplateEditor({
         setState("error");
         return;
       }
-      setSubject(json.subject || DEFAULT_MAIL_SUBJECT);
-      setBody(json.body || DEFAULT_MAIL_BODY);
+      setSubject(json.subject ?? "");
+      setBody(json.body ?? "");
       setState("idle");
-      setImported(
-        `${json.period}에 보낸 문구를 가져왔습니다. 분기는 자리표시자라 저절로 바뀝니다 — 확인 후 ‘문구 저장’을 눌러 주세요.`
-      );
+      setNotice(`${json.period} 문구를 가져왔습니다. 분기와 제출 기한을 고친 뒤 저장해 주세요.`);
     } catch {
       setError("이전 분기 문구를 불러오지 못했습니다.");
       setState("error");
     }
   }
 
-  // 자리표시자가 실제로 어떻게 채워지는지 눈으로 보고 고칠 수 있게 예시로 미리 보여준다.
-  const preview = useMemo(() => {
-    const m = /^(\d{4})-Q(\d)$/.exec(period);
-    const vars: Record<string, string> = {
-      "{분기}": m ? `${m[1]}-${m[2]}Q` : period,
-      "{분기숫자}": m ? m[2] : "",
-      "{연도2}": m ? m[1].slice(-2) : "",
-      "{조직}": "HR실",
-      "{담당자}": "이채아 팀장님, 최광수 팀장님",
-      "{링크}": "https://…/submit/c4bab112da0eaa7a04",
-      "{마감}": deadline || DEADLINE_UNSET,
-      "{범위안내}": "· 이 링크는 HR실과 그 하위 조직 전체의 입력·열람 화면입니다.",
-    };
-    return { subject: renderMailTemplate(subject, vars), body: renderMailTemplate(body, vars) };
-  }, [subject, body, period, deadline]);
-
-  async function save(reset = false) {
-    const problem = reset ? null : mailTemplateProblem(subject, body);
+  async function save() {
+    const problem = mailTemplateProblem(subject, body);
     if (problem) {
       setError(problem);
       setState("error");
@@ -763,21 +580,18 @@ function MailTemplateEditor({
     }
     setState("saving");
     setError("");
+    setNotice("");
     try {
       const res = await fetch("/api/admin/mail-template", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(reset ? { reset: true, period } : { subject, body, period }),
+        body: JSON.stringify({ subject, body, period }),
       });
       const json = await res.json();
       if (!res.ok) {
         setError(json?.error ?? "저장하지 못했습니다.");
         setState("error");
         return;
-      }
-      if (reset) {
-        setSubject(DEFAULT_MAIL_SUBJECT);
-        setBody(DEFAULT_MAIL_BODY);
       }
       setState("saved");
       setTimeout(() => setState("idle"), 1500);
@@ -789,62 +603,40 @@ function MailTemplateEditor({
 
   return (
     <div className="mail-tpl">
-      <button type="button" className="mail-tpl-toggle" onClick={() => setOpen(!open)}>
-        {open ? "▾" : "▸"} 메일 제목·본문 설정 {open ? "" : "— 눌러서 펼치기"}
-      </button>
+      <div className="mail-tpl-head">
+        <span className="mail-tpl-title">메일 제목 · 본문</span>
+        {hasPreviousMail && (
+          <button type="button" className="btn btn-secondary btn-sm" onClick={loadPrevious} disabled={state === "saving"}>
+            전분기 메일 불러오기
+          </button>
+        )}
+      </div>
 
-      {open && (
-        <div className="mail-tpl-body">
-          {hasPreviousMail && (
-            <div className="mail-tpl-import">
-              <button type="button" className="btn btn-secondary btn-sm" onClick={loadPrevious} disabled={state === "saving"}>
-                전분기 메일 내용 불러오기
-              </button>
-              <span className="field-hint">지난 분기에 보낸 제목·본문을 그대로 가져옵니다.</span>
-            </div>
-          )}
-          {imported && <p className="mail-tpl-ok">{imported}</p>}
+      {notice && <p className="mail-tpl-ok">{notice}</p>}
 
-          <div className="mail-tpl-keys">
-            {MAIL_PLACEHOLDERS.map((p) => (
-              <button
-                key={p.key}
-                type="button"
-                title={p.desc}
-                onClick={() => setBody((b) => `${b}${p.key}`)}
-              >
-                {p.key}
-              </button>
-            ))}
-          </div>
-          <div className="field-hint" style={{ marginBottom: 8 }}>
-            자리표시자를 누르면 본문 끝에 붙습니다. <b>값이 빈 자리표시자가 든 줄은 통째로 빠집니다</b> — 마감을
-            비우면 마감 줄이 사라집니다. 영어로 나가는 조직(HUK)은 이 문구 대신 영문 기본 문구를 씁니다.
-          </div>
+      <label className="mail-tpl-label">제목</label>
+      <input
+        className="mail-tpl-input"
+        value={subject}
+        placeholder="예: [협조요청] 부서별 투입리소스 작성 (26년 3Q)"
+        onChange={(e) => setSubject(e.target.value)}
+      />
 
-          <label className="mail-tpl-label">제목</label>
-          <input className="mail-tpl-input" value={subject} onChange={(e) => setSubject(e.target.value)} />
+      <label className="mail-tpl-label">본문</label>
+      <textarea
+        className="mail-tpl-area"
+        rows={12}
+        value={body}
+        placeholder={"메일 본문을 적어 주세요." + "\n" + "조사 링크는 본문 끝에 자동으로 붙습니다. 위치를 정하려면 " + LINK_PLACEHOLDER + " 를 적으세요."}
+        onChange={(e) => setBody(e.target.value)}
+      />
 
-          <label className="mail-tpl-label">본문</label>
-          <textarea className="mail-tpl-area" rows={13} value={body} onChange={(e) => setBody(e.target.value)} />
-
-          <label className="mail-tpl-label">미리보기 (HR실 예시)</label>
-          <div className="send-preview">
-            <b>{preview.subject}</b>
-            <pre>{preview.body}</pre>
-          </div>
-
-          {error && <p className="send-error">{error}</p>}
-          <div className="mail-tpl-actions">
-            <button className="btn btn-primary btn-sm" disabled={state === "saving"} onClick={() => save(false)}>
-              {state === "saving" ? "저장 중..." : state === "saved" ? "저장됨" : "문구 저장"}
-            </button>
-            <button className="btn btn-secondary btn-sm" disabled={state === "saving"} onClick={() => save(true)}>
-              기본 문구로 되돌리기
-            </button>
-          </div>
-        </div>
-      )}
+      {error && <p className="send-error">{error}</p>}
+      <div className="mail-tpl-actions">
+        <button className="btn btn-primary btn-sm" disabled={state === "saving"} onClick={save}>
+          {state === "saving" ? "저장 중..." : state === "saved" ? "저장됨" : "문구 저장"}
+        </button>
+      </div>
     </div>
   );
 }
@@ -855,7 +647,6 @@ export default function SurveyOverview({
   mailSubject,
   mailBody,
   hasPreviousMail,
-  initialDeadline,
 }: {
   period: string;
   data: SurveyOrgData[];
@@ -863,38 +654,11 @@ export default function SurveyOverview({
   mailBody: string;
   /** 이전 분기에 저장해 둔 문구가 있는지 — 있을 때만 불러오기 버튼을 보여준다. */
   hasPreviousMail: boolean;
-  /** 이번 분기에 정해 둔 제출 기한. 분기가 바뀌었으면 서버가 빈 값으로 내려준다. */
-  initialDeadline: string;
 }) {
   // 담당자 칸 상태는 행이 아니라 **화면 전체**가 들고 있다. 발송 버튼은 링크 주인 행에 있는데
   // 주소는 하위 행에 입력될 수 있어(HR실·Staff(CEO)) 행 안에 상태를 가두면 버튼이 갱신되지 않는다.
   const [cells, setCells] = useState<CellMap>(() => initialCells(data));
   const [send, setSend] = useState<SendState | null>(null);
-  const [bulkOpen, setBulkOpen] = useState(false);
-  // 제출 기한은 DB에 분기와 함께 저장한다. 분기가 바뀌면 지난 기한은 무효가 되어 빈 값으로 내려오고,
-  // 메일에는 '재설정 필요'가 찍혀 기한 없는 메일이 조용히 나가는 걸 막는다.
-  const [deadline, setDeadline] = useState(initialDeadline);
-  const [deadlineSaved, setDeadlineSaved] = useState(initialDeadline);
-  const [deadlineState, setDeadlineState] = useState<"idle" | "saving" | "saved" | "error">("idle");
-
-  async function saveDeadline() {
-    if (deadline === deadlineSaved) return;
-    setDeadlineState("saving");
-    try {
-      const res = await fetch("/api/admin/mail-template", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ only: "deadline", deadline, period }),
-      });
-      if (!res.ok) throw new Error();
-      setDeadlineSaved(deadline);
-      setDeadlineState("saved");
-      setTimeout(() => setDeadlineState("idle"), 1500);
-    } catch {
-      setDeadlineState("error");
-    }
-  }
-
   function patch(orgId: number, next: Partial<CellState>) {
     setCells((prev) => ({ ...prev, [orgId]: { ...prev[orgId], ...next } }));
   }
@@ -1011,53 +775,10 @@ export default function SurveyOverview({
     <div className="survey-wrap">
       <div className="panel survey-panel">
         <div className="panel-title">조사 현황 ({period})</div>
-        <div className="callout info" style={{ margin: 0 }}>
-          전체 {submitting.length}개 조직 중 <b>{submittedCount}</b>개 제출
-          {missingEmail > 0 && (
-            <>
-              {" · "}
-              <b>메일 미등록 {missingEmail}곳</b>
-            </>
-          )}
-          {"  "}
-          <button type="button" className="bulk-open-btn" onClick={() => setBulkOpen(true)}>
-            엑셀로 한 번에 입력
-          </button>
-        </div>
-        <div className="survey-deadline">
-          <label htmlFor="survey-deadline-input">제출 기한</label>
-          <input
-            id="survey-deadline-input"
-            className={deadlineSaved === "" ? "needs-set" : undefined}
-            value={deadline}
-            maxLength={40}
-            placeholder="예: 8/14(금)"
-            onChange={(e) => setDeadline(e.target.value)}
-            onBlur={saveDeadline}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") {
-                e.preventDefault();
-                saveDeadline();
-              }
-            }}
-          />
-          <span className="survey-save-state" style={deadlineState === "error" ? { color: "#dc2626" } : undefined}>
-            {deadlineState === "saving"
-              ? "저장중"
-              : deadlineState === "saved"
-              ? "저장됨"
-              : deadlineState === "error"
-              ? "실패"
-              : deadlineSaved === ""
-              ? "메일에 ‘재설정 필요’로 나갑니다"
-              : ""}
-          </span>
-        </div>
         <MailTemplateEditor
           initialSubject={mailSubject}
           initialBody={mailBody}
           period={period}
-          deadline={deadlineSaved}
           hasPreviousMail={hasPreviousMail}
         />
       </div>
@@ -1074,46 +795,8 @@ export default function SurveyOverview({
         />
       ))}
 
-      {bulkOpen && (
-        <BulkPasteDialog
-          period={period}
-          orgs={flatten(ordered).map((i) => ({
-            id: i.org.id,
-            basis: i.org.basis,
-            currentName: cells[i.org.id]?.savedName ?? "",
-            currentEmail: cells[i.org.id]?.savedEmail ?? "",
-          }))}
-          onClose={() => setBulkOpen(false)}
-          onSaved={(rows) =>
-            // 표를 다시 읽지 않고 저장된 값만 화면에 반영한다 — 새로고침 없이 ✉가 바로 켜진다.
-            setCells((prev) => {
-              const next = { ...prev };
-              rows.forEach((r) => {
-                if (!next[r.orgId]) return;
-                next[r.orgId] = {
-                  ...next[r.orgId],
-                  name: r.name,
-                  savedName: r.name,
-                  email: r.email,
-                  savedEmail: r.email,
-                  emailInherited: false,
-                  emailFromPeriod: period,
-                };
-              });
-              return next;
-            })
-          }
-        />
-      )}
-
       {send && (
-        <SendDialog
-          state={send}
-          setState={setSend}
-          period={period}
-          deadline={deadline}
-          onClose={() => setSend(null)}
-        />
+        <SendDialog state={send} setState={setSend} period={period} onClose={() => setSend(null)} />
       )}
     </div>
   );

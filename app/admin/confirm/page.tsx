@@ -352,8 +352,7 @@ export default async function AdminConfirmPage() {
       mailSubject={mailTpl?.subject ?? ""}
       mailBody={mailTpl?.body ?? ""}
       hasPreviousMail={hasPreviousMail}
-      // 지난 분기에 정한 기한은 이번 분기 것이 아니다 — 빈 값으로 내려 '재설정 필요'가 뜨게 한다.
-      initialDeadline={settings?.mail_deadline_period === period ? settings?.mail_deadline ?? "" : ""}
+      // 지난 분기에 정한 기한은 이번 분기 것이 아니다 — 빈 값으로 내려 '재설정 필요'가 뜨게 한다.
       surveyData={surveyData}
       resourceData={finalData}
       hkrHistory={hkrHistory}

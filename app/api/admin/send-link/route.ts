@@ -65,17 +65,11 @@ export async function POST(req: NextRequest) {
   }
 
   const supabase = getSupabaseAdmin();
-  const [{ data: orgRows }, { data: managerRows }, { data: settings }, { data: tpl }] = await Promise.all([
+  const [{ data: orgRows }, { data: managerRows }, { data: tpl }] = await Promise.all([
     supabase.from("allocation_orgs").select("id,basis,parent_basis,access_token,active"),
     supabase.from("allocation_org_managers").select("org_id,period,manager_name,manager_email,email_set_period"),
-    supabase.from("allocation_settings").select("mail_deadline,mail_deadline_period").eq("id", 1).single(),
     supabase.from("allocation_mail_templates").select("period,subject,body").eq("period", period).maybeSingle(),
   ]);
-
-  // 제출 기한은 클라이언트가 보내지 않는다 — 관리자가 저장해 둔 값을 서버가 읽는다.
-  // 지난 분기에 정한 기한은 쓰지 않는다(그대로 나가면 이미 지난 날짜를 보내게 된다).
-  const deadline =
-    settings?.mail_deadline_period === period ? String(settings?.mail_deadline ?? "").trim() : "";
 
   const orgs = (orgRows ?? []) as OrgLite[];
   const managers = (managerRows ?? []) as OrgManagerRow[];
@@ -178,18 +172,24 @@ export async function POST(req: NextRequest) {
     const mail = recipients.length
       ? buildLinkMail({
           orgLabel: orgLabelFor(linkOrg.basis, lang),
-          recipientNames: recipients.map((r) => r.managerName),
-          period,
           url,
           lang,
-          deadline: deadline || undefined,
-          opensOthers,
-          // 관리자가 이번 분기에 적어 둔 문구. 없으면 기본 문구를 쓴다.
-          // 영어로 나가는 조직에는 한국어 문구를 적용하지 않는다.
-          subjectTemplate: lang === "ko" ? tpl?.subject ?? null : null,
-          bodyTemplate: lang === "ko" ? tpl?.body ?? null : null,
+          // 관리자가 이번 분기에 적어 둔 문구. 영어로 나가는 조직에는 적용하지 않는다.
+          subject: lang === "ko" ? tpl?.subject ?? null : null,
+          body: lang === "ko" ? tpl?.body ?? null : null,
         })
       : null;
+
+    // 한국어 조직인데 적어 둔 문구가 없으면 빈 메일이 나갈 뻔한 것이다 — 만들지 않고 알린다.
+    if (recipients.length && !mail) {
+      return NextResponse.json(
+        {
+          error: "이번 분기 메일 제목·본문이 저장되어 있지 않습니다. 조사 화면에서 문구를 저장한 뒤 보내 주세요.",
+          code: "no-mail-template",
+        },
+        { status: 400 }
+      );
+    }
 
     // ── 10. 로그는 '발송'이 아니라 '초안을 열었다'는 사실만 남긴다. 보낸 것은 사람이지 서버가 아니다.
     //       토큰·주소 전체는 남기지 않는다 (로그를 볼 수 있는 사람이 곧 그 조직 화면을 열 수 있게 된다).
