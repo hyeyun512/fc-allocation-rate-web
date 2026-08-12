@@ -27,6 +27,8 @@ const SUB_TABS: { key: SubTab; label: string }[] = [
 export default function ConfirmTabs({
   period,
   version,
+  mailSubject,
+  mailBody,
   surveyData,
   resourceData,
   hkrHistory,
@@ -39,6 +41,9 @@ export default function ConfirmTabs({
 }: {
   period: string;
   version: string;
+  /** 조사 링크 안내 메일 문구 (비어 있으면 기본 문구). */
+  mailSubject: string;
+  mailBody: string;
   surveyData: SurveyOrgData[];
   resourceData: OrgReviewData[];
   hkrHistory: RateHistoryEntry[];
@@ -133,7 +138,9 @@ export default function ConfirmTabs({
         ))}
       </div>
 
-      {subTab === "survey" && <SurveyOverview period={period} data={surveyData} />}
+      {subTab === "survey" && (
+        <SurveyOverview period={period} data={surveyData} mailSubject={mailSubject} mailBody={mailBody} />
+      )}
       {subTab === "resource" && (
         <ConfirmReview period={period} version={version} data={resourceData} hkrHistory={hkrHistory} hkrConfirmedThisPeriod={hkrConfirmedThisPeriod} />
       )}

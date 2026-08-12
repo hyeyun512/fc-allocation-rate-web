@@ -142,7 +142,10 @@ a{color:inherit}
 /* ================= 조사 현황 (조직 · 입력 링크 · 담당자) =================
    관리자 화면은 폭이 넓지만(page-wide) 이 표는 열이 셋뿐이라, 가로로 늘어뜨리면
    조직명과 담당자가 화면 양 끝에 떨어져 한 줄로 읽히지 않는다. 폭을 묶어 왼쪽에 붙여둔다. */
-.survey-wrap{max-width:720px}
+/* 담당자 칸에 메일 줄이 붙어 열이 30px 넓어진다. 이 표는 .page-wide(1440px) 안의 고정폭 상자라
+   뷰포트에는 닿지 않지만, 조직 칸 안내 문구(약 373px)가 줄바꿈되는 지점이 진짜 한계다 —
+   720이면 여유가 7px밖에 안 남으므로 상자를 먼저 넓힌다(조직 열 콘텐츠 440px, 여유 약 67px). */
+.survey-wrap{max-width:780px}
 .survey-panel{padding:14px 16px}
 .survey-panel-head{display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin-bottom:8px}
 .survey-panel-title{font-size:13.5px;font-weight:700;color:#1a202c}
@@ -164,10 +167,94 @@ a{color:inherit}
 .survey-org-branch{color:#cbd5e1;font-size:11px}
 .survey-inherit-link{color:#cbd5e1;text-align:center;font-size:12px}
 
-/* 담당자 칸은 코멘트 칸과 같은 규칙(.comment-cell)을 쓰되 열 너비에 맞춰 늘린다. */
-.survey-manager{display:flex;width:100%}
-.survey-manager input{flex:1 1 auto;min-width:0;width:auto;font-size:12.5px}
+/* 담당자 칸은 이름 줄과 메일 줄을 두 줄로 쌓는다. 열을 새로 만들면 조직 열이 밀려
+   안내 문구(약 373px)가 줄바꿈된다 — 조직 칸이 이미 두 줄이라 행 높이 순증은 크지 않다(+14px).
+   .comment-cell input(위의 기본 규칙)은 (0,1,1)이고 width:120px을 품고 있다. 같은 특정도면
+   소스 순서가 이겨버리므로 클래스를 하나 더 얹어 (0,2,1)로 올리고 flex 3종을 반드시 함께 적는다. */
+.survey-manager-stack{display:flex;flex-direction:column;gap:1px;width:100%}
+.survey-manager-stack .comment-cell{display:flex;width:100%}
+.survey-manager-stack .survey-manager-name input{flex:1 1 auto;min-width:0;width:auto;font-size:12.5px;padding:4px 8px}
+.survey-manager-stack .survey-manager-mail input{flex:1 1 auto;min-width:0;width:auto;font-size:11.5px;padding:3px 6px}
+/* 담당자가 바뀌었거나 지난 분기에 적어둔 주소 — 보내기 전에 눈에 걸리게 둔다. */
+.survey-manager-stack .survey-manager-mail.needs-review input{border-color:#f59e0b;background:#fffbeb}
 .survey-save-state{font-size:10.5px;color:#94a3b8;white-space:nowrap;flex:none}
+
+/* 발송은 링크 주인 행에만 둔다. 하위 행은 자리만 맞춰 '↑'로 상위에 딸려간다는 것만 알린다. */
+.survey-send-btn{
+  flex:none;width:22px;height:22px;border-radius:6px;border:0.5px solid #cbd5e1;background:#f8fafc;
+  color:#2563eb;font-size:11.5px;line-height:1;cursor:pointer;font-family:inherit;padding:0
+}
+.survey-send-btn:hover:not(:disabled){background:#2563eb;color:#fff;border-color:#2563eb}
+.survey-send-btn:disabled{color:#cbd5e1;cursor:not-allowed}
+.survey-send-slot{flex:none;width:22px;text-align:center;color:#e2e8f0;font-size:11px}
+
+/* 마감 안내 — 메일 본문에 한 줄로 들어간다. 비우면 그 줄 자체가 빠진다. */
+.survey-deadline{display:flex;align-items:center;gap:8px;margin-top:10px}
+.survey-deadline label{font-size:11.5px;font-weight:700;color:#64748b;white-space:nowrap}
+.survey-deadline input{
+  flex:1 1 auto;min-width:0;font-family:inherit;font-size:12px;padding:5px 8px;
+  border:0.5px solid #e2e8f0;border-radius:6px;background:#fff;color:#1a202c
+}
+.survey-deadline input:focus{outline:2px solid #bfdbfe;border-color:#2563eb}
+
+/* ── 발송 확인창 ──
+   링크는 그 자체가 자격증명이라 '무엇이 열리는지'와 '누구에게 가는지'를 보내기 전에 전부 보여준다. */
+.send-backdrop{
+  position:fixed;inset:0;background:rgba(15,23,42,.45);display:flex;align-items:center;
+  justify-content:center;padding:24px;z-index:50
+}
+.send-dialog{
+  background:#fff;border-radius:12px;padding:20px 22px;width:min(560px,100%);
+  max-height:86vh;overflow-y:auto;box-shadow:0 20px 50px -20px rgba(15,23,42,.5)
+}
+.send-title{font-size:15px;font-weight:700;color:#1a202c;margin-bottom:8px}
+.send-lead{font-size:12.5px;color:#475569;margin:8px 0}
+.send-sub{font-size:11px;font-weight:700;letter-spacing:.04em;color:#94a3b8;margin:14px 0 6px}
+.send-warn{
+  font-size:12px;color:#92400e;background:#fffbeb;border-left:3px solid #f59e0b;
+  padding:8px 10px;border-radius:0 6px 6px 0;margin:8px 0
+}
+.send-error{font-size:12.5px;color:#dc2626;margin:8px 0}
+.send-picks{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:4px}
+.send-picks label{display:flex;align-items:center;gap:8px;font-size:12.5px;cursor:pointer;padding:4px 2px}
+.send-pick-org{font-weight:700;color:#1a202c}
+.send-pick-name{color:#475569}
+.send-picks code,.send-list code{font-size:11.5px;color:#64748b;background:#f8fafc;padding:1px 5px;border-radius:4px}
+.send-list{list-style:none;margin:10px 0;padding:0;display:flex;flex-direction:column;gap:4px}
+.send-list li{display:flex;align-items:center;gap:8px;font-size:12.5px}
+.send-list li.is-pending{opacity:.5}
+.send-flag{margin-left:auto;font-size:10.5px;color:#94a3b8}
+.send-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:16px}
+/* 보낼 내용 그대로 — 줄바꿈을 살려 실제 메일과 같은 모습으로 보여준다. */
+.send-preview{border:0.5px solid #e2e8f0;border-radius:8px;padding:10px 12px;background:#f8fafc}
+.send-preview b{font-size:12.5px;color:#1a202c;display:block;margin-bottom:6px}
+.send-preview pre{
+  margin:0;font-family:inherit;font-size:12px;line-height:1.6;color:#334155;
+  white-space:pre-wrap;word-break:break-word
+}
+
+/* ── 메일 문구 편집 ── 조직마다 문구가 거의 같아 한 번 고쳐 두고 전 조직에 쓴다. */
+.mail-tpl{margin-top:10px;border-top:0.5px solid #f1f5f9;padding-top:10px}
+.mail-tpl-toggle{
+  background:none;border:0;padding:0;font-family:inherit;font-size:11.5px;font-weight:700;
+  color:#64748b;cursor:pointer
+}
+.mail-tpl-toggle:hover{color:#2563eb}
+.mail-tpl-body{margin-top:10px;display:flex;flex-direction:column;gap:4px}
+.mail-tpl-keys{display:flex;flex-wrap:wrap;gap:4px;margin-bottom:6px}
+.mail-tpl-keys button{
+  font-family:inherit;font-size:11px;padding:3px 7px;border-radius:5px;cursor:pointer;
+  border:0.5px solid #cbd5e1;background:#f1f5f9;color:#475569
+}
+.mail-tpl-keys button:hover{background:#2563eb;color:#fff;border-color:#2563eb}
+.mail-tpl-label{font-size:11px;font-weight:700;color:#94a3b8;margin-top:6px}
+.mail-tpl-input,.mail-tpl-area{
+  font-family:inherit;font-size:12.5px;padding:7px 9px;border:0.5px solid #e2e8f0;
+  border-radius:6px;background:#fff;color:#1a202c;width:100%
+}
+.mail-tpl-area{line-height:1.6;resize:vertical}
+.mail-tpl-input:focus,.mail-tpl-area:focus{outline:2px solid #bfdbfe;border-color:#2563eb}
+.mail-tpl-actions{display:flex;gap:8px;margin-top:10px}
 
 footer{text-align:center;padding:22px;color:#94a3b8;font-size:11.5px}
 

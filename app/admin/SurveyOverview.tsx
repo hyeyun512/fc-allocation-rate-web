@@ -1,7 +1,15 @@
 "use client";
 
-import { Fragment, useState } from "react";
+import { Fragment, useMemo, useState } from "react";
 import { leaderFirst, sortForOrgPicker, DIVISION_ORDER } from "@/lib/orgOrder";
+import {
+  isValidEmail,
+  renderMailTemplate,
+  mailTemplateProblem,
+  MAIL_PLACEHOLDERS,
+  DEFAULT_MAIL_SUBJECT,
+  DEFAULT_MAIL_BODY,
+} from "@/lib/linkMail";
 import type { ResolvedManager } from "@/lib/orgManager";
 
 export interface SurveyOrgData {
@@ -17,10 +25,53 @@ export interface SurveyOrgData {
   submittedBy: string | null;
   latestSubmittedAt: string | null;
   personCount: number;
-  /** 이번 분기 담당자 (없으면 지난 분기에서 이어받은 값). */
+  /** 이번 분기 담당자 이름·메일 (없으면 지난 분기에서 이어받은 값). */
   manager: ResolvedManager;
+  /** 링크 화면 언어에 맞춘 조직 표기 — 서버가 계산해 내려준다(조직명 목록을 클라이언트에 두지 않으려고). */
+  orgLabel: string;
+  /** 이 조직의 담당자에게 보낼 링크의 토큰. 하위 팀은 상위 조직 토큰을 쓴다. */
+  linkToken: string;
+  /** 이 조직이 링크 주인인지 — 복사 버튼과 발송(✉)이 붙는 행. */
+  isTokenOwner: boolean;
   /** 하위 팀(예: 개발 그룹의 SW팀·HW팀). 조직 단위를 리소스배부율의 조직/팀 선택과 맞추려고 여기에 접어 넣는다. */
   children: SurveyOrgData[];
+}
+
+/** 담당자 칸 하나의 편집 상태. 저장된 값과 편집 중인 값을 나눠 들고 있어야 '저장 안 함'을 표시할 수 있다. */
+interface CellState {
+  name: string;
+  savedName: string;
+  email: string;
+  savedEmail: string;
+  /** 이번 분기에 사람이 확인하지 않은 주소인지 — DB의 email_set_period에서 오므로 새로고침해도 유지된다. */
+  emailInherited: boolean;
+  emailFromPeriod: string | null;
+  /** 이번 세션에서 이름을 바꿔 저장했는지 — 주소도 확인하라고 노란 테두리를 띄우는 조건. */
+  nameChanged: boolean;
+  status: "idle" | "saving" | "saved" | "error";
+}
+
+type CellMap = Record<number, CellState>;
+
+function flatten(items: SurveyOrgData[]): SurveyOrgData[] {
+  return items.flatMap((i) => [i, ...i.children]);
+}
+
+function initialCells(items: SurveyOrgData[]): CellMap {
+  const map: CellMap = {};
+  flatten(items).forEach((i) => {
+    map[i.org.id] = {
+      name: i.manager.name,
+      savedName: i.manager.name,
+      email: i.manager.email,
+      savedEmail: i.manager.email,
+      emailInherited: i.manager.emailInherited,
+      emailFromPeriod: i.manager.emailFromPeriod,
+      nameChanged: false,
+      status: "idle",
+    };
+  });
+  return map;
 }
 
 function submitUrlOf(token: string): string {
@@ -56,70 +107,285 @@ function CopyLinkButton({ token }: { token: string }) {
   );
 }
 
-/**
- * 담당자 칸 — 코멘트 칸과 같은 방식이다(평소엔 글자만, 커서를 올리면 입력칸과 초록 체크가 드러난다).
- * 분기별로 저장하되 이번 분기에 적은 값이 없으면 지난 분기 담당자가 그대로 보인다 — 그대로 두면
- * 다음에도 이어서 보이고, 눌러 저장하면 이번 분기 값으로 굳는다.
- */
-function ManagerCell({ item, period }: { item: SurveyOrgData; period: string }) {
-  const [value, setValue] = useState(item.manager.name);
-  const [saved, setSaved] = useState(item.manager.name);
-  const [pinned, setPinned] = useState(false);
-  const [state, setState] = useState<"idle" | "saving" | "saved" | "error">("idle");
-  const dirty = value !== saved;
+/* ─────────────────── 발송 확인창 ───────────────────
+   링크는 그 자체가 자격증명이고 상위 조직 링크는 하위 팀 전체를 열어버린다.
+   그래서 보내기 전에 **무엇이 열리는지**와 **누구에게 가는지**를 전부 보여준다. */
 
-  async function commit() {
-    if (!dirty) return;
-    setState("saving");
+interface Candidate {
+  orgId: number;
+  label: string;
+  name: string;
+  email: string;
+  inherited: boolean;
+  fromPeriod: string | null;
+}
+
+interface SendState {
+  owner: SurveyOrgData;
+  candidates: Candidate[];
+  checked: Record<number, boolean>;
+  opensOthers: boolean;
+  childLabels: string[];
+  /** 서버가 만들어준 초안 — 같은 링크를 쓰는 담당자는 한 통에 함께 넣으므로 하나뿐이다. */
+  draft: { to: string[]; subject: string; body: string; url: string } | null;
+  phase: "confirm" | "ready" | "sending" | "error";
+  message: string;
+}
+
+function openDraft(url: string) {
+  // window.open은 팝업 차단에 걸리기 쉽다. 앵커 클릭은 mailto 핸들러(Outlook)로 바로 넘어간다.
+  const a = document.createElement("a");
+  a.href = url;
+  a.style.display = "none";
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+}
+
+function SendDialog({
+  state,
+  setState,
+  period,
+  deadline,
+  onClose,
+}: {
+  state: SendState;
+  setState: (s: SendState) => void;
+  period: string;
+  deadline: string;
+  onClose: () => void;
+}) {
+  const chosen = state.candidates.filter((c) => state.checked[c.orgId]);
+  const inheritedChosen = chosen.filter((c) => c.inherited);
+
+  async function prepare() {
+    setState({ ...state, phase: "sending", message: "" });
     try {
-      const res = await fetch("/api/admin/org-manager", {
+      const res = await fetch("/api/admin/send-link", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ orgId: item.org.id, period, name: value }),
+        body: JSON.stringify({
+          orgIds: [state.owner.org.id],
+          period,
+          deadline: deadline || undefined,
+          recipientOrgIds: chosen.map((c) => c.orgId),
+        }),
       });
-      if (!res.ok) throw new Error();
-      setSaved(value);
-      setPinned(true);
-      setState("saved");
-      setTimeout(() => setState("idle"), 1500);
+      const json = await res.json();
+      if (!res.ok) {
+        setState({ ...state, phase: "error", message: json?.error ?? "초안을 만들지 못했습니다." });
+        return;
+      }
+      const result = json.results?.[0];
+      if (!result?.mailtoUrl) {
+        setState({ ...state, phase: "error", message: "보낼 수 있는 주소가 없습니다." });
+        return;
+      }
+      const draft = { to: result.to as string[], subject: result.subject, body: result.body, url: result.mailtoUrl };
+      // 확인창에서 이미 한 번 확인했으므로 클릭을 또 요구하지 않는다.
+      openDraft(draft.url);
+      setState({ ...state, draft, phase: "ready", message: "" });
     } catch {
-      setState("error");
+      setState({ ...state, phase: "error", message: "초안을 만들지 못했습니다." });
     }
   }
 
+  return (
+    <div className="send-backdrop" role="dialog" aria-modal="true" aria-label="조사 링크 발송">
+      <div className="send-dialog">
+        {state.phase === "ready" && state.draft ? (
+          <>
+            <div className="send-title">Outlook 초안을 열었습니다</div>
+            <p className="send-lead">
+              내용을 확인하고 <b>[보내기]</b>를 눌러 주세요. 초안을 열었을 뿐 아직 발송되지 않았습니다.
+            </p>
+            <div className="send-sub">수신인 {state.draft.to.length}명</div>
+            <ul className="send-list">
+              {state.draft.to.map((addr) => (
+                <li key={addr}>
+                  <code>{addr}</code>
+                </li>
+              ))}
+            </ul>
+            <div className="send-sub">보낸 내용</div>
+            <div className="send-preview">
+              <b>{state.draft.subject}</b>
+              <pre>{state.draft.body}</pre>
+            </div>
+            <div className="send-actions">
+              <button className="btn btn-secondary btn-sm" onClick={() => openDraft(state.draft!.url)}>
+                초안 다시 열기
+              </button>
+              <button className="btn btn-secondary btn-sm" onClick={onClose}>
+                닫기
+              </button>
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="send-title">{state.owner.org.basis}의 조사 링크를 보냅니다</div>
+            {state.opensOthers && (
+              <p className="send-warn">
+                ⚠ 이 링크는 <b>{state.owner.org.basis}</b>
+                {state.childLabels.length > 0 && <> 와 하위 {state.childLabels.length}개 팀({state.childLabels.join(", ")})</>} 전체를
+                입력·열람할 수 있습니다.
+              </p>
+            )}
+            <div className="send-sub">수신인 — 체크한 사람이 한 통의 수신인으로 함께 들어갑니다</div>
+            <ul className="send-picks">
+              {state.candidates.map((c) => (
+                <li key={c.orgId}>
+                  <label>
+                    <input
+                      type="checkbox"
+                      checked={!!state.checked[c.orgId]}
+                      onChange={(e) =>
+                        setState({ ...state, checked: { ...state.checked, [c.orgId]: e.target.checked } })
+                      }
+                    />
+                    <span className="send-pick-org">{c.label}</span>
+                    <span className="send-pick-name">{c.name || "(이름 없음)"}</span>
+                    <code>{c.email}</code>
+                  </label>
+                </li>
+              ))}
+            </ul>
+            {inheritedChosen.length > 0 && (
+              <p className="send-warn">
+                ※ {inheritedChosen.map((c) => c.email).join(", ")} 는 {inheritedChosen[0].fromPeriod}에 저장된
+                주소입니다. 맞는지 확인해 주세요.
+              </p>
+            )}
+            <p className="send-lead">Outlook 초안이 열립니다. 확인 후 [보내기]를 눌러 주세요.</p>
+            {state.phase === "error" && <p className="send-error">{state.message}</p>}
+            <div className="send-actions">
+              <button
+                className="btn btn-primary btn-sm"
+                disabled={chosen.length === 0 || state.phase === "sending"}
+                onClick={prepare}
+              >
+                {state.phase === "sending" ? "초안 만드는 중..." : `초안 열기 (수신인 ${chosen.length}명)`}
+              </button>
+              <button className="btn btn-secondary btn-sm" onClick={onClose}>
+                취소
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* ─────────────────── 담당자 칸 ───────────────────
+   코멘트 칸과 같은 방식이다(평소엔 글자만, 커서를 올리면 입력칸과 초록 체크가 드러난다).
+   이름 줄과 메일 줄을 두 줄로 쌓되, 발송(✉)은 **링크 주인 행에만** 둔다 —
+   하위 행마다 발송 버튼을 두면 관리자는 '이 사람 하나에게'라고 인식하지만
+   실제로는 같은 광역 토큰이 여러 번 나간다. */
+
+function ManagerCell({
+  item,
+  cell,
+  patch,
+  save,
+  canSend,
+  sendHint,
+  onSend,
+}: {
+  item: SurveyOrgData;
+  cell: CellState;
+  patch: (next: Partial<CellState>) => void;
+  save: (field: "name" | "email") => void;
+  canSend: boolean;
+  sendHint: string;
+  onSend: () => void;
+}) {
+  const nameDirty = cell.name !== cell.savedName;
+  const emailDirty = cell.email !== cell.savedEmail;
   // 지난 분기에서 이어받았을 뿐 아직 이번 분기 값으로 굳지 않은 이름은 옅게 보여준다.
-  // (한 번 저장하면 이번 분기 값이므로 pinned로 풀어준다 — 화면을 새로 읽기 전까지는 props가 그대로다.)
-  const inherited = item.manager.inherited && !dirty && !pinned;
+  const nameInherited = item.manager.nameInherited && !nameDirty && cell.savedName === item.manager.name;
+  // 이름을 바꿔 저장했는데 주소는 그대로면 주소도 확인하라고 눈에 걸리게 둔다.
+  const needsReview = !emailDirty && cell.savedEmail !== "" && (cell.emailInherited || cell.nameChanged);
 
   return (
-    <div className="comment-cell survey-manager">
-      <input
-        value={value}
-        onChange={(e) => setValue(e.target.value)}
-        onBlur={commit}
-        onKeyDown={(e) => {
-          if (e.key === "Enter") {
-            e.preventDefault();
-            commit();
+    <div className="survey-manager-stack">
+      <div className="comment-cell survey-manager-name">
+        <input
+          value={cell.name}
+          onChange={(e) => patch({ name: e.target.value })}
+          onBlur={() => save("name")}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              save("name");
+            }
+          }}
+          placeholder="담당자"
+          title={nameInherited ? `${item.manager.nameFromPeriod} 담당자를 이어받았습니다` : undefined}
+          style={nameInherited ? { color: "#94a3b8" } : undefined}
+        />
+        <button
+          type="button"
+          className={`note-save-btn${nameDirty ? " is-dirty" : ""}`}
+          title={nameDirty ? "저장하지 않은 변경이 있습니다 — 눌러서 저장" : "담당자 저장"}
+          aria-label="담당자 저장"
+          disabled={cell.status === "saving"}
+          onClick={() => save("name")}
+        >
+          ✓
+        </button>
+        <span className="survey-save-state" style={cell.status === "error" ? { color: "#dc2626" } : undefined}>
+          {cell.status === "saving" ? "저장중" : cell.status === "saved" ? "저장됨" : cell.status === "error" ? "실패" : ""}
+        </span>
+      </div>
+
+      <div className={`comment-cell survey-manager-mail${needsReview ? " needs-review" : ""}`}>
+        <input
+          value={cell.email}
+          onChange={(e) => patch({ email: e.target.value })}
+          onBlur={() => save("email")}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              save("email");
+            }
+          }}
+          placeholder="Outlook 메일"
+          title={
+            needsReview
+              ? cell.nameChanged
+                ? "담당자가 바뀌었습니다 — 주소도 확인해 주세요"
+                : `${cell.emailFromPeriod}에 저장된 주소입니다 — 맞는지 확인해 주세요`
+              : cell.email || undefined
           }
-        }}
-        placeholder="담당자"
-        title={inherited ? `${item.manager.fromPeriod} 담당자를 이어받았습니다` : undefined}
-        style={inherited ? { color: "#94a3b8" } : undefined}
-      />
-      <button
-        type="button"
-        className={`note-save-btn${dirty ? " is-dirty" : ""}`}
-        title={dirty ? "저장하지 않은 변경이 있습니다 — 눌러서 저장" : "담당자 저장"}
-        aria-label="담당자 저장"
-        disabled={state === "saving"}
-        onClick={commit}
-      >
-        ✓
-      </button>
-      <span className="survey-save-state" style={state === "error" ? { color: "#dc2626" } : undefined}>
-        {state === "saving" ? "저장중" : state === "saved" ? "저장됨" : state === "error" ? "실패" : ""}
-      </span>
+        />
+        <button
+          type="button"
+          className={`note-save-btn${emailDirty ? " is-dirty" : ""}`}
+          title={emailDirty ? "저장하지 않은 변경이 있습니다 — 눌러서 저장" : "메일 저장"}
+          aria-label="메일 저장"
+          disabled={cell.status === "saving"}
+          onClick={() => save("email")}
+        >
+          ✓
+        </button>
+        {item.isTokenOwner ? (
+          <button
+            type="button"
+            className="survey-send-btn"
+            title={sendHint}
+            aria-label="조사 링크 메일 초안 열기"
+            disabled={!canSend}
+            onClick={onSend}
+          >
+            ✉
+          </button>
+        ) : (
+          <span className="survey-send-slot" title="상위 조직 발송에 포함됩니다">
+            ↑
+          </span>
+        )}
+      </div>
     </div>
   );
 }
@@ -160,9 +426,39 @@ function OrgCell({ item, isChild }: { item: SurveyOrgData; isChild?: boolean }) 
   );
 }
 
-function DivisionTable({ title, items, period }: { title: string; items: SurveyOrgData[]; period: string }) {
+function DivisionTable({
+  title,
+  items,
+  cells,
+  patch,
+  save,
+  onSend,
+}: {
+  title: string;
+  items: SurveyOrgData[];
+  cells: CellMap;
+  patch: (orgId: number, next: Partial<CellState>) => void;
+  save: (orgId: number, field: "name" | "email") => void;
+  onSend: (owner: SurveyOrgData) => void;
+}) {
   const submitting = items.flatMap((i) => (i.children.length > 0 ? i.children : [i]));
   const done = submitting.filter((d) => d.hasSubmission).length;
+
+  /** 이 링크로 보낼 수 있는 사람이 하나라도 있는지 — 주소가 하위 행에 있을 수도 있다. */
+  function sendability(owner: SurveyOrgData): { canSend: boolean; hint: string } {
+    const scope = [owner, ...owner.children];
+    const dirty = scope.some((o) => {
+      const c = cells[o.org.id];
+      return c && (c.email !== c.savedEmail || c.name !== c.savedName);
+    });
+    if (dirty) return { canSend: false, hint: "저장하지 않은 변경이 있습니다 — 먼저 저장해 주세요" };
+    const usable = scope.filter((o) => {
+      const c = cells[o.org.id];
+      return c && c.savedEmail !== "" && isValidEmail(c.savedEmail);
+    });
+    if (usable.length === 0) return { canSend: false, hint: "이 링크로 보낼 메일 주소가 아직 없습니다" };
+    return { canSend: true, hint: `조사 링크 메일 초안 열기 (보낼 수 있는 담당자 ${usable.length}명)` };
+  }
 
   return (
     <div className="panel survey-panel">
@@ -177,44 +473,284 @@ function DivisionTable({ title, items, period }: { title: string; items: SurveyO
           <tr>
             <th>조직</th>
             <th className="col-link">입력 링크 복사</th>
-            <th className="col-manager">담당자</th>
+            <th className="col-manager">담당자 · Outlook 메일</th>
           </tr>
         </thead>
         <tbody>
-          {items.map((item) => (
-            <Fragment key={item.org.id}>
-              <tr>
-                <td className="col-org">
-                  <OrgCell item={item} />
-                </td>
-                {/* 집계 조직은 링크가 하나다 — 그 링크 한 화면에서 하위 조직을 모두 입력한다. */}
-                <td className="col-link">
-                  <CopyLinkButton token={item.org.access_token} />
-                </td>
-                <td className="col-manager">
-                  <ManagerCell item={item} period={period} />
-                </td>
-              </tr>
-              {leaderFirst(item.children).map((c) => (
-                <tr key={c.org.id} className="child-row">
+          {items.map((item) => {
+            const { canSend, hint } = sendability(item);
+            return (
+              <Fragment key={item.org.id}>
+                <tr>
                   <td className="col-org">
-                    <OrgCell item={c} isChild />
+                    <OrgCell item={item} />
                   </td>
-                  <td className="col-link survey-inherit-link">↑</td>
+                  {/* 집계 조직은 링크가 하나다 — 그 링크 한 화면에서 하위 조직을 모두 입력한다. */}
+                  <td className="col-link">
+                    <CopyLinkButton token={item.linkToken} />
+                  </td>
                   <td className="col-manager">
-                    <ManagerCell item={c} period={period} />
+                    {cells[item.org.id] && (
+                      <ManagerCell
+                        item={item}
+                        cell={cells[item.org.id]}
+                        patch={(n) => patch(item.org.id, n)}
+                        save={(f) => save(item.org.id, f)}
+                        canSend={canSend}
+                        sendHint={hint}
+                        onSend={() => onSend(item)}
+                      />
+                    )}
                   </td>
                 </tr>
-              ))}
-            </Fragment>
-          ))}
+                {leaderFirst(item.children).map((c) => (
+                  <tr key={c.org.id} className="child-row">
+                    <td className="col-org">
+                      <OrgCell item={c} isChild />
+                    </td>
+                    <td className="col-link survey-inherit-link">↑</td>
+                    <td className="col-manager">
+                      {cells[c.org.id] && (
+                        <ManagerCell
+                          item={c}
+                          cell={cells[c.org.id]}
+                          patch={(n) => patch(c.org.id, n)}
+                          save={(f) => save(c.org.id, f)}
+                          canSend={false}
+                          sendHint=""
+                          onSend={() => {}}
+                        />
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </Fragment>
+            );
+          })}
         </tbody>
       </table>
     </div>
   );
 }
 
-export default function SurveyOverview({ period, data }: { period: string; data: SurveyOrgData[] }) {
+/* ─────────────────── 메일 문구 편집 ───────────────────
+   조직마다 문구가 거의 같아서 여기서 한 번 고쳐 두고 전 조직에 쓴다.
+   영어 링크 조직(HUK 등)은 코드의 영문 문구를 그대로 쓴다. */
+
+function MailTemplateEditor({
+  initialSubject,
+  initialBody,
+  period,
+}: {
+  initialSubject: string;
+  initialBody: string;
+  period: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const [subject, setSubject] = useState(initialSubject || DEFAULT_MAIL_SUBJECT);
+  const [body, setBody] = useState(initialBody || DEFAULT_MAIL_BODY);
+  const [state, setState] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  const [error, setError] = useState("");
+
+  // 자리표시자가 실제로 어떻게 채워지는지 눈으로 보고 고칠 수 있게 예시로 미리 보여준다.
+  const preview = useMemo(() => {
+    const vars: Record<string, string> = {
+      "{분기}": period.replace(/^(\d{4})-Q(\d)$/, "$1-$2Q"),
+      "{조직}": "HR실",
+      "{담당자}": "이채아 팀장님, 최광수 팀장님",
+      "{링크}": "https://…/submit/c4bab112da0eaa7a04",
+      "{마감}": "9월 30일까지",
+      "{범위안내}": "· 이 링크는 HR실과 그 하위 조직 전체의 입력·열람 화면입니다.",
+    };
+    return { subject: renderMailTemplate(subject, vars), body: renderMailTemplate(body, vars) };
+  }, [subject, body, period]);
+
+  async function save(reset = false) {
+    const problem = reset ? null : mailTemplateProblem(subject, body);
+    if (problem) {
+      setError(problem);
+      setState("error");
+      return;
+    }
+    setState("saving");
+    setError("");
+    try {
+      const res = await fetch("/api/admin/mail-template", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(reset ? { reset: true } : { subject, body }),
+      });
+      const json = await res.json();
+      if (!res.ok) {
+        setError(json?.error ?? "저장하지 못했습니다.");
+        setState("error");
+        return;
+      }
+      if (reset) {
+        setSubject(DEFAULT_MAIL_SUBJECT);
+        setBody(DEFAULT_MAIL_BODY);
+      }
+      setState("saved");
+      setTimeout(() => setState("idle"), 1500);
+    } catch {
+      setError("저장하지 못했습니다.");
+      setState("error");
+    }
+  }
+
+  return (
+    <div className="mail-tpl">
+      <button type="button" className="mail-tpl-toggle" onClick={() => setOpen(!open)}>
+        {open ? "▾" : "▸"} 메일 문구 {open ? "" : "— 제목·본문을 여기서 고칩니다"}
+      </button>
+
+      {open && (
+        <div className="mail-tpl-body">
+          <div className="mail-tpl-keys">
+            {MAIL_PLACEHOLDERS.map((p) => (
+              <button
+                key={p.key}
+                type="button"
+                title={p.desc}
+                onClick={() => setBody((b) => `${b}${p.key}`)}
+              >
+                {p.key}
+              </button>
+            ))}
+          </div>
+          <div className="field-hint" style={{ marginBottom: 8 }}>
+            자리표시자를 누르면 본문 끝에 붙습니다. <b>값이 빈 자리표시자가 든 줄은 통째로 빠집니다</b> — 마감을
+            비우면 마감 줄이 사라집니다. 영어로 나가는 조직(HUK)은 이 문구 대신 영문 기본 문구를 씁니다.
+          </div>
+
+          <label className="mail-tpl-label">제목</label>
+          <input className="mail-tpl-input" value={subject} onChange={(e) => setSubject(e.target.value)} />
+
+          <label className="mail-tpl-label">본문</label>
+          <textarea className="mail-tpl-area" rows={13} value={body} onChange={(e) => setBody(e.target.value)} />
+
+          <label className="mail-tpl-label">미리보기 (HR실 예시)</label>
+          <div className="send-preview">
+            <b>{preview.subject}</b>
+            <pre>{preview.body}</pre>
+          </div>
+
+          {error && <p className="send-error">{error}</p>}
+          <div className="mail-tpl-actions">
+            <button className="btn btn-primary btn-sm" disabled={state === "saving"} onClick={() => save(false)}>
+              {state === "saving" ? "저장 중..." : state === "saved" ? "저장됨" : "문구 저장"}
+            </button>
+            <button className="btn btn-secondary btn-sm" disabled={state === "saving"} onClick={() => save(true)}>
+              기본 문구로 되돌리기
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+export default function SurveyOverview({
+  period,
+  data,
+  mailSubject,
+  mailBody,
+}: {
+  period: string;
+  data: SurveyOrgData[];
+  mailSubject: string;
+  mailBody: string;
+}) {
+  // 담당자 칸 상태는 행이 아니라 **화면 전체**가 들고 있다. 발송 버튼은 링크 주인 행에 있는데
+  // 주소는 하위 행에 입력될 수 있어(HR실·Staff(CEO)) 행 안에 상태를 가두면 버튼이 갱신되지 않는다.
+  const [cells, setCells] = useState<CellMap>(() => initialCells(data));
+  const [send, setSend] = useState<SendState | null>(null);
+  const [deadline, setDeadline] = useState<string>(() => {
+    if (typeof window === "undefined") return "";
+    return window.localStorage.getItem(`survey-deadline:${period}`) ?? "";
+  });
+
+  function patch(orgId: number, next: Partial<CellState>) {
+    setCells((prev) => ({ ...prev, [orgId]: { ...prev[orgId], ...next } }));
+  }
+
+  async function save(orgId: number, field: "name" | "email") {
+    const cell = cells[orgId];
+    if (!cell) return;
+    const dirty = field === "name" ? cell.name !== cell.savedName : cell.email !== cell.savedEmail;
+    if (!dirty) return;
+
+    patch(orgId, { status: "saving" });
+    try {
+      const res = await fetch("/api/admin/org-manager", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        // 손댄 칸만 보낸다 — 서버가 나머지 칸의 값과 '출처'를 그대로 이어 붙인다.
+        body: JSON.stringify(
+          field === "name"
+            ? { orgId, period, name: cell.name }
+            : { orgId, period, email: cell.email }
+        ),
+      });
+      const json = await res.json();
+      if (!res.ok) {
+        patch(orgId, { status: "error" });
+        return;
+      }
+      patch(orgId, {
+        status: "saved",
+        savedName: json.name ?? cell.name,
+        name: json.name ?? cell.name,
+        savedEmail: json.email ?? cell.email,
+        email: json.email ?? cell.email,
+        emailInherited: !!json.emailInherited,
+        emailFromPeriod: json.emailFromPeriod ?? null,
+        nameChanged: field === "name" ? cell.savedName !== cell.name && cell.savedName !== "" : cell.nameChanged,
+      });
+      setTimeout(() => patch(orgId, { status: "idle" }), 1500);
+    } catch {
+      patch(orgId, { status: "error" });
+    }
+  }
+
+  function openSend(owner: SurveyOrgData) {
+    const scope = [owner, ...owner.children];
+    const candidates: Candidate[] = scope
+      .filter((o) => {
+        const c = cells[o.org.id];
+        return c && c.savedEmail !== "" && isValidEmail(c.savedEmail);
+      })
+      .map((o) => {
+        const c = cells[o.org.id];
+        return {
+          orgId: o.org.id,
+          label: o.org.basis,
+          name: c.savedName,
+          email: c.savedEmail,
+          inherited: c.emailInherited,
+          fromPeriod: c.emailFromPeriod,
+        };
+      });
+
+    // 기본 체크: 링크 주인에게 주소가 있으면 그 한 사람, 없으면(HR실처럼) 범위 안 전원.
+    const ownerHasEmail = candidates.some((c) => c.orgId === owner.org.id);
+    const checked: Record<number, boolean> = {};
+    candidates.forEach((c) => {
+      checked[c.orgId] = ownerHasEmail ? c.orgId === owner.org.id : true;
+    });
+
+    setSend({
+      owner,
+      candidates,
+      checked,
+      opensOthers: owner.children.length > 0,
+      childLabels: owner.children.map((c) => c.org.basis),
+      draft: null,
+      phase: "confirm",
+      message: "",
+    });
+  }
+
   // 리소스배부율의 조직/팀 선택과 같은 순서(본사 → 주재원 → 법인, 그 안에서 조직장 먼저 → 엑셀 표 순서).
   const ordered = sortForOrgPicker(data);
   const grouped = ordered.reduce<Record<string, SurveyOrgData[]>>((acc, item) => {
@@ -231,18 +767,66 @@ export default function SurveyOverview({ period, data }: { period: string; data:
   const submitting = ordered.flatMap((i) => (i.children.length > 0 ? i.children : [i]));
   const submittedCount = submitting.filter((d) => d.hasSubmission).length;
 
+  // 담당자는 적혀 있는데 메일이 없는 곳 — 발송이 막히는 유일한 이유라 상시 눈에 보이게 둔다.
+  const missingEmail = useMemo(
+    () =>
+      flatten(ordered).filter((i) => {
+        const c = cells[i.org.id];
+        return c && c.savedName.trim() !== "" && c.savedEmail === "";
+      }).length,
+    [ordered, cells]
+  );
+
   return (
     <div className="survey-wrap">
       <div className="panel survey-panel">
         <div className="panel-title">조사 현황 ({period})</div>
         <div className="callout info" style={{ margin: 0 }}>
           전체 {submitting.length}개 조직 중 <b>{submittedCount}</b>개 제출
+          {missingEmail > 0 && (
+            <>
+              {" · "}
+              <b>메일 미등록 {missingEmail}곳</b>
+            </>
+          )}
         </div>
+        <div className="survey-deadline">
+          <label htmlFor="survey-deadline-input">마감 안내</label>
+          <input
+            id="survey-deadline-input"
+            value={deadline}
+            maxLength={40}
+            placeholder="예: 9월 30일까지 (비우면 메일에서 빠집니다)"
+            onChange={(e) => {
+              setDeadline(e.target.value);
+              window.localStorage.setItem(`survey-deadline:${period}`, e.target.value);
+            }}
+          />
+        </div>
+        <MailTemplateEditor initialSubject={mailSubject} initialBody={mailBody} period={period} />
       </div>
 
       {divisions.map((division) => (
-        <DivisionTable key={division} title={division} items={grouped[division]} period={period} />
+        <DivisionTable
+          key={division}
+          title={division}
+          items={grouped[division]}
+          cells={cells}
+          patch={patch}
+          save={save}
+          onSend={openSend}
+        />
       ))}
+
+      {send && (
+        <SendDialog
+          state={send}
+          setState={setSend}
+          period={period}
+          deadline={deadline}
+          onClose={() => setSend(null)}
+        />
+      )}
     </div>
   );
 }
