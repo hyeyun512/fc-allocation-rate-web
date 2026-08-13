@@ -188,9 +188,6 @@ a{color:inherit}
 .survey-send-btn:disabled{color:#cbd5e1;cursor:not-allowed}
 .survey-send-slot{flex:none;width:22px;text-align:center;color:#e2e8f0;font-size:11px}
 
-  flex:1 1 auto;min-width:0;font-family:inherit;font-size:12px;padding:5px 8px;
-  border:0.5px solid #e2e8f0;border-radius:6px;background:#fff;color:#1a202c
-}
 
 /* ── 발송 확인창 ──
    링크는 그 자체가 자격증명이라 '무엇이 열리는지'와 '누구에게 가는지'를 보내기 전에 전부 보여준다. */
@@ -220,19 +217,7 @@ a{color:inherit}
 .send-list li.is-pending{opacity:.5}
 .send-flag{margin-left:auto;font-size:10.5px;color:#94a3b8}
 .send-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:16px}
-  margin:0;font-family:inherit;font-size:12px;line-height:1.6;color:#334155;
-  white-space:pre-wrap;word-break:break-word
-}
 
-  background:none;border:0;padding:0;font-family:inherit;font-size:11.5px;font-weight:700;
-  color:#64748b;cursor:pointer
-}
-  font-family:inherit;font-size:11px;padding:3px 7px;border-radius:5px;cursor:pointer;
-  border:0.5px solid #cbd5e1;background:#f1f5f9;color:#475569
-}
-  font-family:inherit;font-size:12.5px;padding:7px 9px;border:0.5px solid #e2e8f0;
-  border-radius:6px;background:#fff;color:#1a202c;width:100%
-}
 
 footer{text-align:center;padding:22px;color:#94a3b8;font-size:11.5px}
 
@@ -395,17 +380,6 @@ footer{text-align:center;padding:22px;color:#94a3b8;font-size:11.5px}
 .submit-tight .row-clear-btn{width:17px;height:17px;line-height:15px;font-size:10px}
 
 
-  margin-left:8px;font-family:inherit;font-size:11.5px;font-weight:700;padding:3px 9px;
-  border-radius:6px;border:0.5px solid #2563eb;background:#fff;color:#2563eb;cursor:pointer
-}
-.bulk-open-btn:hover{background:#2563eb;color:#fff}
-  position:sticky;top:0;background:#f8fafc;padding:6px 8px;text-align:left;font-size:11px;
-  font-weight:700;color:#94a3b8;border-bottom:0.5px solid #e2e8f0;white-space:nowrap
-}
-.bulk-status.s-ok{color:#16a34a}
-.bulk-status.s-same{color:#94a3b8}
-.bulk-status.s-empty{color:#94a3b8}
-.bulk-status.s-no-org,.bulk-status.s-bad-email{color:#dc2626}
 
 /* ── 메일 문구 편집 ──
    제목 한 줄, 본문 한 칸, 저장. 본문은 서식을 쓸 수 있어야 해서 contenteditable로 받는다.
