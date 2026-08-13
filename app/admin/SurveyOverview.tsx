@@ -27,6 +27,8 @@ export interface SurveyOrgData {
   linkToken: string;
   /** 이 조직이 링크 주인인지 — 복사 버튼과 발송(✉)이 붙는 행. */
   isTokenOwner: boolean;
+  /** 제출한 링크를 다시 열어줬는지. 열어주면 담당자가 한 번 더 제출할 수 있다. */
+  editAllowed: boolean;
   /** 하위 팀(예: 개발 그룹의 SW팀·HW팀). 조직 단위를 리소스배부율의 조직/팀 선택과 맞추려고 여기에 접어 넣는다. */
   children: SurveyOrgData[];
 }
@@ -81,6 +83,45 @@ function SubmitBadge({ item }: { item: SurveyOrgData }) {
     <span className="status-badge" style={{ background: "#f1f5f9", color: "#64748b" }}>
       미제출
     </span>
+  );
+}
+
+/**
+ * 제출한 링크는 담당자가 임의로 고칠 수 없다. 값이 바뀌어야 할 때만 여기서 한 번 열어준다.
+ * 담당자가 다시 제출하면 서버가 표식을 지워 곧바로 다시 잠긴다.
+ */
+function UnlockButton({ item, period }: { item: SurveyOrgData; period: string }) {
+  const [allowed, setAllowed] = useState(item.editAllowed);
+  const [busy, setBusy] = useState(false);
+
+  async function toggle() {
+    setBusy(true);
+    try {
+      const res = await fetch("/api/admin/submit-unlock", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ orgId: item.org.id, period, allow: !allowed }),
+      });
+      if (res.ok) setAllowed(!allowed);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <button
+      type="button"
+      className={`unlock-btn${allowed ? " is-open" : ""}`}
+      disabled={busy}
+      title={
+        allowed
+          ? "담당자가 다시 제출할 수 있는 상태입니다 — 눌러서 다시 잠급니다"
+          : "담당자가 링크에서 다시 제출할 수 있게 한 번 열어줍니다"
+      }
+      onClick={toggle}
+    >
+      {allowed ? "수정 허용됨" : "수정 허용"}
+    </button>
   );
 }
 
@@ -426,7 +467,7 @@ function ManagerCell({
   );
 }
 
-function OrgCell({ item, isChild }: { item: SurveyOrgData; isChild?: boolean }) {
+function OrgCell({ item, isChild, period }: { item: SurveyOrgData; isChild?: boolean; period: string }) {
   const children = item.children;
   const submittedChildren = children.filter((c) => c.hasSubmission).length;
 
@@ -444,7 +485,10 @@ function OrgCell({ item, isChild }: { item: SurveyOrgData; isChild?: boolean }) 
             하위 {submittedChildren}/{children.length}
           </span>
         ) : (
-          <SubmitBadge item={item} />
+          <>
+            <SubmitBadge item={item} />
+            {item.hasSubmission && <UnlockButton item={item} period={period} />}
+          </>
         )}
       </div>
       <div className="survey-org-sub">
@@ -465,6 +509,7 @@ function OrgCell({ item, isChild }: { item: SurveyOrgData; isChild?: boolean }) 
 function DivisionTable({
   title,
   items,
+  period,
   cells,
   patch,
   save,
@@ -473,6 +518,7 @@ function DivisionTable({
 }: {
   title: string;
   items: SurveyOrgData[];
+  period: string;
   cells: CellMap;
   patch: (orgId: number, next: Partial<CellState>) => void;
   save: (orgId: number, field: "name" | "email") => void;
@@ -522,7 +568,7 @@ function DivisionTable({
               <Fragment key={item.org.id}>
                 <tr>
                   <td className="col-org">
-                    <OrgCell item={item} />
+                    <OrgCell item={item} period={period} />
                   </td>
                   {/* 집계 조직은 링크가 하나다 — 그 링크 한 화면에서 하위 조직을 모두 입력한다. */}
                   <td className="col-link">
@@ -545,7 +591,7 @@ function DivisionTable({
                 {leaderFirst(item.children).map((c) => (
                   <tr key={c.org.id} className="child-row">
                     <td className="col-org">
-                      <OrgCell item={c} isChild />
+                      <OrgCell item={c} isChild period={period} />
                     </td>
                     <td className="col-link survey-inherit-link">↑</td>
                     <td className="col-manager">
@@ -903,6 +949,7 @@ export default function SurveyOverview({
           key={division}
           title={division}
           items={grouped[division]}
+          period={period}
           cells={cells}
           patch={patch}
           save={save}

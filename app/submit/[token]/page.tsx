@@ -60,10 +60,12 @@ async function getData(token: string) {
   const basisList = [org.basis, ...children.map((c) => c.basis)];
 
   // 필요한 조직의 배부율 이력·제출 이력·임시저장을 한 번에 가져와 조직별로 나눈다.
-  const [{ data: rateRows }, { data: allSubs }, { data: drafts }] = await Promise.all([
+  const [{ data: rateRows }, { data: allSubs }, { data: drafts }, { data: unlocks }] = await Promise.all([
     supabase.from("allocation_rate").select("*").in("basis", basisList).order("quarter", { ascending: true }),
     supabase.from("allocation_submissions").select("*").in("org_id", orgIds).order("submitted_at", { ascending: false }),
     supabase.from("allocation_submission_drafts").select("org_id,payload,updated_at").in("org_id", orgIds).eq("period", period),
+    // 관리자가 '수정 허용'을 눌러 열어준 조직 — 이 표식이 있어야 다시 제출할 수 있다.
+    supabase.from("allocation_submit_unlocks").select("org_id").in("org_id", orgIds).eq("period", period),
   ]);
 
   const subList = (allSubs ?? []) as SubmissionRow[];
@@ -118,6 +120,8 @@ async function getData(token: string) {
       requiresPersonDetail: o.requires_person_detail,
       managerName: o.manager_name ?? null,
       submittedThisPeriod: hasAnyValue,
+      // 제출 후에는 잠긴다. 관리자가 열어준 조직만 다시 제출할 수 있다.
+      editAllowed: (unlocks ?? []).some((u: any) => u.org_id === o.id),
       submittedBy: submitterFor(orgLevelRow?.submitted_by ?? personRows[0]?.submitted_by, lang),
       latestSubmittedAt: deduped.reduce<string | null>((max, r) => {
         if (!max || new Date(r.submitted_at) > new Date(max)) return r.submitted_at;

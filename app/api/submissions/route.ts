@@ -4,6 +4,7 @@ import { TARGETS, TargetKey, sumTargets } from "@/lib/targets";
 import { recomputeAggregates } from "@/lib/autoAggregate";
 import { buildDeletionTombstones } from "@/lib/personTombstones";
 import { resolveTargetOrg } from "@/lib/submitScope";
+import { applyOrgRate } from "@/lib/confirmRate";
 
 function parseRates(rates: Record<string, string>) {
   const out = {} as Record<TargetKey, number>;
@@ -57,6 +58,34 @@ export async function POST(req: NextRequest) {
   const period = settings?.current_period ?? "미지정";
   const version = settings?.current_version ?? "Forecast";
 
+  // 이미 제출한 조직은 담당자가 임의로 고칠 수 없다. 관리자가 '수정 허용'을 눌러 열어준 경우에만
+  // 다시 받는다 — 열어준 표식은 아래에서 이번 제출로 소모한다(계속 열려 있지 않게).
+  const [{ data: already }, { data: unlock }] = await Promise.all([
+    supabase
+      .from("allocation_submissions")
+      .select("id")
+      .eq("org_id", org.id)
+      .eq("period", period)
+      .gt("total", 0)
+      .limit(1),
+    supabase
+      .from("allocation_submit_unlocks")
+      .select("org_id")
+      .eq("org_id", org.id)
+      .eq("period", period)
+      .maybeSingle(),
+  ]);
+
+  if ((already?.length ?? 0) > 0 && !unlock) {
+    return NextResponse.json(
+      {
+        error: "이미 제출된 조직입니다. 수정이 필요하면 담당자에게 문의해 주세요.",
+        code: "already-submitted",
+      },
+      { status: 409 }
+    );
+  }
+
   const parsedOrgRates = parseRates(orgRates);
   const personsProvided = Array.isArray(persons) && persons.some((p: any) => p?.name && String(p.name).trim());
   // 조직 단위 값이 팀 구성원별 값의 평균으로 자동 계산된 경우(personsProvided)는 아래에서 개인별로 이미 검증하므로 중복 검증하지 않는다.
@@ -85,7 +114,8 @@ export async function POST(req: NextRequest) {
     total: sumTargets(parsedOrgRates),
     note: note || null,
     submitted_by: submittedBy,
-    status: "pending",
+    // 제출 즉시 배부율 표에 반영되므로 대기 상태로 두지 않는다.
+    status: "confirmed",
   });
 
   if (Array.isArray(persons)) {
@@ -105,7 +135,7 @@ export async function POST(req: NextRequest) {
         total: sumTargets(parsed),
         note: p.note || null,
         submitted_by: submittedBy,
-        status: "pending",
+        status: "confirmed",
       });
     }
 
@@ -127,6 +157,18 @@ export async function POST(req: NextRequest) {
 
   // 제출이 끝났으면 임시저장본은 필요 없다 (다음에 다시 열면 제출된 값에서 이어서 고친다).
   await supabase.from("allocation_submission_drafts").delete().eq("org_id", org.id).eq("period", period);
+
+  // **제출이 곧 반영이다.** 예전에는 관리자가 '확정'을 눌러야 배부율 표에 들어갔는데,
+  // 그 단계를 잊으면 제출은 됐는데 값이 반영되지 않은 채로 남았다.
+  const applied = await applyOrgRate(supabase, org, period, parsedOrgRates, `링크 제출 (${version})`);
+  if (applied.error) {
+    return NextResponse.json({ error: applied.error }, { status: 500 });
+  }
+
+  // 방금 제출한 조직은 다시 잠근다 — 관리자가 열어준 것은 한 번만 쓰인다.
+  if (unlock) {
+    await supabase.from("allocation_submit_unlocks").delete().eq("org_id", org.id).eq("period", period);
+  }
 
   // 상위 집계 조직·HKR·사업총괄대표 값은 이 제출에서 파생되므로 함께 갱신한다.
   await recomputeAggregates(supabase, period, version);

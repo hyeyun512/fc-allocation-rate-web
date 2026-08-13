@@ -414,3 +414,10 @@ footer{text-align:center;padding:22px;color:#94a3b8;font-size:11.5px}
 .send-preview{border:0.5px solid #e2e8f0;border-radius:8px;padding:10px 12px;background:#f8fafc}
 .send-preview b{font-size:12.5px;color:#1a202c;display:block;margin-bottom:6px}
 .send-preview pre{margin:0;font-family:inherit;font-size:12px;line-height:1.6;color:#334155;white-space:pre-wrap;word-break:break-word}
+/* 제출을 마친 링크 — 담당자가 임의로 고칠 수 없다는 것을 그 자리에서 알린다. */
+.submit-locked{font-size:12.5px;color:#92400e;background:#fffbeb;border-left:3px solid #f59e0b;padding:8px 11px;border-radius:0 6px 6px 0}
+/* 제출한 링크를 다시 열어주는 버튼 — 열려 있으면 눈에 띄게 둔다(닫는 걸 잊지 않도록). */
+.unlock-btn{font-family:inherit;font-size:10.5px;font-weight:700;padding:2px 7px;border-radius:5px;cursor:pointer;border:0.5px solid #cbd5e1;background:#fff;color:#64748b;white-space:nowrap}
+.unlock-btn:hover:not(:disabled){border-color:#2563eb;color:#2563eb}
+.unlock-btn.is-open{background:#fffbeb;border-color:#f59e0b;color:#92400e}
+.unlock-btn:disabled{opacity:.5;cursor:default}

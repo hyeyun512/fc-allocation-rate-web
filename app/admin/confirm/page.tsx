@@ -24,6 +24,12 @@ export default async function AdminConfirmPage() {
   const period = settings?.current_period ?? "";
   const version = settings?.current_version ?? "Forecast";
 
+  // 제출을 마친 링크를 다시 열어준 조직 (조사 탭의 '수정 허용').
+  const { data: unlockRows } = await supabase
+    .from("allocation_submit_unlocks")
+    .select("org_id")
+    .eq("period", period);
+
   // 메일 문구는 분기별로 남긴다 — 새 분기 문구를 저장해도 지난 분기에 뭐라고 보냈는지가 남아 있어야
   // 그걸 그대로 불러다 쓸 수 있다.
   const { data: mailTplRows } = await supabase.from("allocation_mail_templates").select("period,subject,body");
@@ -332,6 +338,8 @@ export default async function AdminConfirmPage() {
         orgLabel: orgLabelFor(org.basis, submitLangOf(org.basis)),
         linkToken: linkTokenOf(orgLites, org.id, period) ?? org.access_token,
         isTokenOwner: isTokenOwner(orgLites, org.id, period),
+        // 제출한 링크는 잠긴다 — 관리자가 열어준 조직만 다시 제출할 수 있다.
+        editAllowed: (unlockRows ?? []).some((u: any) => u.org_id === org.id),
         children: [],
       };
     });
@@ -352,7 +360,7 @@ export default async function AdminConfirmPage() {
       mailSubject={mailTpl?.subject ?? ""}
       mailBody={mailTpl?.body ?? ""}
       hasPreviousMail={hasPreviousMail}
-      // 지난 분기에 정한 기한은 이번 분기 것이 아니다 — 빈 값으로 내려 '재설정 필요'가 뜨게 한다.
+      // 지난 분기에 정한 기한은 이번 분기 것이 아니다 — 빈 값으로 내려 '재설정 필요'가 뜨게 한다.
       surveyData={surveyData}
       resourceData={finalData}
       hkrHistory={hkrHistory}

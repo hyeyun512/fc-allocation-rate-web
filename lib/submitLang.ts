@@ -56,6 +56,8 @@ const KO = {
   quarterSubmitted: (q: string) => `${q} (제출됨)`,
   totalWarning: (q: string) => `⚠ ${q} 합계가 100%가 아닙니다. 각 항목의 비율 합이 100%가 되도록 입력해주세요.`,
   btnEdit: "수정하기",
+  // 제출한 뒤에는 담당자 임의로 못 고친다 — 관리자가 열어줘야 한다.
+  lockedNotice: "이미 제출되었습니다. 수정이 필요하시면 담당자에게 문의해 주세요.",
   btnSubmit: "제출하기",
   btnSubmitting: "제출 중...",
   draftSaving: "임시저장 중...",
@@ -121,6 +123,7 @@ const EN: SubmitStrings = {
   quarterSubmitted: (q: string) => `${q} (submitted)`,
   totalWarning: (q: string) => `⚠ The ${q} figures do not add up to 100%. Please adjust them so the total is exactly 100%.`,
   btnEdit: "Edit",
+  lockedNotice: "This has already been submitted. Please contact the allocation team if it needs to be changed.",
   btnSubmit: "Submit",
   btnSubmitting: "Submitting...",
   draftSaving: "Saving draft...",

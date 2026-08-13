@@ -42,7 +42,9 @@ export function orgLabelFor(basis: string, lang: SubmitLang): string {
  * 담당자가 사람 이름 대신 이 문구를 보게 되므로 영어 링크에서는 영어로 바꿔준다.
  */
 const SUBMITTER_EN: Record<string, string> = {
-  "관리자 확정 (검토및확정)": "Allocation team (confirmed)",
+  "관리자 수정 (검토및확정)": "Allocation team (updated)",
+  // 예전 표기 — 이미 저장된 이력에 남아 있어 계속 옮겨준다.
+  "관리자 확정 (검토및확정)": "Allocation team (updated)",
   "관리자 코멘트 (검토및확정)": "Allocation team (comment)",
 };
 

@@ -50,6 +50,8 @@ export interface SubmitOrgData {
   requiresPersonDetail: boolean;
   managerName: string | null;
   submittedThisPeriod: boolean;
+  /** 관리자가 재제출을 허용했는지. 제출 후에는 이게 true일 때만 고칠 수 있다. */
+  editAllowed: boolean;
   submittedBy: string | null;
   latestSubmittedAt: string | null;
   rollup: Record<TargetKey, number>;
@@ -125,8 +127,10 @@ function OrgSubmitSection({
   );
 
   const [submitted, setSubmitted] = useState(data.submittedThisPeriod);
-  // 임시저장본이 남아 있으면 아직 제출 전 작업이 있는 것이므로 잠그지 않고 이어서 입력하게 한다.
-  const [unlocked, setUnlocked] = useState(!!draft);
+  // 임시저장본이 남아 있으면 아직 제출 전 작업이므로 잠그지 않는다.
+  // 제출을 마친 뒤에는 **관리자가 열어준 경우에만** 다시 고칠 수 있다 —
+  // 예전에는 화면의 '수정하기' 버튼으로 담당자가 스스로 풀 수 있었다.
+  const unlocked = !!draft || data.editAllowed;
   const [sending, setSending] = useState(false);
   const [error, setError] = useState("");
   const [justSubmitted, setJustSubmitted] = useState(false);
@@ -281,9 +285,9 @@ function OrgSubmitSection({
       // (합계·입력자 이름은 위에서 이미 걸러지므로 남는 건 통신/저장 실패뿐이다).
       if (!res.ok) throw new Error((lang === "ko" && json.error) || s.errSubmit);
       setSubmitted(true);
-      setUnlocked(false);
       setJustSubmitted(true);
       setDraftSavedAt(null);
+      // 제출과 함께 서버가 재제출 허용 표식을 지운다 — 새로 읽어와 잠긴 상태로 되돌린다.
       router.refresh();
     } catch (e: any) {
       setError(e.message || s.errSubmit);
@@ -295,9 +299,7 @@ function OrgSubmitSection({
   const actionButton = (
     <div style={{ marginTop: 14, display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
       {submitted && !unlocked ? (
-        <button className="btn btn-secondary btn-sm" onClick={() => setUnlocked(true)}>
-          {s.btnEdit}
-        </button>
+        <span className="submit-locked">{s.lockedNotice}</span>
       ) : (
         <button className="btn btn-primary" disabled={sending} onClick={handleSubmit}>
           {sending ? s.btnSubmitting : s.btnSubmit}

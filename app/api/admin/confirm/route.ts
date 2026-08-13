@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
-import { TARGETS, TargetKey, sumTargets, normalizeTargets, RATE_TOTAL_TOLERANCE } from "@/lib/targets";
+import { TARGETS, TargetKey, sumTargets } from "@/lib/targets";
+import { applyOrgRate } from "@/lib/confirmRate";
 import { recomputeAggregates } from "@/lib/autoAggregate";
 import { buildDeletionTombstones } from "@/lib/personTombstones";
 import { DELETED_STATUS } from "@/lib/rollup";
@@ -38,61 +39,12 @@ export async function POST(req: NextRequest) {
     parsed[t.key] = Number.isFinite(v) ? v : 0;
   });
 
-  // 100%로 맞추면서 값이 실제로 달라졌으면 화면에 알려준다 (아래에서 채운다).
-  // 나눗셈에서 생기는 부동소수점 찌꺼기(1e-16 수준)까지 알리면 잡음이라 그보다 큰 것만 센다.
-  const CORRECTION_NOTICE_THRESHOLD = 1e-9;
-  let correctedFrom: number | null = null;
-
-  // 값을 다 지우고 저장한 경우(합계 0)에는 0%짜리 행을 남기지 않고 아예 지운다.
-  // 예전에는 0으로 덮어썼는데, 그러면 입력한 적 없는 분기가 배부율 목록에 계속 남았다.
-  if (sumTargets(parsed) <= 0) {
-    const { error: delError } = await supabase
-      .from("allocation_rate")
-      .delete()
-      .eq("quarter", period)
-      .eq("type", org.type)
-      .eq("division", org.division)
-      .eq("basis", org.basis);
-    if (delError) {
-      return NextResponse.json({ error: delError.message }, { status: 500 });
-    }
-  } else {
-    // 배부율 표에 남는 값은 항상 합계 100%여야 한다. 입력 단계에서 ±0.5%p까지 허용한 오차가
-    // 여기까지 흘러오므로, 저장 직전에 비율을 유지한 채 100%로 맞춘다.
-    // (제출 이력 allocation_submissions에는 입력한 값을 그대로 남긴다 — 무엇을 적었는지 추적해야 한다.)
-    const enteredTotal = sumTargets(parsed);
-    const normalized = normalizeTargets(parsed);
-
-    // 화면 검증(totalIsValid)이 ±0.5%p까지만 통과시키므로 그보다 큰 편차는 정상 경로로는 오지 않는다.
-    // 그런데도 들어왔다면 입력 실수일 가능성이 크다 — 100%로 맞춰 저장하되 흔적은 로그에 남긴다.
-    if (Math.abs(enteredTotal - 1) > RATE_TOTAL_TOLERANCE) {
-      console.warn(
-        `[allocation] 합계 이상: ${period} ${org.basis} 입력 ${(enteredTotal * 100).toFixed(4)}% -> 100%로 보정해 저장`
-      );
-    }
-
-    // 화면이 ±0.5%p까지 통과시키는 탓에 100.01% 같은 입력이 조용히 지나갔고, 그게 조직 평균으로
-    // 흘러가 문제가 됐다. 보정했다는 사실을 응답에 실어 담당자가 원본 입력을 다시 보게 한다.
-    if (Math.abs(enteredTotal - 1) > CORRECTION_NOTICE_THRESHOLD) {
-      correctedFrom = enteredTotal;
-    }
-    const { error: upsertError } = await supabase.from("allocation_rate").upsert(
-      {
-        quarter: period,
-        type: org.type,
-        division: org.division,
-        basis: org.basis,
-        ...normalized,
-        total: sumTargets(normalized),
-        update_flag: true,
-        note: `웹 확정 (${version}) - ${new Date().toISOString()}`,
-      },
-      { onConflict: "quarter,type,division,basis" }
-    );
-    if (upsertError) {
-      return NextResponse.json({ error: upsertError.message }, { status: 500 });
-    }
+  // 배부율 표 반영은 링크 제출과 같은 경로를 쓴다 — 두 곳이 다르게 저장되면 안 된다.
+  const applied = await applyOrgRate(supabase, org, period, parsed, `관리자 저장 (${version})`);
+  if (applied.error) {
+    return NextResponse.json({ error: applied.error }, { status: 500 });
   }
+  const correctedFrom = applied.correctedFrom;
 
   // 검토및확정 화면에서 개인별 값을 입력/수정해 확정한 경우, 조직 합산값만 저장하고 개인별 값은
   // 저장하지 않으면 다음 라운드에 "저장한 개인별 이력"을 다시 조회할 수 없다 — 개인별 행도 함께 남긴다.
@@ -118,7 +70,7 @@ export async function POST(req: NextRequest) {
           total: sumTargets(personParsed),
           note: p.note || null,
           note_en: p.noteEn || null,
-          submitted_by: "관리자 확정 (검토및확정)",
+          submitted_by: "관리자 수정 (검토및확정)",
           status: "confirmed",
         };
       });
@@ -129,7 +81,7 @@ export async function POST(req: NextRequest) {
       period,
       version,
       keptNames: personRows.map((r) => r.person_name),
-      submittedBy: "관리자 확정 (검토및확정)",
+      submittedBy: "관리자 수정 (검토및확정)",
       // 개인별 조직에서 명단을 통째로 비웠으면 예전 조직 단위 제출 행도 무효화한다
       // (안 그러면 개인 행이 하나도 없는데 그 행 때문에 계속 '제출됨'으로 조회된다).
       clearOrgLevelWhenEmpty: true,
@@ -158,7 +110,7 @@ export async function POST(req: NextRequest) {
       total: sumTargets(parsed),
       note: orgNote || null,
       note_en: orgNoteEn || null,
-      submitted_by: "관리자 확정 (검토및확정)",
+      submitted_by: "관리자 수정 (검토및확정)",
       status: "confirmed",
     };
     const { error: orgSubmissionError } = await supabase.from("allocation_submissions").insert(orgSubmissionRow);

@@ -311,10 +311,10 @@ function ParentOrgDetail({ item, period, version }: { item: OrgReviewData; perio
         body: JSON.stringify({ orgId: item.org.id, period, version, rates: computed }),
       });
       const json = await res.json();
-      if (!res.ok) throw new Error(json.error || "확정 처리 중 오류가 발생했습니다.");
+      if (!res.ok) throw new Error(json.error || "저장 중 오류가 발생했습니다.");
       setConfirmed(true);
       // 서버 컴포넌트가 페이지 진입 시 한 번만 조회하므로, 새로고침하지 않으면 다른 조직으로 옮겼다 돌아왔을 때
-      // 방금 저장한 내용이 미확정으로 보인다.
+      // 방금 저장한 내용이 미반영으로 보인다.
       router.refresh();
     } catch (e: any) {
       setError(e.message);
@@ -332,10 +332,10 @@ function ParentOrgDetail({ item, period, version }: { item: OrgReviewData; perio
             집계 조직
           </span>{" "}
           {confirmed ? (
-            <span className="status-badge status-confirmed">확정됨 ({period})</span>
+            <span className="status-badge status-confirmed">반영됨 ({period})</span>
           ) : (
             <span className="status-badge" style={{ background: "#f1f5f9", color: "#64748b" }}>
-              미확정
+              미반영
             </span>
           )}
         </div>
@@ -475,7 +475,7 @@ function HkrAutoPanel({
         }),
       });
       const json = await res.json();
-      if (!res.ok) throw new Error(json.error || "확정 처리 중 오류가 발생했습니다.");
+      if (!res.ok) throw new Error(json.error || "저장 중 오류가 발생했습니다.");
       setConfirmed(true);
       router.refresh();
     } catch (e: any) {
@@ -494,16 +494,16 @@ function HkrAutoPanel({
             자동계산
           </span>{" "}
           {confirmed ? (
-            <span className="status-badge status-confirmed">확정됨 ({period})</span>
+            <span className="status-badge status-confirmed">반영됨 ({period})</span>
           ) : (
             <span className="status-badge" style={{ background: "#f1f5f9", color: "#64748b" }}>
-              미확정
+              미반영
             </span>
           )}
         </div>
         <div className="panel-sub">
           본사 · 본사 조직 {honsaOrgs.length}개의 인원수 가중평균 배부율에서 계열사(H.Mobility~H.Networks) 배부분을 제외하고 나머지를 재정규화해 자동 계산됩니다.
-          확정 시 운영 allocation_rate에 반영됩니다.
+          저장하면 운영 allocation_rate에 곧바로 반영됩니다.
         </div>
       </div>
 
@@ -722,7 +722,7 @@ function OrgDetail({
         }),
       });
       const json = await res.json();
-      if (!res.ok) throw new Error(json.error || "확정 처리 중 오류가 발생했습니다.");
+      if (!res.ok) throw new Error(json.error || "저장 중 오류가 발생했습니다.");
       const corrected: { basis: string; from: number }[] = [];
       if (json.correctedFrom != null) corrected.push({ basis: json.basis, from: json.correctedFrom });
 
@@ -742,7 +742,7 @@ function OrgDetail({
           }),
         });
         const json2 = await res2.json();
-        if (!res2.ok) throw new Error(json2.error || "주재원 확정 처리 중 오류가 발생했습니다.");
+        if (!res2.ok) throw new Error(json2.error || "주재원 저장 중 오류가 발생했습니다.");
         if (json2.correctedFrom != null) corrected.push({ basis: json2.basis, from: json2.correctedFrom });
       }
 
@@ -755,7 +755,7 @@ function OrgDetail({
         );
       }
 
-      // 값이 없는 저장(행을 전부 지웠거나 배부율이 0%)은 확정으로 보지 않는다 — 화면 배지도 그대로 둔다.
+      // 값이 없는 저장(행을 전부 지웠거나 배부율이 0%)은 반영으로 보지 않는다 — 화면 배지도 그대로 둔다.
       setConfirmed(totalOf(computedOrgRates) > 0);
       setOrgUnlocked(false);
       setPersonsUnlocked(false);
@@ -783,7 +783,7 @@ function OrgDetail({
         </button>
       ) : (
         <button className="btn btn-primary btn-sm" disabled={confirming} onClick={handleConfirm}>
-          {confirming ? "저장 중..." : "저장 (allocation_rate 반영)"}
+          {confirming ? "저장 중..." : "저장"}
         </button>
       )}
     </div>
@@ -797,10 +797,10 @@ function OrgDetail({
             {item.org.basis}
             {hasExpat && <span className="status-badge" style={{ background: "#fef3c7", color: "#92400e", marginLeft: 6 }}>법인+주재원</span>}{" "}
             {confirmed ? (
-              <span className="status-badge status-confirmed">확정됨 ({period})</span>
+              <span className="status-badge status-confirmed">반영됨 ({period})</span>
             ) : (
               <span className="status-badge" style={{ background: "#f1f5f9", color: "#64748b" }}>
-                미확정
+                미반영
               </span>
             )}
           </div>
@@ -943,7 +943,7 @@ function OrgDetail({
 
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8, marginBottom: 8 }}>
             <div className="field-hint" style={{ fontWeight: 700, color: personsEditable ? "#2563eb" : "#1a202c", margin: 0 }}>
-              {period} {personsEditable ? "(입력중)" : "(확정됨)"}
+              {period} {personsEditable ? "(입력중)" : "(반영됨)"}
             </div>
             {personsEditable && previousPersonsForOrg.length > 0 && (
               <button className="btn btn-secondary btn-sm" onClick={loadPreviousPersons}>
@@ -1000,7 +1000,7 @@ export default function ConfirmReview({
   // 순서도 그 표의 No. 순서(ORG_ORDER)를 그대로 따른다.
   const topLevel = sortForOrgPicker(
     data
-      // 사업총괄대표처럼 값이 자동으로 채워지는 조직은 검토·확정 화면에서 감춘다 (View에서는 그대로 보인다).
+      // 사업총괄대표처럼 값이 자동으로 채워지는 조직은 검토 화면에서 감춘다 (View에서는 그대로 보인다).
       .filter((item) => !item.org.parent_basis && !HIDDEN_IN_CONFIRM.includes(item.org.basis))
   );
   const [selectedId, setSelectedId] = useState<number | null>(topLevel[0]?.org.id ?? null);
@@ -1018,7 +1018,7 @@ export default function ConfirmReview({
       <div className="panel" style={{ marginBottom: 16 }}>
         <div className="panel-title">조직/팀 선택 ({period})</div>
         <div className="panel-sub" style={{ marginBottom: 10 }}>
-          조직을 선택하면 아래에서 분기별 이력과 이번 라운드 값을 검토·확정할 수 있습니다. 파란 배지가 붙은 조직은 하위 조직 값을 자동 집계하는 조직입니다.
+          조직을 선택하면 아래에서 분기별 이력과 이번 라운드 값을 검토·수정할 수 있습니다. 파란 배지가 붙은 조직은 하위 조직 값을 자동 집계하는 조직입니다.
         </div>
         {Object.entries(grouped).map(([division, items]) => (
           <div key={division} style={{ marginBottom: 10 }}>
@@ -1029,7 +1029,7 @@ export default function ConfirmReview({
               <button
                 key={item.org.id}
                 type="button"
-                // 제출 완료는 체크표시 대신 연한 초록 배경으로 알아본다.
+                // 배부율이 반영된 조직은 체크표시 대신 연한 초록 배경으로 알아본다 (제출하면 곧바로 반영된다).
                 className={`av-chip ${item.confirmedThisPeriod ? "submitted" : ""} ${selectedId === item.org.id ? "active" : ""}`}
                 style={{ marginRight: 6, marginBottom: 6 }}
                 onClick={() => setSelectedId(item.org.id)}
