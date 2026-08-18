@@ -127,10 +127,13 @@ function OrgSubmitSection({
   );
 
   const [submitted, setSubmitted] = useState(data.submittedThisPeriod);
-  // 임시저장본이 남아 있으면 아직 제출 전 작업이므로 잠그지 않는다.
   // 제출을 마친 뒤에는 **관리자가 열어준 경우에만** 다시 고칠 수 있다 —
   // 예전에는 화면의 '수정하기' 버튼으로 담당자가 스스로 풀 수 있었다.
-  const unlocked = !!draft || data.editAllowed;
+  //
+  // 임시저장본은 '아직 제출 전'이라는 뜻일 때만 잠금을 푼다. 제출한 뒤에 남거나 되살아난
+  // 임시저장본까지 잠금을 풀면 제출 잠금이 통째로 무력화된다 — 제출 직후 창을 닫으면
+  // pagehide 비콘이 방금 지워진 임시저장본을 다시 만들어 실제로 그렇게 됐다.
+  const unlocked = data.editAllowed || (!!draft && !data.submittedThisPeriod);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState("");
   const [justSubmitted, setJustSubmitted] = useState(false);
@@ -210,6 +213,8 @@ function OrgSubmitSection({
     }
     if (current === initialDraftJson.current) return;
     if (!editable) return;
+    // 제출을 마쳤으면 더 남기지 않는다 — 서버가 제출 시 지운 임시저장본을 다시 만들면 안 된다.
+    if (justSubmitted) return;
     const timer = setTimeout(async () => {
       setDraftState("saving");
       try {
@@ -228,14 +233,19 @@ function OrgSubmitSection({
     }, DRAFT_DEBOUNCE_MS);
     return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [submittedBy, orgRates, orgHeadcountInput, orgNoteInput, persons, editable]);
+  }, [submittedBy, orgRates, orgHeadcountInput, orgNoteInput, persons, editable, justSubmitted]);
 
   // 자동 임시저장(1.5초)이 돌기 전에 창을 닫아도 마지막 입력이 남도록 한 번 더 보낸다.
   const draftPayloadRef = useRef(draftPayload);
   draftPayloadRef.current = draftPayload;
+  // 리스너는 한 번만 등록되므로 최신 상태를 ref로 넘긴다 (클로저가 옛 값을 붙잡지 않게).
+  const draftingAllowedRef = useRef(true);
+  draftingAllowedRef.current = editable && !justSubmitted;
   useEffect(() => {
     function flush() {
       if (!navigator.sendBeacon) return;
+      // 잠긴 화면이거나 이미 제출을 마쳤으면 남기지 않는다.
+      if (!draftingAllowedRef.current) return;
       const payload = draftPayloadRef.current();
       // 열어보기만 하고 닫은 경우에는 남기지 않는다 (위 자동저장과 같은 기준).
       if (JSON.stringify(payload) === initialDraftJson.current) return;
