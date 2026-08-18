@@ -204,3 +204,78 @@ export function mailtoUrl(to: string | string[], subject: string, body: string):
     .join(",");
   return `mailto:${list}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
 }
+
+/* ─────────────────────── Outlook 초안 파일(.eml) ───────────────────────
+   `mailto:`는 규격상 본문에 **평문만** 담을 수 있어(RFC 6068) 굵게·글자색이 전부 날아간다.
+   그래서 메시지 한 통을 통째로 만들어 파일로 내려준다 — 열면 Outlook이 초안 창으로 띄운다.
+   `X-Unsent: 1`이 그 표식이다. 이 헤더가 없으면 '받은 메일'처럼 열려 [보내기] 버튼이 없다. */
+
+/** 브라우저·서버 양쪽에서 도는 base64. 이 파일은 클라이언트 번들에도 실리므로 Buffer를 쓸 수 없다. */
+function toBase64(bytes: Uint8Array): string {
+  let bin = "";
+  for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+  return btoa(bin);
+}
+
+/**
+ * 헤더에 한글을 담기 위한 RFC 2047 인코딩(`=?UTF-8?B?...?=`).
+ * 인코딩된 낱말 하나가 75자를 넘으면 안 되므로 나눠 담고 접는다.
+ * 글자가 중간에서 잘리면 깨지므로 바이트가 아니라 **글자 단위**로 세면서 나눈다.
+ */
+export function encodeMimeWord(text: string): string {
+  const s = String(text ?? "");
+  if (!s) return "";
+  // ASCII뿐이면 그대로 둔다 — 굳이 인코딩하면 사람이 읽기만 어려워진다.
+  if (!/[^\x20-\x7e]/.test(s)) return s;
+
+  const enc = new TextEncoder();
+  const chunks: string[] = [];
+  let cur = "";
+  let curBytes = 0;
+  for (const ch of s) {
+    const n = enc.encode(ch).length;
+    if (cur && curBytes + n > 45) {
+      chunks.push(cur);
+      cur = "";
+      curBytes = 0;
+    }
+    cur += ch;
+    curBytes += n;
+  }
+  if (cur) chunks.push(cur);
+  return chunks.map((part) => `=?UTF-8?B?${toBase64(enc.encode(part))}?=`).join("\r\n ");
+}
+
+/** 본문 HTML을 Outlook이 안정적으로 읽는 문서 형태로 감싼다. */
+function mailHtmlDocument(bodyHtml: string): string {
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"></head><body>${bodyHtml}</body></html>`;
+}
+
+export interface EmlInput {
+  to: string[];
+  subject: string;
+  /** 서식이 살아 있는 본문 (buildLinkMail의 html). */
+  html: string;
+}
+
+/** Outlook이 '보내지 않은 초안'으로 여는 .eml 한 통. */
+export function buildEml({ to, subject, html }: EmlInput): string {
+  const b64 = toBase64(new TextEncoder().encode(mailHtmlDocument(html)));
+  // base64 본문은 한 줄 76자로 접는다 (RFC 2045).
+  const body = (b64.match(/.{1,76}/g) ?? []).join("\r\n");
+  const headers = [
+    `To: ${to.join(", ")}`,
+    `Subject: ${encodeMimeWord(subject)}`,
+    "X-Unsent: 1",
+    "MIME-Version: 1.0",
+    'Content-Type: text/html; charset="UTF-8"',
+    "Content-Transfer-Encoding: base64",
+  ];
+  return `${headers.join("\r\n")}\r\n\r\n${body}\r\n`;
+}
+
+/** 내려받을 파일 이름. 파일 이름에 못 쓰는 글자를 걷어낸다. */
+export function emlFileName(orgLabel: string): string {
+  const safe = String(orgLabel ?? "").replace(/[\/:*?"<>|]/g, "_").trim() || "조사링크";
+  return `배부율조사_${safe}.eml`;
+}

@@ -10,6 +10,9 @@ import {
   insertLinkHtml,
   htmlToPlainText,
   mailtoUrl,
+  buildEml,
+  emlFileName,
+  encodeMimeWord,
   maskEmail,
   maskToken,
   mailTemplateProblem,
@@ -139,6 +142,20 @@ function runCases(): Case[] {
   const multi = mailtoUrl(["a@b.com", "c@d.com"], "s", "b");
   c.push(ok("mailto joins addresses with raw comma", multi.startsWith("mailto:a@b.com,c@d.com?")));
   c.push(ok("mailto does not encode the separator", !multi.includes("%2C")));
+
+  /* ── buildEml ── mailto와 달리 서식이 살아 있는 초안 파일. */
+  const eml = buildEml({ to: ["a@b.com", "c@d.com"], subject: "제목 한글", html: '<div style="font-weight:bold">굵게</div>' });
+  c.push(ok("eml marks the draft unsent", eml.includes("\r\nX-Unsent: 1\r\n")));
+  c.push(ok("eml declares html utf-8", eml.includes('Content-Type: text/html; charset="UTF-8"')));
+  c.push(ok("eml joins recipients with a comma", eml.startsWith("To: a@b.com, c@d.com\r\n")));
+  c.push(ok("eml encodes the korean subject", eml.includes("Subject: =?UTF-8?B?")));
+  // 본문은 base64다. 되돌렸을 때 서식이 그대로 살아 있어야 한다 — 이게 mailto와의 차이 전부다.
+  const emlBody = eml.split("\r\n\r\n")[1].replace(/\r\n/g, "");
+  const decoded = new TextDecoder().decode(Uint8Array.from(atob(emlBody), (ch) => ch.charCodeAt(0)));
+  c.push(ok("eml body keeps the formatting", decoded.includes("font-weight:bold")));
+  c.push(ok("eml body is a html document", decoded.startsWith("<!DOCTYPE html>")));
+  c.push(eq("eml filename drops path characters", emlFileName("Staff/CEO"), "배부율조사_Staff_CEO.eml"));
+  c.push(eq("mime word leaves ascii readable", encodeMimeWord("plain subject"), "plain subject"));
 
   /* ── linkOrgOf / linkTokenOf / tokenScopeOf ── */
   c.push(eq("child uses parent token", linkTokenOf(ORGS, 2, Q3), "tok-dev-000000001"));

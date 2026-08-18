@@ -162,8 +162,8 @@ interface SendState {
   opensOthers: boolean;
   childLabels: string[];
   /** 서버가 만들어준 초안 — 같은 링크를 쓰는 담당자는 한 통에 함께 넣으므로 하나뿐이다. */
-  draft: { to: string[]; subject: string; body: string; bodyHtml: string; url: string } | null;
-  /** 서식 있는 본문을 클립보드에 넣었는지 — 넣었으면 초안에서 Ctrl+V 하면 된다. */
+  draft: { to: string[]; subject: string; body: string; bodyHtml: string; url: string; eml: string | null; emlFileName: string } | null;
+  /** 서식 본문을 클립보드에 넣었는지. .eml을 못 만들어 평문 초안으로 물러섰을 때만 쓴다. */
   copied: boolean;
   phase: "confirm" | "ready" | "sending" | "error";
   message: string;
@@ -197,6 +197,22 @@ function openDraft(url: string) {
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
+}
+
+/** 서식이 살아 있는 초안(.eml)을 파일로 내려준다. */
+function downloadEml(eml: string, filename: string) {
+  // 브라우저가 Outlook을 직접 띄울 방법은 없다. 메시지 한 통을 파일로 내려주고 사람이 열게 한다 —
+  // .eml 기본 프로그램이 Outlook이면 X-Unsent 헤더 덕분에 곧바로 [보내기] 있는 초안 창이 뜬다.
+  const blob = new Blob([eml], { type: "message/rfc822" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.style.display = "none";
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 10000);
 }
 
 function SendDialog({
@@ -241,11 +257,18 @@ function SendDialog({
         body: result.body,
         bodyHtml: result.bodyHtml,
         url: result.mailtoUrl,
+        eml: (result.eml as string | null) ?? null,
+        emlFileName: (result.emlFileName as string) ?? "배부율조사.eml",
       };
-      // mailto 초안의 본문은 규격상 평문뿐이다. 서식을 살리려면 사람이 붙여넣어야 하므로
-      // 서식 있는 본문을 클립보드에 미리 넣어 둔다(실패해도 평문 초안은 그대로 열린다).
-      const copied = await copyRichText(draft.bodyHtml, draft.body);
-      openDraft(draft.url);
+      // .eml 초안은 서식이 그대로 살아 있으므로 클립보드를 건드리지 않는다.
+      // 초안 파일을 만들지 못한 경우에만 평문 mailto로 물러서고, 그때만 서식 본문을 클립보드로 넘긴다.
+      let copied = false;
+      if (draft.eml) {
+        downloadEml(draft.eml, draft.emlFileName);
+      } else {
+        copied = await copyRichText(draft.bodyHtml, draft.body);
+        openDraft(draft.url);
+      }
       setState({ ...state, draft, copied, phase: "ready", message: "" });
     } catch {
       setState({ ...state, phase: "error", message: "초안을 만들지 못했습니다." });
@@ -257,10 +280,19 @@ function SendDialog({
       <div className="send-dialog">
         {state.phase === "ready" && state.draft ? (
           <>
-            <div className="send-title">Outlook 초안을 열었습니다</div>
-            {state.copied ? (
+            <div className="send-title">
+              {state.draft.eml ? "Outlook 초안 파일을 내려받았습니다" : "Outlook 초안을 열었습니다"}
+            </div>
+            {state.draft.eml ? (
               <p className="send-lead">
-                초안 본문은 <b>서식 없는 글자</b>입니다. 서식(굵게·색)을 살리려면 본문에서{" "}
+                내려받은 <b>{state.draft.emlFileName}</b> 을(를) 열면 <b>화면에서 작성한 서식 그대로</b>{" "}
+                Outlook 초안이 열립니다.
+                <br />
+                확인 후 <b>[보내기]</b>를 눌러 주세요. 아직 발송되지 않았습니다.
+              </p>
+            ) : state.copied ? (
+              <p className="send-lead">
+                초안 파일을 만들지 못해 서식 없는 초안을 열었습니다. 서식(굵게·색)을 살리려면 본문에서{" "}
                 <b>Ctrl+A → Ctrl+V</b> 하세요 — 서식 있는 본문을 클립보드에 넣어 두었습니다.
                 <br />
                 확인 후 <b>[보내기]</b>를 눌러 주세요. 아직 발송되지 않았습니다.
@@ -290,8 +322,15 @@ function SendDialog({
               >
                 서식 본문 다시 복사
               </button>
-              <button className="btn btn-secondary btn-sm" onClick={() => openDraft(state.draft!.url)}>
-                초안 다시 열기
+              <button
+                className="btn btn-secondary btn-sm"
+                onClick={() =>
+                  state.draft!.eml
+                    ? downloadEml(state.draft!.eml!, state.draft!.emlFileName)
+                    : openDraft(state.draft!.url)
+                }
+              >
+                {state.draft!.eml ? "초안 파일 다시 받기" : "초안 다시 열기"}
               </button>
               <button className="btn btn-secondary btn-sm" onClick={onClose}>
                 닫기
@@ -333,7 +372,9 @@ function SendDialog({
                 주소입니다. 맞는지 확인해 주세요.
               </p>
             )}
-            <p className="send-lead">Outlook 초안이 열립니다. 확인 후 [보내기]를 눌러 주세요.</p>
+            <p className="send-lead">
+              Outlook 초안 파일(.eml)을 내려받습니다. 파일을 열면 화면에서 작성한 서식 그대로 초안이 열립니다.
+            </p>
             {state.phase === "error" && <p className="send-error">{state.message}</p>}
             <div className="send-actions">
               <button
@@ -341,7 +382,7 @@ function SendDialog({
                 disabled={chosen.length === 0 || state.phase === "sending"}
                 onClick={prepare}
               >
-                {state.phase === "sending" ? "초안 만드는 중..." : `초안 열기 (수신인 ${chosen.length}명)`}
+                {state.phase === "sending" ? "초안 만드는 중..." : `초안 파일 만들기 (수신인 ${chosen.length}명)`}
               </button>
               <button className="btn btn-secondary btn-sm" onClick={onClose}>
                 취소

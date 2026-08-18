@@ -5,6 +5,8 @@ import { linkOrgOf, tokenScopeOf, linkOpensChildren, isInSurvey, OrgLite } from 
 import { submitLangOf, orgLabelFor } from "@/lib/englishOrgs";
 import {
   buildLinkMail,
+  buildEml,
+  emlFileName,
   mailtoUrl,
   isValidEmail,
   isAllowedDomain,
@@ -196,7 +198,7 @@ export async function POST(req: NextRequest) {
     console.warn(
       `[send-link] token=${maskToken(linkOrg.access_token)} org=${linkOrg.basis} period=${period} ` +
         `recipients=${recipients.length} skipped=${skipped.length} ` +
-        `to=${recipients.map((r) => maskEmail(r.to)).join(",")} transport=mailto action=draft_prepared`
+        `to=${recipients.map((r) => maskEmail(r.to)).join(",")} transport=eml action=draft_prepared`
     );
 
     results.push({
@@ -206,14 +208,17 @@ export async function POST(req: NextRequest) {
       // 초안 하나에 수신인 여러 명. mailto는 쉼표로 여러 주소를 받는다.
       to: recipients.map((r) => r.to),
       subject: mail?.subject ?? "",
-      // 초안(mailto)에는 평문만 담을 수 있다. 서식이 살아 있는 본문은 화면이 클립보드로 넘긴다.
+      // 서식(굵게·색)이 살아 있는 초안은 .eml로 내려준다 — mailto는 규격상 평문뿐이라 서식이 날아간다.
+      // mailtoUrl은 .eml을 열지 못하는 환경을 위한 대비책으로 함께 남긴다.
       body: mail?.text ?? "",
       bodyHtml: mail?.html ?? "",
+      eml: mail ? buildEml({ to: recipients.map((r) => r.to), subject: mail.subject, html: mail.html }) : null,
+      emlFileName: emlFileName(linkOrg.basis),
       mailtoUrl: mail ? mailtoUrl(recipients.map((r) => r.to), mail.subject, mail.text) : null,
       recipients,
       skipped,
     });
   }
 
-  return NextResponse.json({ transport: "mailto", results });
+  return NextResponse.json({ transport: "eml", results });
 }
