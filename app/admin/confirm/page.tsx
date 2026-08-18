@@ -248,6 +248,7 @@ export default async function AdminConfirmPage() {
     hq_total_headcount: number;
     material_evcs_domestic_ratio: number;
     material_evcs_overseas_ratio: number;
+    note?: string | null;
   }
 
   const basisInputs = basisInputRows ?? [];
@@ -291,6 +292,7 @@ export default async function AdminConfirmPage() {
         material_evcs_overseas_ratio: p.material_evcs_overseas_ratio,
         submitted_by: r.submitted_by ?? null,
         confirmed_at: r.confirmed_at ?? null,
+        note: p.note ?? null,
       };
     });
   const selfuse = selfuseHistory.find((r) => r.quarter === period) ?? null;

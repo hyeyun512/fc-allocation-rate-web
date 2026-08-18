@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { TARGETS, TargetKey, getPreviousPeriod } from "@/lib/targets";
 import { sortQuarters } from "@/lib/quarter";
 import { computeSelfuseRates, SelfuseBasisInput } from "@/lib/selfuseBasis";
-import { RateTableHead, ReadOnlyRateRow } from "@/components/RateParts";
+import { RateTableHead, ReadOnlyRateRow, NoteTip } from "@/components/RateParts";
 import { readPasteGrid, shouldHandlePaste } from "@/lib/paste";
 
 export interface SelfuseBasisRow {
@@ -19,6 +19,7 @@ export interface SelfuseBasisRow {
   material_evcs_overseas_ratio: number;
   submitted_by: string | null;
   confirmed_at: string | null;
+  note: string | null;
 }
 
 type FieldKey = keyof SelfuseBasisInput;
@@ -102,6 +103,8 @@ export default function SelfUsePanel({
   const quarter = period;
   const [form, setForm] = useState<FormState>(() => fromRow(initial));
   const [submittedBy, setSubmittedBy] = useState(initial?.submitted_by ?? "");
+  // 기준정보 표의 맨 오른쪽 코멘트. IT 탭과 달리 저장 버튼이 하나뿐이라 값과 함께 저장한다.
+  const [note, setNote] = useState(initial?.note ?? "");
   const router = useRouter();
   const [confirming, setConfirming] = useState(false);
   // 이미 확정된 분기를 '입력중'으로 보여주면 아직 안 한 것처럼 보인다 — 확정 상태면 읽기 전용으로 두고
@@ -138,7 +141,7 @@ export default function SelfUsePanel({
       const res = await fetch("/api/admin/selfuse-basis", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ quarter, input, submittedBy: submittedBy || null }),
+        body: JSON.stringify({ quarter, input, submittedBy: submittedBy || null, note: note.trim() || null }),
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || "확정 처리 중 오류가 발생했습니다.");
@@ -193,6 +196,7 @@ export default function SelfUsePanel({
               ))}
               <th>입력자</th>
               <th>확인일자</th>
+              <th>코멘트</th>
             </tr>
           </thead>
           <tbody>
@@ -211,6 +215,7 @@ export default function SelfUsePanel({
                     <td>{(h.material_evcs_overseas_ratio * 100).toFixed(1)}%</td>
                     <td>{h.submitted_by ?? "-"}</td>
                     <td>{fmtDate(h.confirmed_at)}</td>
+                    <td>{h.note ? <NoteTip text={h.note} /> : null}</td>
                   </tr>
                 );
               }
@@ -228,6 +233,7 @@ export default function SelfUsePanel({
                     <td>{(input.materialEvcsOverseasRatio * 100).toFixed(1)}%</td>
                     <td>{initial?.submitted_by ?? submittedBy ?? "-"}</td>
                     <td>{fmtDate(initial?.confirmed_at ?? null)}</td>
+                    <td>{note ? <NoteTip text={note} /> : null}</td>
                   </tr>
                 );
               }
@@ -269,6 +275,14 @@ export default function SelfUsePanel({
                   ))}
                   <td colSpan={2} className="field-hint">
                     확정 시 기록됨
+                  </td>
+                  <td>
+                    <input
+                      value={note}
+                      onChange={(e) => setNote(e.target.value)}
+                      placeholder="코멘트"
+                      style={{ width: 160 }}
+                    />
                   </td>
                 </tr>
               );

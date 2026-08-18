@@ -4,7 +4,7 @@ import { computeSelfuseRates } from "@/lib/selfuseBasis";
 import { TARGETS, TargetKey, sumTargets, normalizeTargets, RATE_TOTAL_TOLERANCE } from "@/lib/targets";
 
 export async function POST(req: NextRequest) {
-  const { quarter, input, submittedBy } = await req.json();
+  const { quarter, input, submittedBy, note } = await req.json();
   if (!quarter || !input) {
     return NextResponse.json({ error: "필수 항목이 누락되었습니다." }, { status: 400 });
   }
@@ -42,6 +42,8 @@ export async function POST(req: NextRequest) {
           hq_total_headcount: parsedInput.hqTotalHeadcount,
           material_evcs_domestic_ratio: parsedInput.materialEvcsDomesticRatio,
           material_evcs_overseas_ratio: parsedInput.materialEvcsOverseasRatio,
+          // 기준정보 표 맨 오른쪽 코멘트. 숫자와 함께 한 벌로 보관한다.
+          note: typeof note === "string" && note.trim() ? note.trim() : null,
         },
         submitted_by: submittedBy ?? null,
         confirmed_at: new Date().toISOString(),
