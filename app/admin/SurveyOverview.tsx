@@ -260,15 +260,12 @@ function SendDialog({
         eml: (result.eml as string | null) ?? null,
         emlFileName: (result.emlFileName as string) ?? "배부율조사.eml",
       };
-      // .eml 초안은 서식이 그대로 살아 있으므로 클립보드를 건드리지 않는다.
-      // 초안 파일을 만들지 못한 경우에만 평문 mailto로 물러서고, 그때만 서식 본문을 클립보드로 넘긴다.
-      let copied = false;
-      if (draft.eml) {
-        downloadEml(draft.eml, draft.emlFileName);
-      } else {
-        copied = await copyRichText(draft.bodyHtml, draft.body);
-        openDraft(draft.url);
-      }
+      // 메일 버튼은 Outlook 창을 곧바로 띄운다 — 이게 사람이 기대하는 동작이다.
+      // mailto는 규격상 평문뿐이라 서식 있는 본문은 클립보드로 함께 넘긴다.
+      // 서식을 그대로 실은 .eml은 결과 화면에서 따로 받을 수 있게 뒀다 —
+      // 브라우저가 .eml 다운로드마다 경고를 띄워 기본 동작으로 쓰기에는 손이 너무 간다.
+      const copied = await copyRichText(draft.bodyHtml, draft.body);
+      openDraft(draft.url);
       setState({ ...state, draft, copied, phase: "ready", message: "" });
     } catch {
       setState({ ...state, phase: "error", message: "초안을 만들지 못했습니다." });
@@ -280,19 +277,10 @@ function SendDialog({
       <div className="send-dialog">
         {state.phase === "ready" && state.draft ? (
           <>
-            <div className="send-title">
-              {state.draft.eml ? "Outlook 초안 파일을 내려받았습니다" : "Outlook 초안을 열었습니다"}
-            </div>
-            {state.draft.eml ? (
+            <div className="send-title">Outlook 초안을 열었습니다</div>
+            {state.copied ? (
               <p className="send-lead">
-                내려받은 <b>{state.draft.emlFileName}</b> 을(를) 열면 <b>화면에서 작성한 서식 그대로</b>{" "}
-                Outlook 초안이 열립니다.
-                <br />
-                확인 후 <b>[보내기]</b>를 눌러 주세요. 아직 발송되지 않았습니다.
-              </p>
-            ) : state.copied ? (
-              <p className="send-lead">
-                초안 파일을 만들지 못해 서식 없는 초안을 열었습니다. 서식(굵게·색)을 살리려면 본문에서{" "}
+                초안 본문은 <b>서식 없는 글자</b>입니다. 서식(굵게·색)을 살리려면 본문에서{" "}
                 <b>Ctrl+A → Ctrl+V</b> 하세요 — 서식 있는 본문을 클립보드에 넣어 두었습니다.
                 <br />
                 확인 후 <b>[보내기]</b>를 눌러 주세요. 아직 발송되지 않았습니다.
@@ -322,16 +310,18 @@ function SendDialog({
               >
                 서식 본문 다시 복사
               </button>
-              <button
-                className="btn btn-secondary btn-sm"
-                onClick={() =>
-                  state.draft!.eml
-                    ? downloadEml(state.draft!.eml!, state.draft!.emlFileName)
-                    : openDraft(state.draft!.url)
-                }
-              >
-                {state.draft!.eml ? "초안 파일 다시 받기" : "초안 다시 열기"}
+              <button className="btn btn-secondary btn-sm" onClick={() => openDraft(state.draft!.url)}>
+                초안 다시 열기
               </button>
+              {state.draft!.eml && (
+                <button
+                  className="btn btn-secondary btn-sm"
+                  onClick={() => downloadEml(state.draft!.eml!, state.draft!.emlFileName)}
+                  title="붙여넣기 없이 서식이 그대로 담긴 초안 파일입니다. 브라우저가 경고를 띄우면 [유지]를 누르세요."
+                >
+                  서식 그대로 받기(.eml)
+                </button>
+              )}
               <button className="btn btn-secondary btn-sm" onClick={onClose}>
                 닫기
               </button>
@@ -372,9 +362,7 @@ function SendDialog({
                 주소입니다. 맞는지 확인해 주세요.
               </p>
             )}
-            <p className="send-lead">
-              Outlook 초안 파일(.eml)을 내려받습니다. 파일을 열면 화면에서 작성한 서식 그대로 초안이 열립니다.
-            </p>
+            <p className="send-lead">Outlook 초안이 열립니다. 확인 후 [보내기]를 눌러 주세요.</p>
             {state.phase === "error" && <p className="send-error">{state.message}</p>}
             <div className="send-actions">
               <button
@@ -382,7 +370,7 @@ function SendDialog({
                 disabled={chosen.length === 0 || state.phase === "sending"}
                 onClick={prepare}
               >
-                {state.phase === "sending" ? "초안 만드는 중..." : `초안 파일 만들기 (수신인 ${chosen.length}명)`}
+                {state.phase === "sending" ? "초안 만드는 중..." : `초안 열기 (수신인 ${chosen.length}명)`}
               </button>
               <button className="btn btn-secondary btn-sm" onClick={onClose}>
                 취소
