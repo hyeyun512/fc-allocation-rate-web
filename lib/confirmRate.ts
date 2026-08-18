@@ -16,6 +16,8 @@ export interface RateOrg {
   type: string;
   division: string;
   basis: string;
+  /** 상위 조직이 있는 하위 팀인지. 있으면 배부율 표에 싣지 않는다. */
+  parent_basis?: string | null;
 }
 
 export interface ApplyRateResult {
@@ -34,6 +36,22 @@ export async function applyOrgRate(
   parsed: Record<TargetKey, number>,
   noteLabel: string
 ): Promise<ApplyRateResult> {
+  // 하위 팀(SW팀·HW팀·재무팀 등)은 배부율 표에 싣지 않는다.
+  // 그 값은 상위 조직(개발 그룹·경영지원실) 한 줄에 인원수 가중평균으로 이미 들어가 있어,
+  // 따로 실으면 같은 인원이 두 줄로 잡힌다. View가 하위 팀을 걸러 보여주던 것을
+  // 화면이 아니라 저장 단계에서 지키게 한 것이다 — 표를 그대로 읽는 쪽(fc-2 등)도 중복되지 않는다.
+  // 제출한 값 자체는 allocation_submissions에 그대로 남고, 상위 조직 계산도 그 표를 쓴다.
+  if (org.parent_basis) {
+    const { error } = await supabase
+      .from("allocation_rate")
+      .delete()
+      .eq("quarter", period)
+      .eq("type", org.type)
+      .eq("division", org.division)
+      .eq("basis", org.basis);
+    return { error: error?.message ?? null, correctedFrom: null };
+  }
+
   // 값을 다 지우고 저장한 경우(합계 0)에는 0%짜리 행을 남기지 않고 아예 지운다.
   // 예전에는 0으로 덮어썼는데, 그러면 입력한 적 없는 분기가 배부율 목록에 계속 남았다.
   if (sumTargets(parsed) <= 0) {
