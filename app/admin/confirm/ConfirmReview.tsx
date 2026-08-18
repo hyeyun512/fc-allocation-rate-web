@@ -772,8 +772,28 @@ function OrgDetail({
   const expatTotal = computedExpatRates ? totalOf(computedExpatRates) : 0;
   const expatTotalOk = !computedExpatRates || expatTotal === 0 || Math.abs(expatTotal - 1) < RATE_TOTAL_TOLERANCE;
 
+  /**
+   * '재수정'으로 열어놓고 보니 고칠 게 없더라는 경우. 저장 전이라 서버에 남긴 것이 없으므로
+   * 화면 상태만 불러온 값으로 되돌리고 다시 잠근다 — 조사 링크 쪽 '수정 취소'와 달리
+   * 지울 임시저장본도, 거둬들일 허용 표식도 없다.
+   *
+   * 되돌릴 값은 상태를 처음 만들 때 쓴 것과 같은 item.* 이다 (아래 초기값들과 짝을 맞춰 둘 것).
+   */
+  function handleCancelEdit() {
+    if (!window.confirm("수정하던 내용을 버리고 저장된 값으로 되돌립니다. 계속할까요?")) return;
+    setError("");
+    setNotice("");
+    setOrgRates(toRateMap(item.currentOrgSubmission ?? item.currentRate));
+    setOrgHeadcountInput(String(item.submittedHeadcount ?? 0));
+    setOrgNoteInput(item.submittedNote ?? "");
+    setOrgNoteEnInput(item.submittedNoteEn ?? "");
+    setPersons(initialPersons(item));
+    setOrgUnlocked(false);
+    setPersonsUnlocked(false);
+  }
+
   const actionButton = (
-    <div style={{ marginTop: 14 }}>
+    <div style={{ marginTop: 14, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
       {confirmed && !(usesPersonTable ? personsUnlocked : orgUnlocked) ? (
         <button
           className="btn btn-secondary btn-sm"
@@ -782,9 +802,17 @@ function OrgDetail({
           재수정
         </button>
       ) : (
-        <button className="btn btn-primary btn-sm" disabled={confirming} onClick={handleConfirm}>
-          {confirming ? "저장 중..." : "저장"}
-        </button>
+        <>
+          <button className="btn btn-primary btn-sm" disabled={confirming} onClick={handleConfirm}>
+            {confirming ? "저장 중..." : "저장"}
+          </button>
+          {/* 재수정으로 연 경우에만 — 되돌아갈 '저장된 값'이 있어야 취소가 뜻을 갖는다. */}
+          {confirmed && (
+            <button className="btn btn-secondary btn-sm" disabled={confirming} onClick={handleCancelEdit}>
+              수정 취소
+            </button>
+          )}
+        </>
       )}
     </div>
   );
