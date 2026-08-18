@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { resolveManagerPair, OrgManagerRow } from "@/lib/orgManager";
 import { linkOrgOf, linkTokenOf, tokenScopeOf, isTokenOwner, OrgLite } from "@/lib/orgLink";
 import { hasSubmittedValue, SubmissionRow } from "@/lib/rollup";
+import { submitLockState } from "@/lib/submitLock";
 import {
   normalizeEmail,
   isValidEmail,
@@ -143,6 +144,29 @@ function runCases(): Case[] {
   const multi = mailtoUrl(["a@b.com", "c@d.com"], "s", "b");
   c.push(ok("mailto joins addresses with raw comma", multi.startsWith("mailto:a@b.com,c@d.com?")));
   c.push(ok("mailto does not encode the separator", !multi.includes("%2C")));
+
+  /* ── submitLockState ── '이미 제출되었습니다' 안내와 수정 가능한 입력칸은 공존할 수 없다. */
+  {
+    const combos = [
+      { submitted: false, unlocked: false },
+      { submitted: false, unlocked: true },
+      { submitted: true, unlocked: false },
+      { submitted: true, unlocked: true },
+    ];
+    const both = combos.filter((x) => {
+      const s2 = submitLockState(x);
+      return s2.editable && s2.showLockedNotice;
+    });
+    c.push(ok("lock: notice and editable never coexist", both.length === 0));
+    const neither = combos.filter((x) => {
+      const s2 = submitLockState(x);
+      return !s2.editable && !s2.showLockedNotice;
+    });
+    c.push(ok("lock: locked screen always says why", neither.length === 0));
+    c.push(ok("lock: submitted+locked -> notice, no editing", (() => { const v = submitLockState({ submitted: true, unlocked: false }); return v.showLockedNotice && !v.editable; })()));
+    c.push(ok("lock: not submitted -> editable, no notice", (() => { const v = submitLockState({ submitted: false, unlocked: false }); return v.editable && !v.showLockedNotice; })()));
+    c.push(ok("lock: admin reopened -> editable, no notice", (() => { const v = submitLockState({ submitted: true, unlocked: true }); return v.editable && !v.showLockedNotice; })()));
+  }
 
   /* ── hasSubmittedValue ── 화면과 서버가 같은 답을 내야 하는 판정. */
   const sub_ = (over: Partial<SubmissionRow>): SubmissionRow =>

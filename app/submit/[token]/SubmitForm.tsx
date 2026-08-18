@@ -32,6 +32,7 @@ import type {
   RateMap,
 } from "@/components/RateParts";
 import { SubmitLang, submitStrings } from "@/lib/submitLang";
+import { submitLockState } from "@/lib/submitLock";
 
 /** 자동 임시저장에 담는 값 — 화면을 다시 열었을 때 그대로 이어서 입력할 수 있게 한다. */
 export interface SubmitDraft {
@@ -127,8 +128,9 @@ function OrgSubmitSection({
   );
 
   const [submitted, setSubmitted] = useState(data.submittedThisPeriod);
-  // '수정 취소' 직후에는 서버 데이터가 다시 오기 전이라도 곧바로 잠긴 것처럼 보여야 한다.
-  const [editCancelled, setEditCancelled] = useState(false);
+  // 서버 데이터가 다시 오기 전이라도 곧바로 잠긴 것으로 다뤄야 하는 경우 —
+  // '수정 취소'를 눌렀을 때, 그리고 서버가 '이미 제출됨'으로 막았을 때.
+  const [forceLocked, setForceLocked] = useState(false);
   const [cancelling, setCancelling] = useState(false);
   // 제출을 마친 뒤에는 **관리자가 열어준 경우에만** 다시 고칠 수 있다 —
   // 예전에는 화면의 '수정하기' 버튼으로 담당자가 스스로 풀 수 있었다.
@@ -136,7 +138,7 @@ function OrgSubmitSection({
   // 임시저장본은 '아직 제출 전'이라는 뜻일 때만 잠금을 푼다. 제출한 뒤에 남거나 되살아난
   // 임시저장본까지 잠금을 풀면 제출 잠금이 통째로 무력화된다 — 제출 직후 창을 닫으면
   // pagehide 비콘이 방금 지워진 임시저장본을 다시 만들어 실제로 그렇게 됐다.
-  const unlocked = !editCancelled && (data.editAllowed || (!!draft && !data.submittedThisPeriod));
+  const unlocked = !forceLocked && (data.editAllowed || (!!draft && !data.submittedThisPeriod));
   const [sending, setSending] = useState(false);
   const [error, setError] = useState("");
   const [justSubmitted, setJustSubmitted] = useState(false);
@@ -145,7 +147,9 @@ function OrgSubmitSection({
 
   const usesPersonTable = data.requiresPersonDetail;
   const isExpatOnlyOrg = isExpatOnly(data.division, data.orgBasis);
-  const editable = !submitted || unlocked;
+  // 입력 가능 여부와 '이미 제출되었습니다' 안내는 함께 계산한다 —
+  // 따로 적으면 둘이 어긋나 '안내는 떴는데 표는 고칠 수 있는' 화면이 나온다.
+  const { editable, showLockedNotice } = submitLockState({ submitted, unlocked });
   const orgEditable = usesPersonTable ? false : editable;
   const personsEditable = usesPersonTable ? editable : false;
 
@@ -294,6 +298,16 @@ function OrgSubmitSection({
         }),
       });
       const json = await res.json();
+      // 서버가 '이미 제출됨'으로 막았다면 이 화면의 인식이 낡은 것이다(다른 창에서 먼저 제출한 경우 등).
+      // 안내만 띄우고 입력칸을 열어두면 '이미 제출되었습니다'와 고칠 수 있는 표가 함께 보인다 —
+      // 있을 수 없는 조합이므로 곧바로 잠근 상태로 맞추고 서버 값을 다시 읽어온다.
+      if (res.status === 409 && json?.code === "already-submitted") {
+        setSubmitted(true);
+        setForceLocked(true);
+        setError(s.lockedNotice);
+        router.refresh();
+        return;
+      }
       // 서버가 돌려주는 오류 문구는 한국어라 영어 링크에서는 쓰지 않는다
       // (합계·입력자 이름은 위에서 이미 걸러지므로 남는 건 통신/저장 실패뿐이다).
       if (!res.ok) throw new Error((lang === "ko" && json.error) || s.errSubmit);
@@ -334,7 +348,7 @@ function OrgSubmitSection({
       setJustSubmitted(false);
       setDraftSavedAt(null);
       setSubmitted(true);
-      setEditCancelled(true);
+      setForceLocked(true);
       // 값이 되돌아간 것을 '고쳤다'고 보고 자동 임시저장이 돌면 방금 지운 것이 되살아난다.
       // 잠긴 뒤라 저장 조건에서 걸러지지만, 비교 기준도 다시 잡아 둔다.
       initialDraftJson.current = null;
@@ -348,7 +362,7 @@ function OrgSubmitSection({
 
   const actionButton = (
     <div style={{ marginTop: 14, display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-      {submitted && !unlocked ? (
+      {showLockedNotice ? (
         <span className="submit-locked">{s.lockedNotice}</span>
       ) : (
         <>
