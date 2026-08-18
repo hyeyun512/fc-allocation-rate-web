@@ -58,6 +58,12 @@ const KO = {
   btnEdit: "수정하기",
   // 제출한 뒤에는 담당자 임의로 못 고친다 — 관리자가 열어줘야 한다.
   lockedNotice: "이미 제출되었습니다. 수정이 필요하시면 담당자에게 문의해 주세요.",
+  // 재수정을 열어놓고 보니 고칠 게 없더라는 경우. 제출된 값으로 되돌리고 다시 잠근다.
+  btnCancelEdit: "수정 취소",
+  cancelEditConfirm:
+    "수정하던 내용을 버리고 제출된 값으로 되돌립니다. 되돌린 뒤 다시 고치려면 담당자에게 다시 요청하셔야 합니다. 계속할까요?",
+  cancelEditing: "되돌리는 중...",
+  cancelEditFailed: "수정 취소에 실패했습니다.",
   btnSubmit: "제출하기",
   btnSubmitting: "제출 중...",
   draftSaving: "임시저장 중...",
@@ -124,6 +130,11 @@ const EN: SubmitStrings = {
   totalWarning: (q: string) => `⚠ The ${q} figures do not add up to 100%. Please adjust them so the total is exactly 100%.`,
   btnEdit: "Edit",
   lockedNotice: "This has already been submitted. Please contact the allocation team if it needs to be changed.",
+  btnCancelEdit: "Cancel editing",
+  cancelEditConfirm:
+    "This discards your changes and restores the figures you submitted. To edit again you will need to ask the allocation team to reopen it. Continue?",
+  cancelEditing: "Restoring...",
+  cancelEditFailed: "Could not cancel editing.",
   btnSubmit: "Submit",
   btnSubmitting: "Submitting...",
   draftSaving: "Saving draft...",

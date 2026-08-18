@@ -127,13 +127,16 @@ function OrgSubmitSection({
   );
 
   const [submitted, setSubmitted] = useState(data.submittedThisPeriod);
+  // '수정 취소' 직후에는 서버 데이터가 다시 오기 전이라도 곧바로 잠긴 것처럼 보여야 한다.
+  const [editCancelled, setEditCancelled] = useState(false);
+  const [cancelling, setCancelling] = useState(false);
   // 제출을 마친 뒤에는 **관리자가 열어준 경우에만** 다시 고칠 수 있다 —
   // 예전에는 화면의 '수정하기' 버튼으로 담당자가 스스로 풀 수 있었다.
   //
   // 임시저장본은 '아직 제출 전'이라는 뜻일 때만 잠금을 푼다. 제출한 뒤에 남거나 되살아난
   // 임시저장본까지 잠금을 풀면 제출 잠금이 통째로 무력화된다 — 제출 직후 창을 닫으면
   // pagehide 비콘이 방금 지워진 임시저장본을 다시 만들어 실제로 그렇게 됐다.
-  const unlocked = data.editAllowed || (!!draft && !data.submittedThisPeriod);
+  const unlocked = !editCancelled && (data.editAllowed || (!!draft && !data.submittedThisPeriod));
   const [sending, setSending] = useState(false);
   const [error, setError] = useState("");
   const [justSubmitted, setJustSubmitted] = useState(false);
@@ -306,14 +309,59 @@ function OrgSubmitSection({
     }
   }
 
+  /**
+   * 재수정을 그만둔다. 서버가 임시저장본과 재수정 허용 표식을 지우고, 화면은 제출된 값으로 되돌린다.
+   * 되돌아갈 값은 서버가 이미 넘겨준 data.*(= 제출된 값)라 따로 받아올 것이 없다.
+   */
+  async function handleCancelEdit() {
+    if (!window.confirm(s.cancelEditConfirm)) return;
+    setError("");
+    setCancelling(true);
+    try {
+      const res = await fetch("/api/submissions/cancel-edit", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token, orgId: data.orgId }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error((lang === "ko" && json.error) || s.cancelEditFailed);
+
+      setSubmittedBy(data.submittedBy ?? data.managerName ?? "");
+      setOrgRates(toRateMap(data.currentOrgSubmission ?? data.currentRate));
+      setOrgHeadcountInput(String(data.submittedHeadcount ?? 0));
+      setOrgNoteInput(data.submittedNote ?? "");
+      setPersons(data.currentPersons.map(personRowFromCurrent));
+      setJustSubmitted(false);
+      setDraftSavedAt(null);
+      setSubmitted(true);
+      setEditCancelled(true);
+      // 값이 되돌아간 것을 '고쳤다'고 보고 자동 임시저장이 돌면 방금 지운 것이 되살아난다.
+      // 잠긴 뒤라 저장 조건에서 걸러지지만, 비교 기준도 다시 잡아 둔다.
+      initialDraftJson.current = null;
+      router.refresh();
+    } catch (e: any) {
+      setError(e.message || s.cancelEditFailed);
+    } finally {
+      setCancelling(false);
+    }
+  }
+
   const actionButton = (
     <div style={{ marginTop: 14, display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
       {submitted && !unlocked ? (
         <span className="submit-locked">{s.lockedNotice}</span>
       ) : (
-        <button className="btn btn-primary" disabled={sending} onClick={handleSubmit}>
-          {sending ? s.btnSubmitting : s.btnSubmit}
-        </button>
+        <>
+          <button className="btn btn-primary" disabled={sending || cancelling} onClick={handleSubmit}>
+            {sending ? s.btnSubmitting : s.btnSubmit}
+          </button>
+          {/* 이미 제출한 조직을 다시 연 경우에만 — 되돌아갈 '원래 값'이 있어야 취소가 뜻을 갖는다. */}
+          {submitted && (
+            <button className="btn btn-secondary" disabled={sending || cancelling} onClick={handleCancelEdit}>
+              {cancelling ? s.cancelEditing : s.btnCancelEdit}
+            </button>
+          )}
+        </>
       )}
       {editable && (
         <span className="field-hint" style={{ margin: 0, color: draftState === "error" ? "#dc2626" : undefined }}>
