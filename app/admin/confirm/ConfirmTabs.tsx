@@ -18,10 +18,10 @@ const CUSTOM_OPTION = "__custom__";
 const FIXED_VERSION = "Forecast";
 
 const SUB_TABS: { key: SubTab; label: string }[] = [
-  { key: "survey", label: "조사" },
   { key: "resource", label: "리소스배부율" },
   { key: "selfuse", label: "자가사용(건물)" },
   { key: "it", label: "IT" },
+  { key: "survey", label: "조사" },
 ];
 
 export default function ConfirmTabs({
@@ -57,6 +57,7 @@ export default function ConfirmTabs({
   selfuse: SelfuseBasisRow | null;
   selfuseHistory: SelfuseBasisRow[];
 }) {
+  // 처음 열리는 탭은 조사 그대로다 — 탭 순서만 뒤로 옮겼을 뿐, 들어오자마자 보던 화면은 바꾸지 않는다.
   const [subTab, setSubTab] = useState<SubTab>("survey");
   const [periodInput, setPeriodInput] = useState(period);
   const [customPeriod, setCustomPeriod] = useState(!QUARTER_OPTIONS.includes(period));
