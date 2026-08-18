@@ -57,8 +57,9 @@ export default function ConfirmTabs({
   selfuse: SelfuseBasisRow | null;
   selfuseHistory: SelfuseBasisRow[];
 }) {
-  // 처음 열리는 탭은 조사 그대로다 — 탭 순서만 뒤로 옮겼을 뿐, 들어오자마자 보던 화면은 바꾸지 않는다.
-  const [subTab, setSubTab] = useState<SubTab>("survey");
+  // 처음 열리는 탭은 언제나 맨 앞 탭이다. 순서를 바꾸면 첫 화면도 따라오게 두어,
+  // 탭 목록과 기본값이 따로 놀지 않게 한다.
+  const [subTab, setSubTab] = useState<SubTab>(SUB_TABS[0].key);
   const [periodInput, setPeriodInput] = useState(period);
   const [customPeriod, setCustomPeriod] = useState(!QUARTER_OPTIONS.includes(period));
   const [savingSettings, setSavingSettings] = useState(false);
