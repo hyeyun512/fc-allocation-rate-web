@@ -5,6 +5,7 @@ import { recomputeAggregates } from "@/lib/autoAggregate";
 import { buildDeletionTombstones } from "@/lib/personTombstones";
 import { resolveTargetOrg } from "@/lib/submitScope";
 import { applyOrgRate } from "@/lib/confirmRate";
+import { hasSubmittedValue, SubmissionRow } from "@/lib/rollup";
 
 function parseRates(rates: Record<string, string>) {
   const out = {} as Record<TargetKey, number>;
@@ -60,14 +61,16 @@ export async function POST(req: NextRequest) {
 
   // 이미 제출한 조직은 담당자가 임의로 고칠 수 없다. 관리자가 '수정 허용'을 눌러 열어준 경우에만
   // 다시 받는다 — 열어준 표식은 아래에서 이번 제출로 소모한다(계속 열려 있지 않게).
-  const [{ data: already }, { data: unlock }] = await Promise.all([
+  //
+  // '제출됐는지'는 화면과 **같은 함수**로 판정한다. 예전에는 여기서 total>0인 행이 하나라도
+  // 있는지만 봐서, 관리자가 지운 사람의 옛 행이 남아 있으면 화면은 미제출로 입력을 받아놓고
+  // 서버만 409로 거절했다 — 담당자는 제출을 눌렀는데 '이미 제출됐다'는 말만 듣게 된다.
+  const [{ data: periodRows }, { data: unlock }] = await Promise.all([
     supabase
       .from("allocation_submissions")
-      .select("id")
+      .select("*")
       .eq("org_id", org.id)
-      .eq("period", period)
-      .gt("total", 0)
-      .limit(1),
+      .eq("period", period),
     supabase
       .from("allocation_submit_unlocks")
       .select("org_id")
@@ -76,7 +79,7 @@ export async function POST(req: NextRequest) {
       .maybeSingle(),
   ]);
 
-  if ((already?.length ?? 0) > 0 && !unlock) {
+  if (hasSubmittedValue((periodRows ?? []) as SubmissionRow[]) && !unlock) {
     return NextResponse.json(
       {
         error: "이미 제출된 조직입니다. 수정이 필요하면 담당자에게 문의해 주세요.",

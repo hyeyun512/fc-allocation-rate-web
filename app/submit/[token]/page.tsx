@@ -1,6 +1,13 @@
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { TARGETS, TargetKey } from "@/lib/targets";
-import { latestByPerson, latestByPersonAndPeriod, latestOrgByPeriod, computeRollup, SubmissionRow } from "@/lib/rollup";
+import {
+  latestByPerson,
+  latestByPersonAndPeriod,
+  latestOrgByPeriod,
+  computeRollup,
+  hasSubmittedValue,
+  SubmissionRow,
+} from "@/lib/rollup";
 import { mirrorSourceOf, MIRROR_HEADCOUNT } from "@/lib/autoAggregate";
 import { leaderFirst } from "@/lib/orgOrder";
 import { submitLangOf, orgLabelFor, submitterFor, noteFor } from "@/lib/englishOrgs";
@@ -110,8 +117,8 @@ async function getData(token: string) {
       }));
 
     const draft = (drafts ?? []).find((d) => d.org_id === o.id) ?? null;
-    const hasAnyValue =
-      (orgLevelRow ? Number(orgLevelRow.total) || 0 : 0) > 0 || personRows.some((p) => (Number(p.total) || 0) > 0);
+    // 제출 라우트와 같은 함수를 쓴다 — 다르면 화면은 입력을 받고 서버는 거절하는 상태가 된다.
+    const hasAnyValue = hasSubmittedValue(orgSubs.filter((s) => s.period === period));
 
     return {
       orgId: o.id,

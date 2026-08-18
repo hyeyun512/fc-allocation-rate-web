@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { resolveManagerPair, OrgManagerRow } from "@/lib/orgManager";
 import { linkOrgOf, linkTokenOf, tokenScopeOf, isTokenOwner, OrgLite } from "@/lib/orgLink";
+import { hasSubmittedValue, SubmissionRow } from "@/lib/rollup";
 import {
   normalizeEmail,
   isValidEmail,
@@ -142,6 +143,42 @@ function runCases(): Case[] {
   const multi = mailtoUrl(["a@b.com", "c@d.com"], "s", "b");
   c.push(ok("mailto joins addresses with raw comma", multi.startsWith("mailto:a@b.com,c@d.com?")));
   c.push(ok("mailto does not encode the separator", !multi.includes("%2C")));
+
+  /* ── hasSubmittedValue ── 화면과 서버가 같은 답을 내야 하는 판정. */
+  const sub_ = (over: Partial<SubmissionRow>): SubmissionRow =>
+    ({ id: 1, org_id: 1, person_name: "김", headcount: 1, submitted_by: null, submitted_at: "2026-08-01T00:00:00Z", note: null, status: "confirmed", total: 1, ...over } as SubmissionRow);
+  c.push(ok("submitted: a live row counts", hasSubmittedValue([sub_({})])));
+  c.push(ok("submitted: no rows -> not submitted", !hasSubmittedValue([])));
+  // 관리자가 지운 사람: 옛 행(값 있음)이 남아 있어도 최신이 삭제 표식이면 미제출이다.
+  c.push(
+    ok(
+      "submitted: tombstoned person is not submitted",
+      !hasSubmittedValue([
+        sub_({ id: 1, submitted_at: "2026-08-01T00:00:00Z", total: 1, status: "confirmed" }),
+        sub_({ id: 2, submitted_at: "2026-08-10T00:00:00Z", total: 0, status: "deleted" }),
+      ])
+    )
+  );
+  // 지웠다가 다시 넣은 사람은 제출된 것이다 (최신 행이 되살아난 값).
+  c.push(
+    ok(
+      "submitted: re-added person counts again",
+      hasSubmittedValue([
+        sub_({ id: 2, submitted_at: "2026-08-10T00:00:00Z", total: 0, status: "deleted" }),
+        sub_({ id: 3, submitted_at: "2026-08-18T00:00:00Z", total: 1, status: "confirmed" }),
+      ])
+    )
+  );
+  // 한 사람이 지워져도 다른 사람이 살아 있으면 제출된 것이다.
+  c.push(
+    ok(
+      "submitted: another live person still counts",
+      hasSubmittedValue([
+        sub_({ id: 1, person_name: "김", submitted_at: "2026-08-10T00:00:00Z", total: 0, status: "deleted" }),
+        sub_({ id: 2, person_name: "이", submitted_at: "2026-08-01T00:00:00Z", total: 1, status: "confirmed" }),
+      ])
+    )
+  );
 
   /* ── buildEml ── mailto와 달리 서식이 살아 있는 초안 파일. */
   const eml = buildEml({ to: ["a@b.com", "c@d.com"], subject: "제목 한글", html: '<div style="font-weight:bold">굵게</div>' });

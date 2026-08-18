@@ -71,6 +71,20 @@ export function latestOrgByPeriod(rows: SubmissionRow[]): SubmissionRow[] {
 }
 
 /**
+ * 이 분기에 **제출된 값이 있는가**.
+ *
+ * 조사 링크 화면과 제출 라우트가 반드시 같은 답을 내야 한다. 서버가 'total>0인 행이 하나라도
+ * 있는가'로만 물었더니, 지운 사람의 옛 행이 남아 있어 화면은 '미제출'로 열어주고 서버는
+ * '이미 제출됨'으로 거절하는 일이 실제로 생겼다(지식재산팀 2026-Q3).
+ *
+ * 그래서 화면과 똑같이 **사람별 최신 행만 남기고 삭제 표식을 걷어낸 뒤** 값이 있는지 본다.
+ * 두 곳이 이 함수 하나를 같이 쓰므로 판정이 다시 어긋날 수 없다.
+ */
+export function hasSubmittedValue(rowsForPeriod: SubmissionRow[]): boolean {
+  return latestByPerson(rowsForPeriod).some((r) => (Number(r.total) || 0) > 0);
+}
+
+/**
  * 개인별 행 중 '한 명'으로 셀 행: 이름이 있고 배부율이 0%가 아닌 행.
  * 개인별 입력은 한 행이 곧 한 명이므로 인원수를 따로 받지 않고 행 수로 센다.
  */
