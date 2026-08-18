@@ -123,34 +123,9 @@ export function insertLink(body: string, url: string): string {
   return `${b.trimEnd()}\n\n${url}`;
 }
 
-/**
- * Word에서 붙여넣은 본문이 메일에서 화면과 다르게 벌어지는 것을 바로잡는다.
- *
- * Word 문단은 `class="MsoNormal"`을 달고 오는데 그 클래스의 CSS(여백 0)는 붙여넣기에
- * 딸려오지 않는다. 그래서 Outlook이 <p> 기본 여백(위아래 한 줄씩)을 먹여, 편집기에서
- * 붙어 있던 '감사합니다 / 주혜윤드림' 같은 두 줄이 메일에서만 한참 벌어져 보였다.
- *
- * 문단 여백을 0으로 박아 Word가 보여주던 모습으로 되돌린다 —
- * 줄 간격은 빈 문단으로만 준다(본문에 이미 그렇게 들어 있다).
- */
-export function normalizeMailHtml(bodyHtml: string): string {
-  return String(bodyHtml ?? "")
-    // Word가 남기는 빈 자리표시자. 내용은 없는데 줄 높이를 차지한다.
-    .replace(/<o:p>\s*<\/o:p>/gi, "")
-    .replace(/<\/?o:p[^>]*>/gi, "")
-    // 문단 끝의 <br>은 문단 자체가 이미 줄을 바꾸므로 빈 줄이 하나 더 생긴다.
-    .replace(/(?:<br\s*\/?>\s*)+<\/p>/gi, "</p>")
-    // <p>에 여백 0을 박는다 (이미 style이 있으면 앞에 끼워 넣어 뒤 선언이 이기지 않게 한다).
-    .replace(/<p\b([^>]*)>/gi, (_m, attrs: string) =>
-      /\bstyle\s*=/i.test(attrs)
-        ? `<p${attrs.replace(/\bstyle\s*=\s*(["'])/i, (_s, q) => `style=${q}margin:0;`)}>`
-        : `<p${attrs} style="margin:0">`
-    );
-}
-
 /** Outlook에 붙여넣을 수 있도록 기본 글꼴을 입힌 조각으로 감싼다. */
 export function wrapMailHtml(bodyHtml: string): string {
-  return `<div style="${MAIL_FONT_CSS}">${normalizeMailHtml(bodyHtml)}</div>`;
+  return `<div style="${MAIL_FONT_CSS}">${bodyHtml}</div>`;
 }
 
 /** 저장 전 검사. 문제가 없으면 null. */

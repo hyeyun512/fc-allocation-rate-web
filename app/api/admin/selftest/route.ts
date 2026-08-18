@@ -11,7 +11,6 @@ import {
   htmlToPlainText,
   mailtoUrl,
   buildEml,
-  normalizeMailHtml,
   emlFileName,
   encodeMimeWord,
   maskEmail,
@@ -143,18 +142,6 @@ function runCases(): Case[] {
   const multi = mailtoUrl(["a@b.com", "c@d.com"], "s", "b");
   c.push(ok("mailto joins addresses with raw comma", multi.startsWith("mailto:a@b.com,c@d.com?")));
   c.push(ok("mailto does not encode the separator", !multi.includes("%2C")));
-
-  /* ── normalizeMailHtml ── Word 붙여넣기 본문이 메일에서 벌어지지 않게. */
-  const wordy =
-    '<p class="MsoNormal">감사합니다<span>.<o:p></o:p></span></p><p class="MsoNormal">주혜윤드림<br></p>';
-  const tidy = normalizeMailHtml(wordy);
-  c.push(ok("word: paragraphs get zero margin", (tidy.match(/margin:0/g) ?? []).length === 2));
-  c.push(ok("word: o:p placeholders removed", !tidy.includes("o:p")));
-  c.push(ok("word: trailing br before </p> removed", !/<br\s*\/?>\s*<\/p>/i.test(tidy)));
-  c.push(ok("word: text is untouched", tidy.includes("감사합니다") && tidy.includes("주혜윤드림")));
-  // 이미 style이 있는 문단은 원래 선언을 잃지 않아야 한다.
-  const styled = normalizeMailHtml('<p style="color:red">x</p>');
-  c.push(ok("word: keeps existing style", styled.includes("margin:0;color:red")));
 
   /* ── buildEml ── mailto와 달리 서식이 살아 있는 초안 파일. */
   const eml = buildEml({ to: ["a@b.com", "c@d.com"], subject: "제목 한글", html: '<div style="font-weight:bold">굵게</div>' });
