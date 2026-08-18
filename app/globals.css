@@ -18,7 +18,6 @@ a{color:inherit}
 .admin-tab.active{background:#2563eb;color:#fff;border-color:#2563eb}
 
 .admin-subtabs{display:flex;align-items:center;gap:2px;margin:-4px 0 16px 2px;border-bottom:0.5px solid #e2e8f0}
-.admin-subtabs-label{font-size:11px;color:#94a3b8;text-transform:uppercase;letter-spacing:.04em;margin-right:10px}
 .admin-subtab{padding:8px 12px 9px;font-size:13px;font-weight:600;color:#94a3b8;background:transparent;border:none;border-bottom:2px solid transparent;cursor:pointer;margin-bottom:-0.5px}
 .admin-subtab:hover{color:#475569}
 .admin-subtab.active{color:#2563eb;border-bottom-color:#2563eb}
@@ -255,6 +254,11 @@ footer{text-align:center;padding:22px;color:#94a3b8;font-size:11.5px}
 .av-qswitch button:hover{color:#1a202c}
 .av-qswitch button.active{background:#fff;color:#2563eb;box-shadow:0 1px 3px rgba(11,11,11,.12)}
 .av-qswitch button.mode-delta.active{color:#2a78d6}
+/* 변화 비교 분기 콤보박스 — 옆 분기 버튼들과 같은 높이·색을 쓴다. */
+.av-qswitch .av-delta-pick{font-family:inherit;font-size:13px;font-weight:600;padding:7px 10px;border:none;border-radius:6px;background:transparent;color:#64748b;cursor:pointer}
+.av-qswitch .av-delta-pick:hover{color:#1a202c}
+.av-qswitch .av-delta-pick.active{background:#fff;color:#2a78d6;box-shadow:0 1px 3px rgba(11,11,11,.12)}
+.av-qswitch .av-delta-pick:focus-visible{outline:2px solid #bfdbfe}
 
 .av-legend{display:flex;flex-wrap:wrap;align-items:center;gap:18px;margin-bottom:12px;font-size:12px;color:#64748b}
 .av-seq-legend{display:flex;align-items:center;gap:8px}

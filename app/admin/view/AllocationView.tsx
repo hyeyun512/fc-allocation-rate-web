@@ -4,7 +4,7 @@ import React, { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import AdminNav from "../AdminNav";
 import { TARGETS, TargetKey } from "@/lib/targets";
-import { parseQuarter, prettyQuarterLabel, shortQuarterLabel } from "@/lib/quarter";
+import { defaultDeltaPairKey, deltaPairOptions, parseQuarter, prettyQuarterLabel, shortQuarterLabel } from "@/lib/quarter";
 
 export interface AllocRateRow extends Partial<Record<TargetKey, number | null>> {
   quarter: string;
@@ -192,14 +192,12 @@ export default function AllocationView({
   const [savingComment, setSavingComment] = useState<string | null>(null);
 
   const isDelta = view === "delta";
-  // 변화 탭은 항상 확정치(청구) 두 분기를 비교한다. 청구 분기가 2개 미만이면 마지막 두 분기로 대체.
-  const billingQuarters = quarters.filter((q) => parseQuarter(q).billing);
-  const deltaPair: [string, string] | null =
-    billingQuarters.length >= 2
-      ? [billingQuarters[billingQuarters.length - 2], billingQuarters[billingQuarters.length - 1]]
-      : quarters.length >= 2
-      ? [quarters[quarters.length - 2], quarters[quarters.length - 1]]
-      : null;
+  // 어느 두 분기를 비교할지는 콤보박스로 고른다. 예전에는 마지막 두 분기로 고정이라
+  // 2Q-1Q 같은 지난 비교를 볼 수 없었다. 기본값은 예전과 같은 쌍이다.
+  const deltaOptions = useMemo(() => deltaPairOptions(quarters), [quarters]);
+  const [deltaKey, setDeltaKey] = useState<string>(() => defaultDeltaPairKey(quarters));
+  const selectedPair = deltaOptions.find((o) => o.key === deltaKey) ?? deltaOptions[deltaOptions.length - 1] ?? null;
+  const deltaPair: [string, string] | null = selectedPair ? [selectedPair.from, selectedPair.to] : null;
   const delta = useMemo(() => buildDeltaRows(deltaPair, dataByQuarter), [deltaPair, dataByQuarter]);
 
   const quarterRows = sortRows(dataByQuarter[view] ?? []);
@@ -403,10 +401,27 @@ export default function AllocationView({
                 {prettyQuarterLabel(q)}
               </button>
             ))}
-            {deltaPair && (
-              <button type="button" className={`mode-delta ${isDelta ? "active" : ""}`} onClick={() => setView("delta")}>
-                변화({shortQuarterLabel(deltaPair[1])}-{shortQuarterLabel(deltaPair[0])})
-              </button>
+            {deltaOptions.length > 0 && (
+              <select
+                className={`av-delta-pick ${isDelta ? "active" : ""}`}
+                aria-label="변화 비교 분기"
+                value={isDelta ? deltaKey : ""}
+                onChange={(e) => {
+                  const next = e.target.value;
+                  if (!next) return;
+                  setDeltaKey(next);
+                  setView("delta");
+                }}
+              >
+                <option value="" disabled>
+                  변화 비교
+                </option>
+                {deltaOptions.map((o) => (
+                  <option key={o.key} value={o.key}>
+                    변화({o.label})
+                  </option>
+                ))}
+              </select>
             )}
           </div>
         </div>

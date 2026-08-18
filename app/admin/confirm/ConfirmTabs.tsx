@@ -128,7 +128,6 @@ export default function ConfirmTabs({
       </div>
 
       <div className="admin-subtabs">
-        <span className="admin-subtabs-label">검토 및 확정</span>
         {SUB_TABS.map((t) => (
           <button
             key={t.key}

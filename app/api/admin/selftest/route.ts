@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { resolveManagerPair, OrgManagerRow } from "@/lib/orgManager";
 import { linkOrgOf, linkTokenOf, tokenScopeOf, isTokenOwner, OrgLite } from "@/lib/orgLink";
 import { hasSubmittedValue, SubmissionRow } from "@/lib/rollup";
+import { deltaPairOptions, defaultDeltaPairKey, deltaQuarterLabel } from "@/lib/quarter";
 import { submitLockState } from "@/lib/submitLock";
 import {
   normalizeEmail,
@@ -144,6 +145,20 @@ function runCases(): Case[] {
   const multi = mailtoUrl(["a@b.com", "c@d.com"], "s", "b");
   c.push(ok("mailto joins addresses with raw comma", multi.startsWith("mailto:a@b.com,c@d.com?")));
   c.push(ok("mailto does not encode the separator", !multi.includes("%2C")));
+
+  /* ── 변화 비교 분기 쌍 (View 콤보박스) ── */
+  {
+    const qs = ["2026-Q1", "2026-Q2", "2026-Q3"];
+    const opts = deltaPairOptions(qs);
+    c.push(eq("delta: neighbouring pairs", opts.map((o) => o.label).join(","), "2Q-1Q,3Q-2Q"));
+    c.push(eq("delta: default is the newest pair", defaultDeltaPairKey(qs), "2026-Q2|2026-Q3"));
+    c.push(ok("delta: single quarter has no pair", deltaPairOptions(["2026-Q1"]).length === 0));
+    // 확정치(청구)가 둘 이상이면 그 비교를 기본으로 — 콤보박스가 생기기 전 동작과 같다.
+    const bq = ["2026-Q1", "2026-Q1(청구)", "2026-Q2", "2026-Q2(청구)"];
+    c.push(eq("delta: billing pair is the default", defaultDeltaPairKey(bq), "2026-Q1(청구)|2026-Q2(청구)"));
+    c.push(ok("delta: billing pair is selectable", deltaPairOptions(bq).some((o) => o.label === "2Q(청구)-1Q(청구)")));
+    c.push(eq("delta: label keeps the billing mark", deltaQuarterLabel("2026-Q2(청구)"), "2Q(청구)"));
+  }
 
   /* ── submitLockState ── '이미 제출되었습니다' 안내와 수정 가능한 입력칸은 공존할 수 없다. */
   {
