@@ -230,7 +230,7 @@ function useOrgNote(args: {
     if (value === savedRef.current && valueEn === savedEnRef.current) return;
     setState("saving");
     try {
-      const res = await fetch("/api/admin/org-note", {
+      const res = await fetch("/api/org-note", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -305,7 +305,7 @@ function ParentOrgDetail({ item, period, version }: { item: OrgReviewData; perio
     }
     setConfirming(true);
     try {
-      const res = await fetch("/api/admin/confirm", {
+      const res = await fetch("/api/confirm", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ orgId: item.org.id, period, version, rates: computed }),
@@ -462,7 +462,7 @@ function HkrAutoPanel({
     }
     setConfirming(true);
     try {
-      const res = await fetch("/api/admin/confirm-basis", {
+      const res = await fetch("/api/confirm-basis", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -707,7 +707,7 @@ function OrgDetail({
     }
     setConfirming(true);
     try {
-      const res = await fetch("/api/admin/confirm", {
+      const res = await fetch("/api/confirm", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -730,7 +730,7 @@ function OrgDetail({
       // 값이 0이라도 '전에 주재원 데이터가 있었다면' 호출한다.
       const expatHadData = (item.expat?.currentPersons.length ?? 0) > 0 || (item.expat?.hasSubmission ?? false);
       if (hasExpat && computedExpatRates && (totalOf(computedExpatRates) > 0 || expatHadData)) {
-        const res2 = await fetch("/api/admin/confirm", {
+        const res2 = await fetch("/api/confirm", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({

@@ -83,7 +83,7 @@ export default function ConfirmTabs({
 
   async function saveSettings() {
     setSavingSettings(true);
-    await fetch("/api/admin/settings", {
+    await fetch("/api/settings", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ period: periodInput, version: FIXED_VERSION }),

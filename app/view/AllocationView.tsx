@@ -240,7 +240,7 @@ export default function AllocationView({
     const content = commentDrafts[key] ?? savedComments[key] ?? "";
     setSavingComment(key);
     try {
-      const res = await fetch("/api/admin/view-comment", {
+      const res = await fetch("/api/view-comment", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ quarter, basis, content }),

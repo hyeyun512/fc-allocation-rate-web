@@ -138,7 +138,7 @@ export default function SelfUsePanel({
     }
     setConfirming(true);
     try {
-      const res = await fetch("/api/admin/selfuse-basis", {
+      const res = await fetch("/api/selfuse-basis", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ quarter, input, submittedBy: submittedBy || null, note: note.trim() || null }),

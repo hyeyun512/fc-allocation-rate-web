@@ -478,7 +478,7 @@ export default function ItPanel({
     }
     setConfirming(true);
     try {
-      const res = await fetch("/api/admin/it-basis", {
+      const res = await fetch("/api/it-basis", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

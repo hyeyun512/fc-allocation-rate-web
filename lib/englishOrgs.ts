@@ -38,7 +38,7 @@ export function orgLabelFor(basis: string, lang: SubmitLang): string {
 }
 
 /**
- * 관리자 화면이 자동으로 남기는 제출자 표기 (api/admin/confirm, api/admin/org-note).
+ * 관리자 화면이 자동으로 남기는 제출자 표기 (api/confirm, api/org-note).
  * 담당자가 사람 이름 대신 이 문구를 보게 되므로 영어 링크에서는 영어로 바꿔준다.
  */
 const SUBMITTER_EN: Record<string, string> = {

@@ -97,7 +97,7 @@ function UnlockButton({ item, period }: { item: SurveyOrgData; period: string })
   async function toggle() {
     setBusy(true);
     try {
-      const res = await fetch("/api/admin/submit-unlock", {
+      const res = await fetch("/api/submit-unlock", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ orgId: item.org.id, period, allow: !allowed }),
@@ -232,7 +232,7 @@ function SendDialog({
   async function prepare() {
     setState({ ...state, phase: "sending", message: "" });
     try {
-      const res = await fetch("/api/admin/send-link", {
+      const res = await fetch("/api/send-link", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -693,7 +693,7 @@ function MailTemplateEditor({
     setNotice("");
     setState("saving");
     try {
-      const res = await fetch("/api/admin/mail-template", {
+      const res = await fetch("/api/mail-template", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ only: "previous", period }),
@@ -726,7 +726,7 @@ function MailTemplateEditor({
     setError("");
     setNotice("");
     try {
-      const res = await fetch("/api/admin/mail-template", {
+      const res = await fetch("/api/mail-template", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ subject, body: bodyHtml, period }),
@@ -859,7 +859,7 @@ export default function SurveyOverview({
 
     patch(orgId, { status: "saving" });
     try {
-      const res = await fetch("/api/admin/org-manager", {
+      const res = await fetch("/api/org-manager", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         // 손댄 칸만 보낸다 — 서버가 나머지 칸의 값과 '출처'를 그대로 이어 붙인다.

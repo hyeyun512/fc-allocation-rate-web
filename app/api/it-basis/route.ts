@@ -102,7 +102,7 @@ export async function POST(req: NextRequest) {
     });
     // 입력이 비어 있으면(대상인원 0) 배부율이 전부 0으로 나온다 — 이런 행은 남기지 않는다.
     // 남겨두면 저장한 적 없는 분기가 View에 배부율이 있는 것처럼 뜬다(예: 빈 3Q를 한 번 저장).
-    // 리소스배부율 확정(/api/admin/confirm)과 같은 규칙이다.
+    // 리소스배부율 확정(/api/confirm)과 같은 규칙이다.
     if (sumTargets(parsed) <= 0) {
       const { error: delError } = await supabase
         .from("allocation_rate")

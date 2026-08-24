@@ -23,7 +23,7 @@ import {
 import { templateFor, previousTemplate, MailTemplateRow } from "@/lib/mailTemplateStore";
 
 /**
- * 순수 함수 자가검증. 브라우저에서 /api/admin/selftest 를 열면 pass/fail이 나온다.
+ * 순수 함수 자가검증. 브라우저에서 /api/selftest 를 열면 pass/fail이 나온다.
  *
  * 이 저장소에는 테스트 러너가 없다. 러너를 새로 들이면 CI가 없어 몇 달 뒤엔 아무도 안 돌린다 —
  * 대신 이미 있는 것(Next 라우트 + admin 인증 + tsc)을 그대로 써서 배포 확인 절차에 URL 한 줄로 박아둔다.
