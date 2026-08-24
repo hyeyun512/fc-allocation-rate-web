@@ -1,15 +1,8 @@
+import { redirect } from "next/navigation";
+
+// 안내만 담고 있던 첫 화면은 없앴다. 사이트 전체가 열람 암호 뒤에 있으므로 여기까지 온 사람은
+// 이미 통과한 담당자이고, 안내가 아니라 검토·확정 화면이 필요하다.
+// 조사 입력은 이 경로를 타지 않는다 — 부서에는 /submit/<토큰> 링크가 그대로 나간다.
 export default function Home() {
-  return (
-    <div className="page page-narrow">
-      <div className="panel">
-        <div className="panel-title">고정비 배부율 조사</div>
-        <div className="panel-sub">
-          이 사이트는 조직별로 발급된 고유 링크로만 접속합니다. 받으신 입력 링크(예: /submit/xxxxxxxx)로 접속해주세요.
-        </div>
-        <div className="callout info">
-          담당자이신가요? <a href="/admin" style={{ color: "#2563eb", fontWeight: 700 }}>/admin</a> 페이지에서 제출 현황을 검토·확정할 수 있습니다.
-        </div>
-      </div>
-    </div>
-  );
+  redirect("/confirm");
 }

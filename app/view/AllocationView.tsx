@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useMemo, useState } from "react";
-import AdminNav from "../AdminNav";
+import Nav from "../Nav";
 import { TARGETS, TargetKey } from "@/lib/targets";
 import { defaultDeltaPairKey, deltaPairOptions, parseQuarter, prettyQuarterLabel, shortQuarterLabel } from "@/lib/quarter";
 
@@ -379,7 +379,7 @@ export default function AllocationView({
           로그아웃
         </button>
       </div>
-      <AdminNav active="view" />
+      <Nav active="view" />
 
       <div className="panel" style={{ marginBottom: 16 }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 12 }}>

@@ -29,7 +29,7 @@ export default function LoginPage() {
         const from = new URLSearchParams(window.location.search).get("from");
         // 클라이언트 라우터로 옮기면 캐시된 RSC 응답을 그대로 써서 미들웨어를 다시 타지 않는다
         // (쿠키를 막 받았는데도 로그인 화면에 머무른다). 문서 요청을 새로 보내야 한다.
-        window.location.replace(from && from.startsWith("/") ? from : "/");
+        window.location.replace(from && from.startsWith("/") ? from : "/confirm");
         return;
       }
       const body = (await res.json().catch(() => ({}))) as { error?: string };

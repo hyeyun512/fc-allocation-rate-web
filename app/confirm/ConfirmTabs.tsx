@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import AdminNav from "../AdminNav";
+import Nav from "../Nav";
 import SurveyOverview, { SurveyOrgData } from "../SurveyOverview";
 import { prettyQuarterLabel } from "@/lib/quarter";
 import ConfirmReview, { OrgReviewData, RateHistoryEntry } from "./ConfirmReview";
@@ -100,7 +100,7 @@ export default function ConfirmTabs({
           로그아웃
         </button>
       </div>
-      <AdminNav active="confirm" />
+      <Nav active="confirm" />
 
       <div className="panel" style={{ marginBottom: 16 }}>
         <div className="panel-title">검토 및 확정 — 현재 라운드</div>
