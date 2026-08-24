@@ -4,6 +4,7 @@ import { linkOrgOf, linkTokenOf, tokenScopeOf, isTokenOwner, OrgLite } from "@/l
 import { hasSubmittedValue, SubmissionRow } from "@/lib/rollup";
 import { deltaPairOptions, defaultDeltaPairKey, deltaQuarterLabel } from "@/lib/quarter";
 import { submitLockState } from "@/lib/submitLock";
+import { computeSelfuseRates, hasBundangSelfuse2 } from "@/lib/selfuseBasis";
 import {
   normalizeEmail,
   isValidEmail,
@@ -378,6 +379,72 @@ function runCases(): Case[] {
   c.push(eq("mailTpl: previous from Q3 is Q2", previousTemplate(T, "2026-Q3")?.period, "2026-Q2"));
   c.push(eq("mailTpl: nothing before Q2", previousTemplate(T, "2026-Q2"), null));
   c.push(eq("mailTpl: unparseable period has no previous", previousTemplate(T, "임시"), null));
+
+  /* ── 자가사용(건물) ── */
+  // 이사 기간에 분당 건물이 둘인 분기에만 분당(자가사용)2가 붙는다.
+  const SELFUSE = {
+    bundangSelfuseRatio: 0.6,
+    bundangSelfuseRatio2: 0.4,
+    yonginSelfuseRatio: 0.5,
+    bizDevMediaHeadcount: 80,
+    staffHeadcount: 20,
+    hqTotalHeadcount: 100,
+    materialEvcsDomesticRatio: 0.3,
+    materialEvcsOverseasRatio: 0.7,
+  };
+  c.push(ok("selfuse: 2026-Q3만 분당이 둘", hasBundangSelfuse2("2026-Q3") && !hasBundangSelfuse2("2026-Q2") && !hasBundangSelfuse2("2026-Q4")));
+  c.push(
+    eq(
+      "selfuse: 이사 분기는 3행, 분당2가 분당과 용인 사이",
+      computeSelfuseRates(SELFUSE, "2026-Q3").map((r) => r.basis),
+      ["분당(자가사용)", "분당(자가사용)2", "용인(자가사용)"]
+    )
+  );
+  c.push(
+    eq(
+      "selfuse: 다른 분기는 종전대로 2행",
+      computeSelfuseRates(SELFUSE, "2026-Q4").map((r) => r.basis),
+      ["분당(자가사용)", "용인(자가사용)"]
+    )
+  );
+  {
+    const rows = computeSelfuseRates(SELFUSE, "2026-Q3");
+    const b1 = rows[0].rates;
+    const b2 = rows[1].rates;
+    // evcsShare = 80/100/2 = 0.4, humaxCommonShare = 20/100 = 0.2
+    c.push(eq("selfuse: 분당 EVCS국내 = 비율 x 0.4", b1.evcs_domestic, 0.6 * 0.4));
+    c.push(eq("selfuse: 분당 건물 = 1 - 비율", b1.building, 1 - 0.6));
+    // 두 번째 건물은 같은 규칙에 비율만 다르다 — 규칙이 갈라지면 여기서 잡힌다.
+    c.push(eq("selfuse: 분당2 EVCS국내 = 비율2 x 0.4", b2.evcs_domestic, 0.4 * 0.4));
+    c.push(eq("selfuse: 분당2 Humax공통 = 비율2 x 0.2", b2.humax_common, 0.4 * 0.2));
+    c.push(eq("selfuse: 분당2 건물 = 1 - 비율2", b2.building, 1 - 0.4));
+    c.push(ok("selfuse: 비율이 다르면 두 행도 다르다", b1.building !== b2.building));
+  }
+  // 비율2를 넣은 적이 없으면(null) 이사 분기라도 두 번째 행을 만들지 않는다 —
+  // 0으로 뭉개면 확정 이력에 '건물 100%'짜리 분당(자가사용)2가 실제로는 없는데도 그려진다.
+  c.push(
+    eq(
+      "selfuse: 비율2 미입력(null)이면 이사 분기라도 2행",
+      computeSelfuseRates({ ...SELFUSE, bundangSelfuseRatio2: null }, "2026-Q3").map((r) => r.basis),
+      ["분당(자가사용)", "용인(자가사용)"]
+    )
+  );
+  // 0은 '입력했는데 0'이라 행이 생겨야 한다. null과 뭉개지지 않는지 확인한다.
+  c.push(
+    eq(
+      "selfuse: 비율2가 0이면 행은 생기고 건물 100%",
+      computeSelfuseRates({ ...SELFUSE, bundangSelfuseRatio2: 0 }, "2026-Q3")[1]?.rates.building,
+      1
+    )
+  );
+  // 이사 분기가 아닌데 비율2가 남아 있어도 계산에 쓰이지 않아야 한다.
+  c.push(
+    eq(
+      "selfuse: 이사 분기 밖에서는 비율2를 무시",
+      computeSelfuseRates(SELFUSE, "2026-Q2").map((r) => r.basis),
+      computeSelfuseRates({ ...SELFUSE, bundangSelfuseRatio2: 0 }, "2026-Q2").map((r) => r.basis)
+    )
+  );
 
   return c;
 }

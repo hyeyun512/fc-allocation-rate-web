@@ -4,13 +4,20 @@ import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { TARGETS, TargetKey, getPreviousPeriod } from "@/lib/targets";
 import { sortQuarters } from "@/lib/quarter";
-import { computeSelfuseRates, SelfuseBasisInput } from "@/lib/selfuseBasis";
+import {
+  BUNDANG_SELFUSE_2_QUARTERS,
+  computeSelfuseRates,
+  hasBundangSelfuse2,
+  SelfuseBasisInput,
+} from "@/lib/selfuseBasis";
 import { RateTableHead, ReadOnlyRateRow, NoteTip } from "@/components/RateParts";
 import { readPasteGrid, shouldHandlePaste } from "@/lib/paste";
 
 export interface SelfuseBasisRow {
   quarter: string;
   bundang_selfuse_ratio: number;
+  /** 이사로 분당 건물이 둘인 분기에만 값이 있다. 그 외에는 null. */
+  bundang_selfuse_ratio_2: number | null;
   yongin_selfuse_ratio: number;
   biz_dev_media_headcount: number;
   staff_headcount: number;
@@ -24,41 +31,46 @@ export interface SelfuseBasisRow {
 
 type FieldKey = keyof SelfuseBasisInput;
 
-interface FormState {
-  bundangSelfuseRatio: string;
-  yonginSelfuseRatio: string;
-  bizDevMediaHeadcount: string;
-  staffHeadcount: string;
-  hqTotalHeadcount: string;
-  materialEvcsDomesticRatio: string;
-  materialEvcsOverseasRatio: string;
+type FormState = Record<FieldKey, string>;
+
+interface FieldDef {
+  key: FieldKey;
+  label: string;
+  /** 직접 입력받지 않고 다른 값에서 계산해 채우는 칸. */
+  derived?: boolean;
+  /** 이사로 분당 건물이 둘인 분기에만 서는 칸. */
+  bundang2?: boolean;
 }
 
-const FIELDS: { key: FieldKey; label: string; hint: string; isPercent: boolean; derived?: boolean }[] = [
-  { key: "bundangSelfuseRatio", label: "분당 자가사용비율", hint: "0~100(%)로 입력", isPercent: true },
-  { key: "yonginSelfuseRatio", label: "용인 자가사용비율", hint: "0~100(%)로 입력", isPercent: true },
+const FIELDS: FieldDef[] = [
+  { key: "bundangSelfuseRatio", label: "분당 자가사용비율" },
+  { key: "bundangSelfuseRatio2", label: "분당 자가사용비율2", bundang2: true },
+  { key: "yonginSelfuseRatio", label: "용인 자가사용비율" },
   // 본사 총 인원수에서 Staff부문을 뺀 나머지 — 직접 입력받지 않고 계산해서 채운다.
-  { key: "bizDevMediaHeadcount", label: "사업+개발+Media그룹 인원수", hint: "본사 총 - Staff (자동)", isPercent: false, derived: true },
-  { key: "staffHeadcount", label: "Staff부문 인원수", hint: "명", isPercent: false },
-  { key: "hqTotalHeadcount", label: "본사 총 인원수", hint: "명", isPercent: false },
-  { key: "materialEvcsDomesticRatio", label: "재료비 비중(EVCS국내)", hint: "0~100(%)로 입력", isPercent: true },
-  { key: "materialEvcsOverseasRatio", label: "재료비 비중(EVCS해외)", hint: "0~100(%)로 입력", isPercent: true },
+  { key: "bizDevMediaHeadcount", label: "사업+개발+Media그룹 인원수", derived: true },
+  { key: "staffHeadcount", label: "Staff부문 인원수" },
+  { key: "hqTotalHeadcount", label: "본사 총 인원수" },
+  { key: "materialEvcsDomesticRatio", label: "재료비 비중(EVCS국내)" },
+  { key: "materialEvcsOverseasRatio", label: "재료비 비중(EVCS해외)" },
 ];
 
+const EMPTY_FORM: FormState = {
+  bundangSelfuseRatio: "",
+  bundangSelfuseRatio2: "",
+  yonginSelfuseRatio: "",
+  bizDevMediaHeadcount: "",
+  staffHeadcount: "",
+  hqTotalHeadcount: "",
+  materialEvcsDomesticRatio: "",
+  materialEvcsOverseasRatio: "",
+};
+
 function fromRow(row: SelfuseBasisRow | null): FormState {
-  if (!row) {
-    return {
-      bundangSelfuseRatio: "",
-      yonginSelfuseRatio: "",
-      bizDevMediaHeadcount: "",
-      staffHeadcount: "",
-      hqTotalHeadcount: "",
-      materialEvcsDomesticRatio: "",
-      materialEvcsOverseasRatio: "",
-    };
-  }
+  if (!row) return { ...EMPTY_FORM };
   return {
     bundangSelfuseRatio: String((row.bundang_selfuse_ratio ?? 0) * 100),
+    // 없던 분기에서 끌어오면 빈칸으로 둔다 — 0%로 채우면 '입력했는데 0'과 구분되지 않는다.
+    bundangSelfuseRatio2: row.bundang_selfuse_ratio_2 == null ? "" : String(row.bundang_selfuse_ratio_2 * 100),
     yonginSelfuseRatio: String((row.yongin_selfuse_ratio ?? 0) * 100),
     bizDevMediaHeadcount: String(row.biz_dev_media_headcount ?? ""),
     staffHeadcount: String(row.staff_headcount ?? ""),
@@ -71,6 +83,8 @@ function fromRow(row: SelfuseBasisRow | null): FormState {
 function toBasisInput(f: FormState): SelfuseBasisInput {
   return {
     bundangSelfuseRatio: (Number(f.bundangSelfuseRatio) || 0) / 100,
+    // 빈칸은 null로 남긴다 — 0을 넣은 것과 구분해야 미리보기에 없는 행이 생기지 않는다.
+    bundangSelfuseRatio2: f.bundangSelfuseRatio2.trim() === "" ? null : (Number(f.bundangSelfuseRatio2) || 0) / 100,
     yonginSelfuseRatio: (Number(f.yonginSelfuseRatio) || 0) / 100,
     bizDevMediaHeadcount: Number(f.bizDevMediaHeadcount) || 0,
     staffHeadcount: Number(f.staffHeadcount) || 0,
@@ -80,15 +94,30 @@ function toBasisInput(f: FormState): SelfuseBasisInput {
   };
 }
 
-function fmtDate(iso: string | null): string {
-  if (!iso) return "-";
-  return new Date(iso).toLocaleString("ko-KR");
-}
-
 function toFullRec(rates: Partial<Record<TargetKey, number>>): Record<TargetKey, number> {
   const r = {} as Record<TargetKey, number>;
   TARGETS.forEach((t) => (r[t.key] = rates[t.key] ?? 0));
   return r;
+}
+
+/**
+ * 기준정보 표 한 칸의 표시값. 머리글과 행이 같은 FIELDS를 보고 그려져 열 수가 어긋날 수 없다.
+ * Record<FieldKey, string>이라 칸을 새로 추가하고 여기를 빠뜨리면 컴파일이 막힌다.
+ */
+function cellText(f: FieldDef, row: SelfuseBasisRow): string {
+  const pct = (v: number) => `${(v * 100).toFixed(1)}%`;
+  const byKey: Record<FieldKey, string> = {
+    bundangSelfuseRatio: pct(row.bundang_selfuse_ratio),
+    // 건물이 하나였던 분기에는 값 자체가 없다. 0%로 보이면 '0으로 입력했다'로 읽히므로 비운다.
+    bundangSelfuseRatio2: row.bundang_selfuse_ratio_2 == null ? "-" : pct(row.bundang_selfuse_ratio_2),
+    yonginSelfuseRatio: pct(row.yongin_selfuse_ratio),
+    bizDevMediaHeadcount: String(row.biz_dev_media_headcount),
+    staffHeadcount: String(row.staff_headcount),
+    hqTotalHeadcount: String(row.hq_total_headcount),
+    materialEvcsDomesticRatio: pct(row.material_evcs_domestic_ratio),
+    materialEvcsOverseasRatio: pct(row.material_evcs_overseas_ratio),
+  };
+  return byKey[f.key];
 }
 
 export default function SelfUsePanel({
@@ -117,7 +146,7 @@ export default function SelfUsePanel({
   // 사업+개발+Media그룹 인원수 = 본사 총 인원수 - Staff부문 인원수 (음수는 0으로).
   const derivedBizDevMedia = String(Math.max(0, (Number(form.hqTotalHeadcount) || 0) - (Number(form.staffHeadcount) || 0)));
   const input = toBasisInput({ ...form, bizDevMediaHeadcount: derivedBizDevMedia });
-  const preview = useMemo(() => computeSelfuseRates(input), [JSON.stringify(input)]);
+  const preview = useMemo(() => computeSelfuseRates(input, quarter), [JSON.stringify(input), quarter]);
 
   // 확정된 분기 전체. 현재 라운드가 1Q여도 이미 확정된 2Q가 남아 있을 수 있어(뒤 분기를 먼저 확정할 수 있다)
   // '과거'로 걸러내지 않고 그대로 모두 보여준다.
@@ -125,14 +154,43 @@ export default function SelfUsePanel({
   // 위 기준정보 표에서는 현재 분기를 입력행으로 따로 그리므로 나머지 분기만 쓴다.
   const otherQuarters = useMemo(() => confirmedHistory.filter((h) => h.quarter !== quarter), [confirmedHistory, quarter]);
 
+  const quartersShown = useMemo(
+    () => sortQuarters(Array.from(new Set([...otherQuarters.map((h) => h.quarter), quarter]))),
+    [otherQuarters, quarter]
+  );
+  // 이사 기간 분기가 표에 하나라도 있으면 열을 세운다 — 그 분기를 지나 4Q를 입력하는 중에도
+  // 3Q 행의 두 번째 비율은 계속 보여야 한다. 해당 없는 행은 '-'로 비운다.
+  const showBundang2 = quartersShown.some(hasBundangSelfuse2);
+  const visibleFields = useMemo(() => (showBundang2 ? FIELDS : FIELDS.filter((f) => !f.bundang2)), [showBundang2]);
+
+  // 지금 입력 중인 분기가 이사 기간인가 — 열은 서 있어도 이 분기 것이 아니면 입력칸을 두지 않는다.
+  const quarterHasBundang2 = hasBundangSelfuse2(quarter);
+  const canEditField = (f: FieldDef) => !f.derived && !(f.bundang2 && !quarterHasBundang2);
+
   const prevPeriod = getPreviousPeriod(quarter);
   const prevRow = prevPeriod ? otherQuarters.find((h) => h.quarter === prevPeriod) ?? null : null;
+
+  /** 현재 분기의 입력값을 과거 행과 같은 모양으로 본 것. 확정 후 읽기 전용 행에 그대로 쓴다. */
+  const currentAsRow: SelfuseBasisRow = {
+    quarter,
+    bundang_selfuse_ratio: input.bundangSelfuseRatio,
+    bundang_selfuse_ratio_2: quarterHasBundang2 ? input.bundangSelfuseRatio2 : null,
+    yongin_selfuse_ratio: input.yonginSelfuseRatio,
+    biz_dev_media_headcount: input.bizDevMediaHeadcount,
+    staff_headcount: input.staffHeadcount,
+    hq_total_headcount: input.hqTotalHeadcount,
+    material_evcs_domestic_ratio: input.materialEvcsDomesticRatio,
+    material_evcs_overseas_ratio: input.materialEvcsOverseasRatio,
+    submitted_by: initial?.submitted_by ?? submittedBy,
+    confirmed_at: initial?.confirmed_at ?? null,
+    note,
+  };
 
   async function handleConfirm() {
     setError("");
     // 빈 화면에서 저장이 눌리면 자가사용비율 0 → '건물 100%'짜리 배부율이 만들어져,
     // 열어본 적도 없는 분기가 View에 확정된 것처럼 남는다.
-    if (!Object.values(input).some((v) => v > 0)) {
+    if (!Object.values(input).some((v) => (v ?? 0) > 0)) {
       setError("입력값이 비어 있어 저장하지 않았습니다.");
       return;
     }
@@ -157,11 +215,25 @@ export default function SelfUsePanel({
     }
   }
 
+  function renderReadOnlyRow(row: SelfuseBasisRow, label: string) {
+    return (
+      <tr key={row.quarter} className="ro-row">
+        <td style={{ textAlign: "left" }}>{label}</td>
+        {visibleFields.map((f) => (
+          <td key={f.key}>{cellText(f, row)}</td>
+        ))}
+        <td>{row.note ? <NoteTip text={row.note} /> : null}</td>
+      </tr>
+    );
+  }
+
   return (
     <div className="panel">
       <div className="panel-title">자가사용(건물) — 기준정보 입력</div>
       <div className="panel-sub" style={{ marginBottom: 12 }}>
-        분당·용인 자가사용비율과 본사 인원수, 재료비 비중을 입력하면 분당(자가사용)/용인(자가사용) 2개 배부기준이 자동 계산됩니다. 확정 시 운영 allocation_rate에 반영됩니다.
+        분당·용인 자가사용비율과 본사 인원수, 재료비 비중을 입력하면 분당(자가사용)/용인(자가사용) 배부기준이 자동 계산됩니다.
+        {quarterHasBundang2 && " 이 분기는 이사로 분당 건물이 둘이라 분당(자가사용)2가 함께 만들어집니다."} 확정 시 운영
+        allocation_rate에 반영됩니다.
       </div>
 
       <div style={{ marginBottom: 12, display: "flex", gap: 16, flexWrap: "wrap" }}>
@@ -191,61 +263,34 @@ export default function SelfUsePanel({
           <thead>
             <tr>
               <th></th>
-              {FIELDS.map((f) => (
+              {visibleFields.map((f) => (
                 <th key={f.key}>{f.label}</th>
               ))}
-              <th>입력자</th>
-              <th>확인일자</th>
               <th>코멘트</th>
             </tr>
           </thead>
           <tbody>
-            {sortQuarters(Array.from(new Set([...otherQuarters.map((h) => h.quarter), quarter]))).map((q) => {
+            {quartersShown.map((q) => {
               if (q !== quarter) {
                 const h = otherQuarters.find((row) => row.quarter === q)!;
-                return (
-                  <tr key={h.quarter} className="ro-row">
-                    <td style={{ textAlign: "left" }}>{h.quarter}</td>
-                    <td>{(h.bundang_selfuse_ratio * 100).toFixed(1)}%</td>
-                    <td>{(h.yongin_selfuse_ratio * 100).toFixed(1)}%</td>
-                    <td>{h.biz_dev_media_headcount}</td>
-                    <td>{h.staff_headcount}</td>
-                    <td>{h.hq_total_headcount}</td>
-                    <td>{(h.material_evcs_domestic_ratio * 100).toFixed(1)}%</td>
-                    <td>{(h.material_evcs_overseas_ratio * 100).toFixed(1)}%</td>
-                    <td>{h.submitted_by ?? "-"}</td>
-                    <td>{fmtDate(h.confirmed_at)}</td>
-                    <td>{h.note ? <NoteTip text={h.note} /> : null}</td>
-                  </tr>
-                );
+                return renderReadOnlyRow(h, h.quarter);
               }
               // 이미 확정된 분기는 과거 분기와 같은 읽기 전용 모양으로 보여준다.
-              if (!editable) {
-                return (
-                  <tr key={q} className="ro-row">
-                    <td style={{ textAlign: "left" }}>{quarter}</td>
-                    <td>{(input.bundangSelfuseRatio * 100).toFixed(1)}%</td>
-                    <td>{(input.yonginSelfuseRatio * 100).toFixed(1)}%</td>
-                    <td>{input.bizDevMediaHeadcount}</td>
-                    <td>{input.staffHeadcount}</td>
-                    <td>{input.hqTotalHeadcount}</td>
-                    <td>{(input.materialEvcsDomesticRatio * 100).toFixed(1)}%</td>
-                    <td>{(input.materialEvcsOverseasRatio * 100).toFixed(1)}%</td>
-                    <td>{initial?.submitted_by ?? submittedBy ?? "-"}</td>
-                    <td>{fmtDate(initial?.confirmed_at ?? null)}</td>
-                    <td>{note ? <NoteTip text={note} /> : null}</td>
-                  </tr>
-                );
-              }
+              if (!editable) return renderReadOnlyRow(currentAsRow, quarter);
               return (
                 <tr key={q}>
                   <td style={{ textAlign: "left", fontWeight: 700, color: "#2563eb" }}>{quarter} (입력중)</td>
-                  {FIELDS.map((f, i) => (
+                  {visibleFields.map((f, i) => (
                     <td key={f.key}>
                       {f.derived ? (
                         // 본사 총 - Staff 로 계산되는 값이라 직접 고치지 않는다.
                         <span title="본사 총 인원수 - Staff부문 인원수" style={{ color: "#475569", fontWeight: 600 }}>
                           {derivedBizDevMedia}
+                        </span>
+                      ) : !canEditField(f) ? (
+                        // 열은 다른 분기 때문에 서 있지만 이 분기에는 해당이 없다.
+                        <span className="field-hint" title="이 분기에는 해당 없음">
+                          -
                         </span>
                       ) : (
                         <input
@@ -256,15 +301,15 @@ export default function SelfUsePanel({
                           style={{ width: 80 }}
                           onPaste={(e) => {
                             // 엑셀에서 여러 칸을 복사해 붙여넣으면 그 칸부터 순서대로 채운다.
-                            // 자동계산 칸은 건너뛰고 다음 입력 칸으로 넘긴다.
+                            // 자동계산 칸과 이 분기에 해당 없는 칸은 건너뛰고 다음 입력 칸으로 넘긴다.
                             if (!shouldHandlePaste(e.clipboardData)) return;
                             e.preventDefault();
                             const row = readPasteGrid(e.clipboardData)[0] ?? [];
                             setForm((s) => {
                               const next = { ...s };
                               row.forEach((tok, offset) => {
-                                const target = FIELDS[i + offset];
-                                if (target && !target.derived) next[target.key] = tok;
+                                const target = visibleFields[i + offset];
+                                if (target && canEditField(target)) next[target.key] = tok;
                               });
                               return next;
                             });
@@ -273,9 +318,6 @@ export default function SelfUsePanel({
                       )}
                     </td>
                   ))}
-                  <td colSpan={2} className="field-hint">
-                    확정 시 기록됨
-                  </td>
                   <td>
                     <input
                       value={note}
@@ -300,9 +342,14 @@ export default function SelfUsePanel({
           </button>
         </div>
       )}
-      {/* 입력 형식·최근 입력자 같은 설명은 표에 이미 드러나므로 빼고, 자동계산 규칙 하나만 각주로 남긴다. */}
+      {/* 입력 형식·최근 입력자 같은 설명은 표에 이미 드러나므로 빼고, 자동계산 규칙만 각주로 남긴다. */}
       <div className="field-hint" style={{ marginBottom: 12 }}>
         ※ 사업+개발+Media그룹 인원수 = 본사 총 인원수 − Staff부문 인원수
+        {showBundang2 && (
+          <>
+            <br />※ 분당 자가사용비율2는 이사로 분당 건물이 둘인 분기({BUNDANG_SELFUSE_2_QUARTERS.join(", ")})에만 입력합니다.
+          </>
+        )}
       </div>
 
       <div className="panel-sub" style={{ fontWeight: 700, color: "#1a202c", margin: "0 0 8px" }}>
@@ -337,15 +384,19 @@ export default function SelfUsePanel({
               <RateTableHead />
               <tbody>
                 {confirmedHistory.map((h) =>
-                  computeSelfuseRates({
-                    bundangSelfuseRatio: h.bundang_selfuse_ratio,
-                    yonginSelfuseRatio: h.yongin_selfuse_ratio,
-                    bizDevMediaHeadcount: h.biz_dev_media_headcount,
-                    staffHeadcount: h.staff_headcount,
-                    hqTotalHeadcount: h.hq_total_headcount,
-                    materialEvcsDomesticRatio: h.material_evcs_domestic_ratio,
-                    materialEvcsOverseasRatio: h.material_evcs_overseas_ratio,
-                  }).map((row) => (
+                  computeSelfuseRates(
+                    {
+                      bundangSelfuseRatio: h.bundang_selfuse_ratio,
+                      bundangSelfuseRatio2: h.bundang_selfuse_ratio_2,
+                      yonginSelfuseRatio: h.yongin_selfuse_ratio,
+                      bizDevMediaHeadcount: h.biz_dev_media_headcount,
+                      staffHeadcount: h.staff_headcount,
+                      hqTotalHeadcount: h.hq_total_headcount,
+                      materialEvcsDomesticRatio: h.material_evcs_domestic_ratio,
+                      materialEvcsOverseasRatio: h.material_evcs_overseas_ratio,
+                    },
+                    h.quarter
+                  ).map((row) => (
                     <ReadOnlyRateRow key={`${h.quarter}-${row.basis}`} label={`${h.quarter} · ${row.basis}`} rec={toFullRec(row.rates)} />
                   ))
                 )}

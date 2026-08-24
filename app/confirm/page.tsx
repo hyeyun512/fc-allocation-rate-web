@@ -242,6 +242,8 @@ export default async function AdminConfirmPage() {
   }
   interface SelfuseBasisPayload {
     bundang_selfuse_ratio: number;
+    /** 이사로 분당 건물이 둘인 분기에만 있다. 그 전에 저장된 행에는 아예 없으므로 optional. */
+    bundang_selfuse_ratio_2?: number | null;
     yongin_selfuse_ratio: number;
     biz_dev_media_headcount: number;
     staff_headcount: number;
@@ -284,6 +286,7 @@ export default async function AdminConfirmPage() {
       return {
         quarter: r.quarter as string,
         bundang_selfuse_ratio: p.bundang_selfuse_ratio,
+        bundang_selfuse_ratio_2: p.bundang_selfuse_ratio_2 ?? null,
         yongin_selfuse_ratio: p.yongin_selfuse_ratio,
         biz_dev_media_headcount: p.biz_dev_media_headcount,
         staff_headcount: p.staff_headcount,

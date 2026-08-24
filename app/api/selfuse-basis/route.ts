@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
-import { computeSelfuseRates } from "@/lib/selfuseBasis";
+import { computeSelfuseRates, hasBundangSelfuse2 } from "@/lib/selfuseBasis";
 import { TARGETS, TargetKey, sumTargets, normalizeTargets, RATE_TOTAL_TOLERANCE } from "@/lib/targets";
 
 export async function POST(req: NextRequest) {
@@ -13,6 +13,9 @@ export async function POST(req: NextRequest) {
 
   const parsedInput = {
     bundangSelfuseRatio: Number(input.bundangSelfuseRatio) || 0,
+    // null(입력 안 함)을 0으로 뭉개지 않는다 — 뭉개면 분당(자가사용)2가 건물 100%로 저장된다.
+    bundangSelfuseRatio2:
+      input.bundangSelfuseRatio2 == null ? null : Number(input.bundangSelfuseRatio2) || 0,
     yonginSelfuseRatio: Number(input.yonginSelfuseRatio) || 0,
     bizDevMediaHeadcount: Number(input.bizDevMediaHeadcount) || 0,
     staffHeadcount: Number(input.staffHeadcount) || 0,
@@ -24,7 +27,7 @@ export async function POST(req: NextRequest) {
   // 입력이 전부 0이면 자가사용비율 0 → '건물 100%'인 배부율 2행이 만들어진다.
   // 빈 화면에서 저장이 한 번 눌렸을 뿐인데 그 분기가 확정된 것처럼 View에 남으므로 아예 저장하지 않는다.
   // (IT 기준정보는 전부 0이면 합계 0이라 그쪽 라우트에서 0인 행을 지우는 방식으로 막는다.)
-  if (!Object.values(parsedInput).some((v) => v > 0)) {
+  if (!Object.values(parsedInput).some((v) => (v ?? 0) > 0)) {
     return NextResponse.json({ error: "입력값이 없어 저장하지 않았습니다." }, { status: 400 });
   }
 
@@ -36,6 +39,9 @@ export async function POST(req: NextRequest) {
         category: "selfuse",
         payload: {
           bundang_selfuse_ratio: parsedInput.bundangSelfuseRatio,
+          // 이사로 건물이 둘인 분기에만 담는다. 다른 분기에 값이 흘러 들어와도 null로 떨어뜨려,
+          // 나중에 이 payload만 보고도 '이 분기는 분당이 하나였다'가 분명하게 남도록 한다.
+          bundang_selfuse_ratio_2: hasBundangSelfuse2(quarter) ? parsedInput.bundangSelfuseRatio2 : null,
           yongin_selfuse_ratio: parsedInput.yonginSelfuseRatio,
           biz_dev_media_headcount: parsedInput.bizDevMediaHeadcount,
           staff_headcount: parsedInput.staffHeadcount,
@@ -54,7 +60,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: basisError.message }, { status: 500 });
   }
 
-  const computed = computeSelfuseRates(parsedInput);
+  const computed = computeSelfuseRates(parsedInput, quarter);
 
   for (const row of computed) {
     const parsed = {} as Record<TargetKey, number>;
