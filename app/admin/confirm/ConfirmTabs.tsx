@@ -66,8 +66,10 @@ export default function ConfirmTabs({
   const router = useRouter();
 
   async function logout() {
-    await fetch("/api/admin/logout", { method: "POST" });
-    router.push("/admin/login");
+    await fetch("/api/logout", { method: "POST" });
+    // 클라이언트 라우터로 옮기면 방금 본 검토 화면의 RSC 응답이 캐시에 남아 뒤로가기로 다시 보인다.
+    // 로그아웃은 탭에 아무것도 남기지 않아야 하므로 문서 요청을 새로 보낸다.
+    window.location.replace("/login");
   }
 
   function handlePeriodSelect(value: string) {

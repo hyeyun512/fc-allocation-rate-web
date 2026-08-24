@@ -1,7 +1,6 @@
 "use client";
 
 import React, { useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
 import AdminNav from "../AdminNav";
 import { TARGETS, TargetKey } from "@/lib/targets";
 import { defaultDeltaPairKey, deltaPairOptions, parseQuarter, prettyQuarterLabel, shortQuarterLabel } from "@/lib/quarter";
@@ -178,7 +177,6 @@ export default function AllocationView({
   /** commentKey(quarter, basis) -> 저장된 관리자 코멘트 */
   comments: Record<string, string>;
 }) {
-  const router = useRouter();
   const [view, setView] = useState<string>(quarters[quarters.length - 1] ?? "");
   const [search, setSearch] = useState("");
   const [divisions, setDivisions] = useState<Set<string>>(new Set());
@@ -218,8 +216,10 @@ export default function AllocationView({
   }
 
   async function logout() {
-    await fetch("/api/admin/logout", { method: "POST" });
-    router.push("/admin/login");
+    await fetch("/api/logout", { method: "POST" });
+    // 클라이언트 라우터로 옮기면 방금 본 검토 화면의 RSC 응답이 캐시에 남아 뒤로가기로 다시 보인다.
+    // 로그아웃은 탭에 아무것도 남기지 않아야 하므로 문서 요청을 새로 보낸다.
+    window.location.replace("/login");
   }
 
   // ---- 관리자 코멘트 ----

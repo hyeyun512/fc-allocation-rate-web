@@ -21,13 +21,13 @@
 ```bash
 npm install
 cp .env.local.example .env.local
-# .env.local 을 열어 SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY / ADMIN_PASSWORD 입력
+# .env.local 을 열어 SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY / SITE_PASSWORD 입력
 npm run dev
 # http://localhost:3000
 ```
 
 `SUPABASE_URL`/`SUPABASE_SERVICE_ROLE_KEY`는 `fc-dashboard-web`과 동일한 Supabase 프로젝트 값을 그대로 씁니다
-(Supabase 대시보드 → Project Settings → API). `ADMIN_PASSWORD`는 담당자만 아는 비밀번호로 직접 정하세요.
+(Supabase 대시보드 → Project Settings → API). `SITE_PASSWORD`는 사이트 열람 암호입니다 — `/submit/<토큰>` 조사 링크를 뺀 모든 화면에 걸리므로, 부서 담당자가 아니라 취합 담당자·열람자에게만 공유하세요.
 
 이 프로젝트는 브라우저에서 Supabase에 직접 접근하지 않고, 모든 읽기/쓰기를 Next.js API route(서버)에서
 `service_role` 키로 처리합니다. 키는 절대 클라이언트 컴포넌트에 노출되지 않습니다.
