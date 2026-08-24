@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { AUTH_COOKIE, AUTH_MAX_AGE, sha256Hex, timingSafeEqual } from "@/lib/auth";
+import { AUTH_COOKIE, AUTH_MAX_AGE, authCookieValue, timingSafeEqual } from "@/lib/auth";
 
 /**
  * 암호를 통과하지 못하면 **서버에서** 막는다.
@@ -15,8 +15,8 @@ export async function middleware(req: NextRequest) {
   const expected = process.env.SITE_PASSWORD;
   const cookie = req.cookies.get(AUTH_COOKIE)?.value;
 
-  if (expected && cookie && timingSafeEqual(cookie, await sha256Hex(expected))) {
-    // 볼 때마다 만료 시각을 뒤로 민다 — "로그인하고 N일"이 아니라 "마지막으로 연 뒤 N일"이어야 한다.
+  if (expected && cookie && timingSafeEqual(cookie, await authCookieValue(expected))) {
+    // 볼 때마다 만료 시각을 뒤로 민다 — "로그인하고 8시간"이 아니라 "마지막으로 연 뒤 8시간"이어야 한다.
     const res = NextResponse.next();
     res.cookies.set(AUTH_COOKIE, cookie, {
       httpOnly: true,
