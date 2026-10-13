@@ -456,6 +456,7 @@ function OrgSubmitSection({
                   <ReadOnlyRateRow
                     key={q}
                     label={h.quarter}
+                  period={h.quarter}
                     rec={h.rates}
                     headcount={
                       usesPersonTable
@@ -490,6 +491,7 @@ function OrgSubmitSection({
                 <ReadOnlyRateRow
                   key={q}
                   label={usesPersonTable ? s.quarterAuto(period) : period}
+                  period={period}
                   rec={toNumRec(computedOrgRates)}
                   headcount={currentOrgHeadcount}
                   withNote
@@ -536,7 +538,7 @@ function OrgSubmitSection({
           {personsEditable ? (
             <PersonEditTable persons={persons} setPersons={setPersons} hasExpat={false} lockedKeys={lockedKeys} lang={lang} />
           ) : (
-            <PersonReadOnlyTable persons={persons} hasExpat={false} lang={lang} />
+            <PersonReadOnlyTable persons={persons} hasExpat={false} period={period} lang={lang} />
           )}
           {error && <div className="callout alert" style={{ marginTop: 12, marginBottom: 12 }}>{error}</div>}
           {actionButton}
@@ -616,6 +618,7 @@ function ParentSummary({
                 <ReadOnlyRateRow
                   key={q}
                   label={s.quarterAuto(period)}
+                  period={period}
                   rec={currentRow ? currentRow.rates : toNumRec(emptyRates())}
                   headcount={childHeadcount || null}
                   withNote
@@ -626,6 +629,7 @@ function ParentSummary({
                 <ReadOnlyRateRow
                   key={q}
                   label={q}
+                  period={q}
                   rec={pastRateHistory.find((h) => h.quarter === q)!.rates}
                   headcount={pastRateHistory.find((h) => h.quarter === q)!.headcount ?? null}
                   withNote
@@ -673,7 +677,7 @@ export default function SubmitForm({
   }, [lang]);
 
   return (
-    // page-form: 배부대상 13개가 들어가도록 폭을 넓게, submit-tight: 표를 압축해 가로 스크롤을 없앤다.
+    // page-form: 배부대상 13~14개가 들어가도록 폭을 넓게, submit-tight: 표를 압축해 가로 스크롤을 없앤다.
     <div className="page page-form submit-tight">
       {isParent && <ParentSummary data={data} period={period} version={version} lang={lang} />}
 

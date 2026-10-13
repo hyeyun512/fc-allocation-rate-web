@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { computeSelfuseRates, hasBundangSelfuse2 } from "@/lib/selfuseBasis";
-import { TARGETS, TargetKey, sumTargets, normalizeTargets, RATE_TOTAL_TOLERANCE } from "@/lib/targets";
+import { TARGETS, TargetKey, sumTargets, normalizeTargets, RATE_TOTAL_TOLERANCE, toDbTargets } from "@/lib/targets";
 
 export async function POST(req: NextRequest) {
   const { quarter, input, submittedBy, note } = await req.json();
@@ -87,7 +87,7 @@ export async function POST(req: NextRequest) {
         type: "자가사용(건물)",
         division: row.division,
         basis: row.basis,
-        ...normalized,
+        ...toDbTargets(normalized, quarter),
         total: sumTargets(normalized),
         update_flag: true,
         note: `웹 확정 (자가사용 기준정보) - ${new Date().toISOString()}`,

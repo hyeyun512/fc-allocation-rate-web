@@ -1,4 +1,4 @@
-import { TARGETS, TargetKey, sumTargets, normalizeTargets, stripInactiveTargets } from "./targets";
+import { TARGETS, TargetKey, sumTargets, normalizeTargets, stripInactiveTargets, toDbTargets } from "./targets";
 import { latestByPerson, computeRollup, countedPersonRows, SubmissionRow } from "./rollup";
 import { ensureFixedRates } from "./fixedRates";
 import { isOrgActiveIn } from "./orgLifespan";
@@ -156,7 +156,7 @@ async function upsertRate(
       type: row.type,
       division: row.division,
       basis: row.basis,
-      ...rates,
+      ...toDbTargets(rates, row.quarter),
       total: sumTargets(rates),
       update_flag: true,
       note: `자동계산 반영 (${row.version ?? ""}) - ${new Date().toISOString()}`,

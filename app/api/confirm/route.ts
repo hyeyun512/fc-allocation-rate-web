@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
-import { sumTargets, parseTargetRates } from "@/lib/targets";
+import { sumTargets, parseTargetRates, toDbTargets } from "@/lib/targets";
 import { applyOrgRate } from "@/lib/confirmRate";
 import { recomputeAggregates } from "@/lib/autoAggregate";
 import { buildDeletionTombstones } from "@/lib/personTombstones";
@@ -58,7 +58,7 @@ export async function POST(req: NextRequest) {
           // 그 조직에 들어온 개인은 모두 주재원이므로 여기서 채워준다.
           sub_team: p.subTeam || (isExpatOrg ? "주재원" : null),
           headcount: p.headcount ?? null,
-          ...personParsed,
+          ...toDbTargets(personParsed, period),
           total: sumTargets(personParsed),
           note: p.note || null,
           note_en: p.noteEn || null,
@@ -98,7 +98,7 @@ export async function POST(req: NextRequest) {
       person_name: null,
       sub_team: null,
       headcount: orgHeadcount ?? null,
-      ...parsed,
+      ...toDbTargets(parsed, period),
       total: sumTargets(parsed),
       note: orgNote || null,
       note_en: orgNoteEn || null,

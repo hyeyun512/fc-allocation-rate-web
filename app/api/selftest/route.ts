@@ -3,7 +3,7 @@ import { resolveManagerPair, OrgManagerRow } from "@/lib/orgManager";
 import { linkOrgOf, linkTokenOf, tokenScopeOf, isTokenOwner, OrgLite } from "@/lib/orgLink";
 import { hasSubmittedValue, SubmissionRow } from "@/lib/rollup";
 import { deltaPairOptions, defaultDeltaPairKey, deltaQuarterLabel, sortQuarters, prettyQuarterLabel, quarterRank } from "@/lib/quarter";
-import { isTargetActiveIn, inactiveTargetKeys, parseTargetRates, stripInactiveTargets, getPreviousPeriod } from "@/lib/targets";
+import { TARGETS, toDbTargets, isTargetActiveIn, inactiveTargetKeys, parseTargetRates, stripInactiveTargets, getPreviousPeriod } from "@/lib/targets";
 import { isOrgActiveIn } from "@/lib/orgLifespan";
 import { fixedRatesFor } from "@/lib/fixedRates";
 import { computeItRates } from "@/lib/itBasis";
@@ -480,7 +480,25 @@ function runCases(): Case[] {
   c.push(ok("holdings: 3Q까지 대상", isTargetActiveIn("holdings", "2026-Q3") && isTargetActiveIn("holdings", "2026-Q3(청구)")));
   c.push(ok("holdings: 4Q·BP부터 제외", !isTargetActiveIn("holdings", "2026-Q4") && !isTargetActiveIn("holdings", "2027-BP")));
   c.push(eq("holdings: 4Q에 막히는 대상은 홀딩스뿐", inactiveTargetKeys("2026-Q4"), ["holdings"]));
-  c.push(eq("holdings: 3Q에는 막히는 대상 없음", inactiveTargetKeys("2026-Q3"), []));
+  c.push(eq("holdings: BP에 막히는 대상도 홀딩스뿐", inactiveTargetKeys("2027-BP"), ["holdings"]));
+
+  // ── IT: 2026-Q4부터 배부 대상 (EVCS(해외)와 Humax(공통) 사이) ──
+  c.push(eq("it: 3Q까지는 막힌다", inactiveTargetKeys("2026-Q3"), ["it"]));
+  c.push(ok("it: 4Q·BP부터 대상", isTargetActiveIn("it", "2026-Q4") && isTargetActiveIn("it", "2027-BP")));
+  c.push(
+    eq(
+      "it: 열 순서",
+      TARGETS.slice(0, 7).map((t) => t.label),
+      ["STB", "Mobility", "EVCS(국내)", "EVCS(해외)", "IT", "Humax(공통)", "건물"]
+    )
+  );
+  c.push(eq("it: 3Q 저장값은 0", parseTargetRates({ stb: "0.9", it: "0.1" }, "2026-Q3").it, 0));
+  c.push(eq("it: 4Q 저장값은 그대로", parseTargetRates({ stb: "0.9", it: "0.1" }, "2026-Q4").it, 0.1));
+  // 대상이 아닌 기간의 열은 0이 아니라 빈칸(null)으로 저장한다 — 그 기간에는 없는 열이다.
+  c.push(eq("db: 3Q의 IT는 null", toDbTargets({ stb: 1 }, "2026-Q3").it, null));
+  c.push(eq("db: 3Q의 홀딩스는 숫자", toDbTargets({ stb: 1 }, "2026-Q3").holdings, 0));
+  c.push(eq("db: 4Q의 홀딩스는 null", toDbTargets({ stb: 1 }, "2026-Q4").holdings, null));
+  c.push(eq("db: 4Q의 IT는 숫자", toDbTargets({ stb: 0.9, it: 0.1 }, "2026-Q4").it, 0.1));
   c.push(eq("holdings: 4Q 저장값은 0", parseTargetRates({ stb: "0.9", holdings: "0.1" }, "2026-Q4").holdings, 0));
   c.push(eq("holdings: 3Q 저장값은 그대로", parseTargetRates({ stb: "0.9", holdings: "0.1" }, "2026-Q3").holdings, 0.1));
   c.push(eq("holdings: 전분기 값을 불러오면 비운다(문자열)", stripInactiveTargets({ stb: "0.9", holdings: "0.1" }, "2026-Q4").holdings, "0"));

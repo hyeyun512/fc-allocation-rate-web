@@ -20,6 +20,7 @@ import {
   RATE_TOTAL_TOLERANCE,
   fractionToPercentInput,
   percentInputToFraction,
+  isTargetActiveIn,
 } from "@/lib/targets";
 import { sortQuarters } from "@/lib/quarter";
 import { readPasteGrid, shouldHandlePaste } from "@/lib/paste";
@@ -278,6 +279,15 @@ export function toPersonPayload(list: PersonEditRow[]) {
     }));
 }
 
+/**
+ * 읽기 전용 표의 배부율 한 칸. 그 기간에 배부 대상이 아닌 열(예: 2026-Q3까지의 IT)은
+ * 0.0%가 아니라 빈칸으로 둔다 — 그 기간에는 없는 열이다. period를 모르면 값을 그대로 보인다.
+ */
+function rateCell(value: number | string | null | undefined, key: TargetKey, period?: string): string {
+  if (period && !isTargetActiveIn(key, period)) return "";
+  return `${((Number(value) || 0) * 100).toFixed(1)}%`;
+}
+
 /** 배부하지 않는 대상 칸 — 값은 비워 두고 입력을 막는다. */
 function lockedInputProps(locked: boolean, lang: SubmitLang) {
   if (!locked) return {};
@@ -385,10 +395,13 @@ export function ReadOnlyRateRow({
   noteEn,
   noteEnValue,
   onNoteEnChange,
+  period,
   lang = "ko",
 }: {
   label: string;
   rec: Record<TargetKey, number>;
+  /** 이 행의 기간 — 그 기간에 배부 대상이 아닌 열을 빈칸으로 둔다. */
+  period?: string;
   headcount?: number | null;
   showClearSlot?: boolean;
   withNote?: boolean;
@@ -416,7 +429,7 @@ export function ReadOnlyRateRow({
       <td>{label}</td>
       <td>{headcount != null ? s.headcountValue(headcount) : "-"}</td>
       {TARGETS.map((t) => (
-        <td key={t.key}>{((rec[t.key] || 0) * 100).toFixed(1)}%</td>
+        <td key={t.key}>{rateCell(rec[t.key], t.key, period)}</td>
       ))}
       <td className="total-col">{(total * 100).toFixed(1)}%</td>
       {withNote && (
@@ -578,7 +591,7 @@ export function EditableRateRow({
   );
 }
 
-// 개인별 표 붙여넣기: 열 순서를 [이름, ...13개 배부대상, 코멘트]로 보고, 시작 셀부터 채운다.
+// 개인별 표 붙여넣기: 열 순서를 [이름, ...배부대상(TARGETS 순서), 코멘트]로 보고, 시작 셀부터 채운다.
 // (인원수 열은 화면에 없다 — 한 행이 곧 한 명이다.)
 const PASTE_NOTE_COL = TARGETS.length + 1;
 function applyPasteToken(person: PersonEditRow, colIdx: number, token: string, lockedKeys: TargetKey[]): PersonEditRow {
@@ -765,10 +778,13 @@ export function PersonEditTable({
 export function PersonReadOnlyTable({
   persons,
   hasExpat,
+  period,
   lang = "ko",
 }: {
   persons: PersonEditRow[];
   hasExpat: boolean;
+  /** 그 기간에 배부 대상이 아닌 열을 빈칸으로 둔다. */
+  period?: string;
   lang?: SubmitLang;
 }) {
   const s = submitStrings(lang);
@@ -794,7 +810,7 @@ export function PersonReadOnlyTable({
               <td>{p.name}</td>
               {hasExpat && <td>{p.role === "주재원" ? s.roleExpat : s.roleLegal}</td>}
               {TARGETS.map((t) => (
-                <td key={t.key}>{(Number(p.rates[t.key] || 0) * 100).toFixed(1)}%</td>
+                <td key={t.key}>{rateCell(p.rates[t.key], t.key, period)}</td>
               ))}
               <td className="total-col">{(totalOf(p.rates) * 100).toFixed(1)}%</td>
               <td>
@@ -862,7 +878,7 @@ export function PersonHistoryBlocks({
                     <td>{p.name}</td>
                     {hasExpat && <td>{p.role === "주재원" ? s.roleExpat : s.roleLegal}</td>}
                     {TARGETS.map((t) => (
-                      <td key={t.key}>{((p.rates[t.key] || 0) * 100).toFixed(1)}%</td>
+                      <td key={t.key}>{rateCell(p.rates[t.key], t.key, q)}</td>
                     ))}
                     <td className="total-col">{(p.total * 100).toFixed(1)}%</td>
                     <td>

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
-import { sumTargets, parseTargetRates } from "@/lib/targets";
+import { sumTargets, parseTargetRates, toDbTargets } from "@/lib/targets";
 
 // HKR 자동계산 확정 전용 라우트. allocation_rate(운영, fc-dashboard-web 소비)에 직접 upsert한다.
 export async function POST(req: NextRequest) {
@@ -22,7 +22,7 @@ export async function POST(req: NextRequest) {
         type,
         division,
         basis,
-        ...parsed,
+        ...toDbTargets(parsed, quarter),
         total: sumTargets(parsed),
         update_flag: true,
         note: `웹 확정 (${version ?? ""}) - ${new Date().toISOString()}`,

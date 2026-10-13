@@ -361,6 +361,7 @@ function ParentOrgDetail({ item, period, version }: { item: OrgReviewData; perio
                 <ReadOnlyRateRow
                   key={q}
                   label={`${period} (자동계산)`}
+                  period={period}
                   rec={toNumRec(computed)}
                   headcount={computedHeadcount}
                   withNote
@@ -378,6 +379,7 @@ function ParentOrgDetail({ item, period, version }: { item: OrgReviewData; perio
                 <ReadOnlyRateRow
                   key={q}
                   label={q}
+                  period={q}
                   rec={pastRateHistory.find((h) => h.quarter === q)!.rates}
                   headcount={sumOrgWeightsForQuarter(item.children, q)}
                   withNote
@@ -524,11 +526,12 @@ function HkrAutoPanel({
           <tbody>
             {orderedQuarters(pastHistory.map((h) => h.quarter), period).map((q) =>
               q === period ? (
-                <ReadOnlyRateRow key={q} label={`${period} (자동계산)`} rec={toNumRec(computed)} headcount={computedHeadcount} />
+                <ReadOnlyRateRow key={q} label={`${period} (자동계산)`} period={period} rec={toNumRec(computed)} headcount={computedHeadcount} />
               ) : (
                 <ReadOnlyRateRow
                   key={q}
                   label={q}
+                  period={q}
                   rec={pastHistory.find((h) => h.quarter === q)!.rates}
                   headcount={sumOrgWeightsForQuarter(honsaOrgs, q)}
                 />
@@ -566,6 +569,7 @@ function HkrAutoPanel({
                       key={c.org.id}
                       // 어떻게 만들어진 값인지는 인원수·합계로 이미 드러나므로 조직명만 적는다.
                       label={c.org.basis}
+                  period={period}
                       rec={rec}
                       headcount={weight > 0 ? weight : null}
                     />
@@ -875,6 +879,7 @@ function OrgDetail({
                   <ReadOnlyRateRow
                     key={q}
                     label={h.quarter}
+                  period={h.quarter}
                     rec={h.rates}
                     headcount={
                       usesPersonTable
@@ -912,6 +917,7 @@ function OrgDetail({
                 <ReadOnlyRateRow
                   key={q}
                   label={`${period}${usesPersonTable ? " (자동계산)" : ""}`}
+                  period={period}
                   rec={toNumRec(displayOrgRates)}
                   headcount={currentOrgHeadcount}
                   withNote
@@ -953,6 +959,7 @@ function OrgDetail({
                     <ReadOnlyRateRow
                       key={q}
                       label={`${period} (자동계산)`}
+                  period={period}
                       rec={toNumRec(computedExpatRates ?? emptyRates())}
                       headcount={currentExpatHeadcount}
                     />
@@ -960,6 +967,7 @@ function OrgDetail({
                     <ReadOnlyRateRow
                       key={q}
                       label={q}
+                  period={q}
                       rec={pastExpatHistory.find((h) => h.quarter === q)!.rates}
                       headcount={personHeadcountForQuarter(item.personHistory, q, "expat")}
                     />
@@ -1003,7 +1011,7 @@ function OrgDetail({
               lockedKeys={inactiveTargetKeys(period)}
             />
           ) : (
-            <PersonReadOnlyTable persons={persons} hasExpat={hasExpat} />
+            <PersonReadOnlyTable persons={persons} hasExpat={hasExpat} period={period} />
           )}
           {error && <div className="callout alert" style={{ marginTop: 12, marginBottom: 12 }}>{error}</div>}
           {notice && <div className="callout info" style={{ marginTop: 12, marginBottom: 12 }}>{notice}</div>}

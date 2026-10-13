@@ -1,4 +1,4 @@
-import { TargetKey, sumTargets, normalizeTargets, RATE_TOTAL_TOLERANCE } from "./targets";
+import { TargetKey, sumTargets, normalizeTargets, RATE_TOTAL_TOLERANCE, toDbTargets } from "./targets";
 
 /**
  * 조직 하나의 배부율을 운영 표(allocation_rate)에 반영한다.
@@ -82,7 +82,7 @@ export async function applyOrgRate(
       type: org.type,
       division: org.division,
       basis: org.basis,
-      ...normalized,
+      ...toDbTargets(normalized, period),
       total: sumTargets(normalized),
       update_flag: true,
       note: `${noteLabel} - ${new Date().toISOString()}`,

@@ -5,7 +5,7 @@ a{color:inherit}
 .page{max-width:960px;margin:0 auto;padding:28px 20px 60px}
 .page-narrow{max-width:640px}
 .page-wide{max-width:1440px}
-/* 조사 링크 — 배부대상이 13개라 960px 안에서는 표가 화면 밖으로 밀린다. 폭을 넓게 잡는다. */
+/* 조사 링크 — 배부대상이 13~14개라 960px 안에서는 표가 화면 밖으로 밀린다. 폭을 넓게 잡는다. */
 .page-form{max-width:1280px}
 
 .topbar{background:#fff;border-bottom:0.5px solid #e2e8f0;padding:14px 20px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px}
@@ -353,7 +353,7 @@ footer{text-align:center;padding:22px;color:#94a3b8;font-size:11.5px}
 }
 
 /* ================= 조사 링크 표 — 가로 스크롤 없이 한눈에 =================
-   기본 표 크기로는 배부대상 13개가 화면을 넘겨서, 값을 보려면 표를 옆으로 밀어야 했다.
+   기본 표 크기로는 배부대상 13~14개가 화면을 넘겨서, 값을 보려면 표를 옆으로 밀어야 했다.
    링크 화면(.submit-tight)에서만 표를 화면 폭에 맞춰 고정하고 글자·여백을 줄여 한눈에 담는다.
    관리자 화면은 폭이 넓고 열도 더 많아 그대로 둔다.
 
@@ -364,7 +364,7 @@ footer{text-align:center;padding:22px;color:#94a3b8;font-size:11.5px}
 .submit-tight .rate-tbl td{padding:4px 2px;font-size:11.5px}
 /* 분기 이름 칸은 "2026-Q3 (입력중)"처럼 길어 한 줄로 두면 열을 밀어낸다 — 두 줄로 접는다. */
 .submit-tight .rate-tbl td:first-child{font-size:11.5px;padding-right:6px;white-space:normal;line-height:1.3}
-/* 폭을 정해두는 열은 이것뿐 — 배부대상 13개는 남은 폭을 똑같이 나눠 갖는다. */
+/* 폭을 정해두는 열은 이것뿐 — 배부대상 열은 남은 폭을 똑같이 나눠 갖는다. */
 .submit-tight .rate-tbl th.col-clear{width:22px}
 .submit-tight .rate-tbl th.col-label{width:92px}
 .submit-tight .rate-tbl th.col-hc{width:42px}

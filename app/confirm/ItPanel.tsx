@@ -673,7 +673,7 @@ export default function ItPanel({
                     <td style={{ textAlign: "left" }}>{r.basisName}</td>
                     <td>{r.headcount != null ? `${r.headcount}명` : "-"}</td>
                     {TARGETS.map((t) => (
-                      <td key={t.key}>{((r.rates[t.key] || 0) * 100).toFixed(1)}%</td>
+                      <td key={t.key}>{isTargetActiveIn(t.key, r.quarter) ? `${((r.rates[t.key] || 0) * 100).toFixed(1)}%` : ""}</td>
                     ))}
                     <td className="total-col">{(r.total * 100).toFixed(1)}%</td>
                   </tr>

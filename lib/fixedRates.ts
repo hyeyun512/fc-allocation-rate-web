@@ -1,4 +1,4 @@
-import { TargetKey, sumTargets, isTargetActiveIn } from "./targets";
+import { TARGETS, TargetKey, sumTargets, isTargetActiveIn, toDbTargets } from "./targets";
 
 /**
  * 고정비율(type='고정비율') 배부기준.
@@ -48,18 +48,13 @@ export function fixedRatesFor(quarter: string): FixedRateDef[] {
 
 function toRow(def: FixedRateDef, quarter: string) {
   const rates = {} as Record<TargetKey, number>;
-  (
-    [
-      "stb", "mobility", "evcs_domestic", "evcs_overseas", "humax_common", "building",
-      "h_mobility", "h_ev", "hiparking", "peoplecar", "winercom", "holdings", "h_networks",
-    ] as TargetKey[]
-  ).forEach((k) => (rates[k] = def.rates[k] ?? 0));
+  TARGETS.forEach((t) => (rates[t.key] = def.rates[t.key] ?? 0));
   return {
     quarter,
     type: FIXED_RATE_TYPE,
     division: def.division,
     basis: def.basis,
-    ...rates,
+    ...toDbTargets(rates, quarter),
     total: sumTargets(rates),
     // '실적 제외'는 설계상 합계가 0이라 배부에 쓰이지 않는다 — update 대상에서 뺀다.
     update_flag: sumTargets(rates) > 0,

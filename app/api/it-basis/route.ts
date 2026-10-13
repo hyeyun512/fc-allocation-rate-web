@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { computeItRates } from "@/lib/itBasis";
-import { TARGETS, TargetKey, sumTargets, normalizeTargets, RATE_TOTAL_TOLERANCE, isTargetActiveIn } from "@/lib/targets";
+import { TARGETS, TargetKey, sumTargets, normalizeTargets, RATE_TOTAL_TOLERANCE, isTargetActiveIn, toDbTargets } from "@/lib/targets";
 
 export async function POST(req: NextRequest) {
   const { quarter, headcount, sap, submittedBy, headcountBy, sapBy, headcountBasis, sapBasis, headcountNote, sapNote } = await req.json();
@@ -139,7 +139,7 @@ export async function POST(req: NextRequest) {
         type: "IT",
         division: row.division,
         basis: row.basis,
-        ...normalized,
+        ...toDbTargets(normalized, quarter),
         total: sumTargets(normalized),
         update_flag: true,
         note: `웹 확정 (IT 기준정보) - ${new Date().toISOString()}`,

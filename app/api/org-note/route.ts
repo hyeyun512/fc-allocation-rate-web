@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
-import { sumTargets, parseTargetRates } from "@/lib/targets";
+import { sumTargets, parseTargetRates, toDbTargets } from "@/lib/targets";
 
 /**
  * 자동계산 조직(개인별 조직 · 상위 집계 조직)의 코멘트만 저장하는 라우트.
@@ -39,7 +39,7 @@ export async function POST(req: NextRequest) {
     person_name: null,
     sub_team: null,
     headcount: headcount ?? null,
-    ...parsed,
+    ...toDbTargets(parsed, period),
     total: sumTargets(parsed),
     note: note || null,
     // 영어로 나가는 조직(HUK 등)에서만 채운다 — 링크에서 한국어 대신 이 글을 보여준다.

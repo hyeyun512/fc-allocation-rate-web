@@ -167,7 +167,7 @@ export function submitStrings(lang: SubmitLang = "ko"): SubmitStrings {
   return lang === "en" ? EN : KO;
 }
 
-/** 배부 대상(13개 열) 표기 — 영어 링크에서는 영문 표기를 쓴다. */
+/** 배부 대상 열 표기 — 영어 링크에서는 영문 표기를 쓴다. */
 export function targetLabel(target: TargetDef, lang: SubmitLang = "ko"): string {
   return lang === "en" ? target.labelEn : target.label;
 }

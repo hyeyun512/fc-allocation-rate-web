@@ -1,6 +1,6 @@
 import { quarterRank } from "./quarter";
 
-// allocation_rate / allocation_submissions 테이블의 13개 배부 대상 컬럼 정의.
+// allocation_rate / allocation_submissions 테이블의 배부 대상 컬럼 정의 (2026-Q4부터 IT가 더해져 14개).
 // 이 컬럼명 세트는 26년 예산(BP) / 26년 실적_N월 누계 테이블의 *_pct, *_krw 컬럼과 그대로 대응되므로
 // 임의로 컬럼을 추가/삭제하지 말고, 대상 조직이 실제로 바뀔 때만 신중히 변경할 것.
 
@@ -9,6 +9,7 @@ export type TargetKey =
   | "mobility"
   | "evcs_domestic"
   | "evcs_overseas"
+  | "it"
   | "humax_common"
   | "building"
   | "h_mobility"
@@ -32,6 +33,7 @@ export const TARGETS: TargetDef[] = [
   { key: "mobility", label: "Mobility", labelEn: "Mobility", group: "humax" },
   { key: "evcs_domestic", label: "EVCS(국내)", labelEn: "EVCS (Domestic)", group: "humax" },
   { key: "evcs_overseas", label: "EVCS(해외)", labelEn: "EVCS (Overseas)", group: "humax" },
+  { key: "it", label: "IT", labelEn: "IT", group: "humax" },
   { key: "humax_common", label: "Humax(공통)", labelEn: "Humax (Common)", group: "humax" },
   { key: "building", label: "건물", labelEn: "Building", group: "humax" },
   { key: "h_mobility", label: "H.Mobility", labelEn: "H.Mobility", group: "affiliate" },
@@ -48,9 +50,11 @@ export const TARGETS: TargetDef[] = [
  *
  * 컬럼은 과거 분기 값과 하위 테이블 때문에 그대로 두고, 범위 밖 기간에는 그 대상에 배부하지 않는다 —
  * 입력칸이 잠기고 저장값은 언제나 0이다.
- *   to 생략 → 지금도 대상
+ *   from 생략 → 처음부터 대상 · to 생략 → 지금도 대상
  */
-export const TARGET_LIFESPAN: Partial<Record<TargetKey, { to: string }>> = {
+export const TARGET_LIFESPAN: Partial<Record<TargetKey, { from?: string; to?: string }>> = {
+  // IT는 2026-Q4부터 따로 배부한다.
+  it: { from: "2026-Q4" },
   // 홀딩스가 회사에 합병되어 2026-Q4부터 배부하지 않는다.
   holdings: { to: "2026-Q3" },
 };
@@ -60,7 +64,10 @@ export function isTargetActiveIn(key: TargetKey, period: string): boolean {
   const span = TARGET_LIFESPAN[key];
   if (!span) return true;
   const p = quarterRank(period);
-  return p < 0 || p <= quarterRank(span.to);
+  if (p < 0) return true;
+  if (span.from && p < quarterRank(span.from)) return false;
+  if (span.to && p > quarterRank(span.to)) return false;
+  return true;
 }
 
 /** 이 기간에 배부하지 않는 대상. */
@@ -79,6 +86,20 @@ export function stripInactiveTargets<T extends Partial<Record<TargetKey, number 
   off.forEach((k) => {
     (out as any)[k] = typeof rates[k] === "string" ? "0" : 0;
   });
+  return out;
+}
+
+/**
+ * DB에 쓸 배부율 — 그 기간에 배부 대상이 아닌 열은 0이 아니라 빈칸(null)으로 둔다.
+ * 0을 적으면 '0%로 배부'처럼 읽히지만, 그 기간에는 열 자체가 없는 것과 같다
+ * (예: 2026-Q3까지의 IT, 2026-Q4부터의 홀딩스).
+ */
+export function toDbTargets(
+  rates: Partial<Record<TargetKey, number | null | undefined>>,
+  period: string
+): Record<TargetKey, number | null> {
+  const out = {} as Record<TargetKey, number | null>;
+  TARGETS.forEach((t) => (out[t.key] = isTargetActiveIn(t.key, period) ? Number(rates[t.key]) || 0 : null));
   return out;
 }
 

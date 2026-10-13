@@ -1,4 +1,4 @@
-import { TARGETS, TargetKey } from "./targets";
+import { TARGETS, TargetKey, toDbTargets } from "./targets";
 import { latestByPerson, DELETED_STATUS, SubmissionRow } from "./rollup";
 
 /**
@@ -48,7 +48,7 @@ export async function buildDeletionTombstones(
     person_name: r.person_name,
     sub_team: r.sub_team ?? null,
     headcount: 0,
-    ...zeroRates,
+    ...toDbTargets(zeroRates, period),
     total: 0,
     note: "행 삭제",
     submitted_by: submittedBy,

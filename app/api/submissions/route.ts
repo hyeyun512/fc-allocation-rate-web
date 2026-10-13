@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
-import { TargetKey, sumTargets, parseTargetRates } from "@/lib/targets";
+import { TargetKey, sumTargets, parseTargetRates, toDbTargets } from "@/lib/targets";
 import { recomputeAggregates } from "@/lib/autoAggregate";
 import { buildDeletionTombstones } from "@/lib/personTombstones";
 import { resolveTargetOrg } from "@/lib/submitScope";
@@ -104,7 +104,7 @@ export async function POST(req: NextRequest) {
     person_name: null,
     sub_team: null,
     headcount: headcount ?? null,
-    ...parsedOrgRates,
+    ...toDbTargets(parsedOrgRates, period),
     total: sumTargets(parsedOrgRates),
     note: note || null,
     submitted_by: submittedBy,
@@ -125,7 +125,7 @@ export async function POST(req: NextRequest) {
         sub_team: p.subTeam || (org.division === "주재원" || String(org.basis).endsWith("_주재원") ? "주재원" : null),
         // 개인별 입력은 한 행 = 한 명이다.
         headcount: 1,
-        ...parsed,
+        ...toDbTargets(parsed, period),
         total: sumTargets(parsed),
         note: p.note || null,
         submitted_by: submittedBy,
