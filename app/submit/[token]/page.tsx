@@ -15,6 +15,7 @@ import { submitStrings } from "@/lib/submitLang";
 import type { CurrentPerson, PersonHistoryEntry, RateHistoryEntry, PersonRole } from "@/components/RateParts";
 import SubmitForm, { SubmitOrgData, SubmitPageData, SubmitRound } from "./SubmitForm";
 import { surveyPeriodsOf } from "@/lib/surveyPeriods";
+import { quarterRank } from "@/lib/quarter";
 
 export const dynamic = "force-dynamic";
 
@@ -148,7 +149,17 @@ async function getData(token: string) {
         note: noteFor(p.note, p.note_en, lang),
         role: (p.sub_team === "주재원" ? "주재원" : "법인") as PersonRole,
       })),
-      currentRate: orgRates.length > 0 ? toRateRecord(orgRates[orgRates.length - 1]) : null,
+      // 미리 채울 값: 그 기간 자기 행, 없으면 그보다 앞선 기간 중 가장 최근 행.
+      // 뒤 기간 값을 쓰면 안 된다 — 27년 BP를 먼저 확정하면 4Q 칸에 BP 값이 채워졌다.
+      currentRate: (() => {
+        const own = orgRates.find((r) => r.quarter === period);
+        if (own) return toRateRecord(own);
+        const rank = quarterRank(period);
+        const earlier = orgRates
+          .filter((r) => quarterRank(r.quarter as string) >= 0 && quarterRank(r.quarter as string) < rank)
+          .sort((a, b) => quarterRank(a.quarter as string) - quarterRank(b.quarter as string));
+        return earlier.length > 0 ? toRateRecord(earlier[earlier.length - 1]) : null;
+      })(),
       rateHistory,
       personHistory,
       draft: (draft?.payload as any) ?? null,

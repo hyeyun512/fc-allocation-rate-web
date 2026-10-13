@@ -170,6 +170,12 @@ function useOrgEntry({
   const totalOk = Math.abs(total - 1) < 0.005 || total === 0;
   /** 이 기간에 입력한 값이 있는지 — 함께 제출할 때 비워 둔 기간은 건너뛴다. */
   const hasInput = usesPersonTable ? persons.some((p) => p.name.trim() && totalOf(p.rates) > 0) : totalOf(orgRates) > 0;
+  // 화면을 연 뒤 이 기간 값을 고쳤는지. 미리 채워진 값(지난 분기 확정값)을 그대로 둔 기간을
+  // 다른 기간과 함께 몰래 제출하지 않도록, 제출 전에 따로 확인받는 데 쓴다.
+  // 임시저장본이 있으면 담당자가 이미 손댄 기간이다.
+  const valuesJson = JSON.stringify({ orgRates, orgHeadcountInput, orgNoteInput, persons });
+  const [initialValuesJson] = useState(valuesJson);
+  const touched = !!draft || valuesJson !== initialValuesJson;
 
   function updateOrgRate(key: TargetKey, value: string) {
     setOrgRates((r) => ({ ...r, [key]: value }));
@@ -382,6 +388,7 @@ function useOrgEntry({
     currentOrgHeadcount,
     totalOk,
     hasInput,
+    touched,
     loadPreviousOrgRate,
     loadPreviousPersons,
     copyFrom,
@@ -456,7 +463,14 @@ function OrgSubmitSection({
   async function handleSubmit() {
     setError("");
     // 함께 제출할 기간: 열려 있고 값을 넣은 기간. 기간이 하나뿐이면 예전처럼 그대로 제출한다.
-    const targets = entries.filter((e) => e.editable && (!multi || e.hasInput));
+    let targets = entries.filter((e) => e.editable && (!multi || e.hasInput));
+    // 고치지 않은(미리 채워진 값 그대로인) 기간이 섞여 있으면 함께 낼지 묻는다 — 4Q만 고치고 눌렀는데
+    // 27년 BP까지 지난 분기 값으로 제출되어 잠기면 안 된다.
+    const untouched = multi ? targets.filter((e) => !e.touched) : [];
+    if (untouched.length > 0 && untouched.length < targets.length) {
+      const ok = window.confirm(s.confirmUntouched(untouched.map((e) => prettyQuarterLabel(e.period)).join(", ")));
+      if (!ok) targets = targets.filter((e) => e.touched);
+    }
     if (targets.length === 0) {
       setError(s.errNothingToSubmit);
       return;
