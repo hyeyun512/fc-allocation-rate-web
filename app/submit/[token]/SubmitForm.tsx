@@ -22,6 +22,7 @@ import {
   personHeadcountForQuarter,
   personRowFromCurrent,
   toPersonPayload,
+  TargetColumns,
 } from "@/components/RateParts";
 import type {
   CurrentPerson,
@@ -676,8 +677,14 @@ export default function SubmitForm({
     document.documentElement.lang = lang;
   }, [lang]);
 
+  // 이 화면에 나오는 분기 — 그중 어디서도 배부 대상이 아닌 열(예: 3Q까지의 IT)은 그리지 않는다.
+  const shownPeriods = [period, ...[data.parent, ...data.orgs].flatMap((o) =>
+    o ? [...o.rateHistory.map((h) => h.quarter), ...o.personHistory.map((h) => h.period)] : []
+  )];
+
   return (
     // page-form: 배부대상 13~14개가 들어가도록 폭을 넓게, submit-tight: 표를 압축해 가로 스크롤을 없앤다.
+    <TargetColumns periods={shownPeriods}>
     <div className="page page-form submit-tight">
       {isParent && <ParentSummary data={data} period={period} version={version} lang={lang} />}
 
@@ -701,5 +708,6 @@ export default function SubmitForm({
         ))}
       </div>
     </div>
+    </TargetColumns>
   );
 }

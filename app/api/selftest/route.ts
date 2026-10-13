@@ -3,7 +3,7 @@ import { resolveManagerPair, OrgManagerRow } from "@/lib/orgManager";
 import { linkOrgOf, linkTokenOf, tokenScopeOf, isTokenOwner, OrgLite } from "@/lib/orgLink";
 import { hasSubmittedValue, SubmissionRow } from "@/lib/rollup";
 import { deltaPairOptions, defaultDeltaPairKey, deltaQuarterLabel, sortQuarters, prettyQuarterLabel, quarterRank } from "@/lib/quarter";
-import { TARGETS, toDbTargets, isTargetActiveIn, inactiveTargetKeys, parseTargetRates, stripInactiveTargets, getPreviousPeriod } from "@/lib/targets";
+import { TARGETS, toDbTargets, visibleTargets, isTargetActiveIn, inactiveTargetKeys, parseTargetRates, stripInactiveTargets, getPreviousPeriod } from "@/lib/targets";
 import { isOrgActiveIn } from "@/lib/orgLifespan";
 import { fixedRatesFor } from "@/lib/fixedRates";
 import { computeItRates } from "@/lib/itBasis";
@@ -494,6 +494,11 @@ function runCases(): Case[] {
   );
   c.push(eq("it: 3Q 저장값은 0", parseTargetRates({ stb: "0.9", it: "0.1" }, "2026-Q3").it, 0));
   c.push(eq("it: 4Q 저장값은 그대로", parseTargetRates({ stb: "0.9", it: "0.1" }, "2026-Q4").it, 0.1));
+  // 화면에 그릴 열: 나오는 분기 중 하나라도 대상이면 그린다.
+  c.push(ok("cols: 1Q~3Q만 보이면 IT 열 없음", !visibleTargets(["2026-Q1", "2026-Q2", "2026-Q3"]).some((t) => t.key === "it")));
+  c.push(ok("cols: 4Q가 끼면 IT 열 있음", visibleTargets(["2026-Q3", "2026-Q4"]).some((t) => t.key === "it")));
+  c.push(ok("cols: 3Q 이력이 있으면 홀딩스 열은 남는다", visibleTargets(["2026-Q3", "2026-Q4"]).some((t) => t.key === "holdings")));
+  c.push(ok("cols: 4Q만 보이면 홀딩스 열 없음", !visibleTargets(["2026-Q4"]).some((t) => t.key === "holdings")));
   // 대상이 아닌 기간의 열은 0이 아니라 빈칸(null)으로 저장한다 — 그 기간에는 없는 열이다.
   c.push(eq("db: 3Q의 IT는 null", toDbTargets({ stb: 1 }, "2026-Q3").it, null));
   c.push(eq("db: 3Q의 홀딩스는 숫자", toDbTargets({ stb: 1 }, "2026-Q3").holdings, 0));

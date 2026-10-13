@@ -70,6 +70,17 @@ export function isTargetActiveIn(key: TargetKey, period: string): boolean {
   return true;
 }
 
+/**
+ * 이 기간들을 함께 보여주는 화면에 그릴 배부 대상 열 — 어느 한 기간에라도 대상이면 그린다.
+ * (예: 2026-Q1~Q3만 있으면 IT 열은 빠지고, 2026-Q4가 하나라도 있으면 들어간다.)
+ * 기간이 비어 있으면 모든 열을 그린다.
+ */
+export function visibleTargets(periods: string[]): TargetDef[] {
+  const list = periods.filter(Boolean);
+  if (list.length === 0) return TARGETS;
+  return TARGETS.filter((t) => list.some((p) => isTargetActiveIn(t.key, p)));
+}
+
 /** 이 기간에 배부하지 않는 대상. */
 export function inactiveTargetKeys(period: string): TargetKey[] {
   return TARGETS.filter((t) => !isTargetActiveIn(t.key, period)).map((t) => t.key);

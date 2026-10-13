@@ -2,7 +2,7 @@
 
 import React, { useMemo, useState } from "react";
 import Nav from "../Nav";
-import { TARGETS, TargetKey, isTargetActiveIn } from "@/lib/targets";
+import { TARGETS, TargetKey, isTargetActiveIn, visibleTargets } from "@/lib/targets";
 import { defaultDeltaPairKey, deltaPairOptions, parseQuarter, prettyQuarterLabel, shortQuarterLabel } from "@/lib/quarter";
 
 export interface AllocRateRow extends Partial<Record<TargetKey, number | null>> {
@@ -199,6 +199,8 @@ export default function AllocationView({
   const delta = useMemo(() => buildDeltaRows(deltaPair, dataByQuarter), [deltaPair, dataByQuarter]);
 
   const quarterRows = sortRows(dataByQuarter[view] ?? []);
+  // 보고 있는 분기(변화 보기면 비교하는 두 분기)에서 배부 대상인 열만 그린다 — 3Q까지는 IT 열이 없다.
+  const cols = isDelta ? visibleTargets(deltaPair ?? []) : visibleTargets([view]);
   const deltaRows = sortRows(delta.rows);
 
   function toggleSet(set: Set<string>, setter: (s: Set<string>) => void, value: string) {
@@ -522,7 +524,7 @@ export default function AllocationView({
           <thead>
             <tr>
               <th className="col-basis">배부기준</th>
-              {TARGETS.map((t) => (
+              {cols.map((t) => (
                 <th key={t.key}>{t.label}</th>
               ))}
               {/* update(반영 여부)는 검토 및 확정 > 조사 탭에서 확인하는 내용이라 여기서는 빼둔다. */}
@@ -533,7 +535,7 @@ export default function AllocationView({
           <tbody>
             {visibleRows.length === 0 && (
               <tr>
-                <td colSpan={TARGETS.length + 3}>
+                <td colSpan={cols.length + 3}>
                   <div className="av-empty">조건에 맞는 배부기준이 없습니다.</div>
                 </td>
               </tr>
@@ -551,7 +553,7 @@ export default function AllocationView({
                             <td className="col-basis">
                               {divisionLabel(row.division)} <span className="grp-count">· {count}건</span>
                             </td>
-                            <td colSpan={TARGETS.length + 2}></td>
+                            <td colSpan={cols.length + 2}></td>
                           </tr>
                         );
                       })()
@@ -568,7 +570,7 @@ export default function AllocationView({
                           <span className="basis-name">{r.basis}</span>
                           {r.status !== "same" && <span className={`av-status-badge ${r.status}`}>{STATUS_LABEL[r.status]}</span>}
                         </td>
-                        {TARGETS.map((t) => {
+                        {cols.map((t) => {
                           const d = r.deltas[t.key];
                           if (d == null) {
                             const solo = r.q1 ? r.q1[t.key] : r.q2 ? r.q2[t.key] : null;
@@ -630,7 +632,7 @@ export default function AllocationView({
                         <span className="type-dot" style={{ background: TYPE_COLOR[r.type] }} title={r.type} />
                         <span className="basis-name">{r.basis}</span>
                       </td>
-                      {TARGETS.map((t) => {
+                      {cols.map((t) => {
                         const v = r[t.key];
                         if (v === null || v === undefined) return <td key={t.key} className="heat-cell na"></td>;
                         if (v === 0)

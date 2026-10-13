@@ -10,7 +10,7 @@
  * 이 모듈은 공개 링크 화면의 번들에도 들어가므로, 담당자에게 다른 조직명이 노출되면 안 된다.
  */
 
-import { useEffect, useRef, useState } from "react";
+import { createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
   TARGETS,
@@ -21,6 +21,8 @@ import {
   fractionToPercentInput,
   percentInputToFraction,
   isTargetActiveIn,
+  visibleTargets,
+  TargetDef,
 } from "@/lib/targets";
 import { sortQuarters } from "@/lib/quarter";
 import { readPasteGrid, shouldHandlePaste } from "@/lib/paste";
@@ -280,6 +282,26 @@ export function toPersonPayload(list: PersonEditRow[]) {
 }
 
 /**
+ * 이 화면의 표에 보일 배부 대상 열.
+ *
+ * 화면에 나오는 분기 중 어느 하나에서도 대상이 아닌 열은 아예 그리지 않는다
+ * (예: 2026-Q3까지만 보이는 화면에는 IT 열이 없다). 화면마다 <TargetColumns periods={…}>로 감싸고,
+ * 감싸지 않으면 모든 열을 그린다. 붙여넣기도 화면에 보이는 열 순서를 따른다.
+ */
+const TargetColumnsContext = createContext<TargetDef[]>(TARGETS);
+
+export function TargetColumns({ periods, children }: { periods: string[]; children: React.ReactNode }) {
+  const key = periods.join("|");
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const cols = useMemo(() => visibleTargets(periods), [key]);
+  return <TargetColumnsContext.Provider value={cols}>{children}</TargetColumnsContext.Provider>;
+}
+
+export function useTargetColumns(): TargetDef[] {
+  return useContext(TargetColumnsContext);
+}
+
+/**
  * 읽기 전용 표의 배부율 한 칸. 그 기간에 배부 대상이 아닌 열(예: 2026-Q3까지의 IT)은
  * 0.0%가 아니라 빈칸으로 둔다 — 그 기간에는 없는 열이다. period를 모르면 값을 그대로 보인다.
  */
@@ -301,6 +323,7 @@ export function RateTableHead({
   lang = "ko",
 }: { withClear?: boolean; withNote?: boolean; withNoteEn?: boolean; lang?: SubmitLang } = {}) {
   const s = submitStrings(lang);
+  const cols = useTargetColumns();
   return (
     <thead>
       {/* 열 이름(col-*)은 좁은 화면용 압축 표기가 열 너비를 잡는 데 쓴다 (globals.css의 .submit-tight). */}
@@ -308,7 +331,7 @@ export function RateTableHead({
         {withClear && <th className="col-clear"></th>}
         <th className="col-label"></th>
         <th className="col-hc">{s.colHeadcount}</th>
-        {TARGETS.map((t) => (
+        {cols.map((t) => (
           <th key={t.key} className={t.group === "humax" ? "grp-humax" : "grp-affiliate"}>
             {targetLabel(t, lang)}
           </th>
@@ -422,13 +445,14 @@ export function ReadOnlyRateRow({
   lang?: SubmitLang;
 }) {
   const s = submitStrings(lang);
+  const cols = useTargetColumns();
   const total = recTotal(rec);
   return (
     <tr className="ro-row">
       {showClearSlot && <td></td>}
       <td>{label}</td>
       <td>{headcount != null ? s.headcountValue(headcount) : "-"}</td>
-      {TARGETS.map((t) => (
+      {cols.map((t) => (
         <td key={t.key}>{rateCell(rec[t.key], t.key, period)}</td>
       ))}
       <td className="total-col">{(total * 100).toFixed(1)}%</td>
@@ -509,6 +533,7 @@ export function EditableRateRow({
   lang?: SubmitLang;
 }) {
   const s = submitStrings(lang);
+  const cols = useTargetColumns();
   const total = totalOf(rates);
   const ok = Math.abs(total - 1) < 0.005 || total === 0;
   return (
@@ -536,7 +561,7 @@ export function EditableRateRow({
           "-"
         )}
       </td>
-      {TARGETS.map((t, i) => (
+      {cols.map((t, i) => (
         <td key={t.key}>
           <div className="pct-input">
             <input
@@ -552,7 +577,7 @@ export function EditableRateRow({
                 e.preventDefault();
                 const row = readPasteGrid(e.clipboardData)[0] ?? [];
                 row.forEach((tok, offset) => {
-                  const target = TARGETS[i + offset];
+                  const target = cols[i + offset];
                   // 열 위치는 화면 그대로 맞추되, 막힌 열에 걸린 값은 버린다.
                   if (!target || lockedKeys.includes(target.key)) return;
                   // 빈 칸은 건너뛰지 않고 0%로 채운다 — 건너뛰면 예전 값이 그대로 남는다.
@@ -591,13 +616,18 @@ export function EditableRateRow({
   );
 }
 
-// 개인별 표 붙여넣기: 열 순서를 [이름, ...배부대상(TARGETS 순서), 코멘트]로 보고, 시작 셀부터 채운다.
+// 개인별 표 붙여넣기: 열 순서를 [이름, ...화면에 보이는 배부대상, 코멘트]로 보고, 시작 셀부터 채운다.
 // (인원수 열은 화면에 없다 — 한 행이 곧 한 명이다.)
-const PASTE_NOTE_COL = TARGETS.length + 1;
-function applyPasteToken(person: PersonEditRow, colIdx: number, token: string, lockedKeys: TargetKey[]): PersonEditRow {
+function applyPasteToken(
+  person: PersonEditRow,
+  colIdx: number,
+  token: string,
+  lockedKeys: TargetKey[],
+  cols: TargetDef[]
+): PersonEditRow {
   if (colIdx === 0) return { ...person, name: token };
-  if (colIdx === PASTE_NOTE_COL) return { ...person, note: token };
-  const target = TARGETS[colIdx - 1];
+  if (colIdx === cols.length + 1) return { ...person, note: token };
+  const target = cols[colIdx - 1];
   if (!target || lockedKeys.includes(target.key)) return person;
   // 빈 칸은 건너뛰지 않고 0%로 채운다 — 건너뛰면 그 사람 값이 예전 값 그대로 남아버린다.
   return {
@@ -625,6 +655,7 @@ export function PersonEditTable({
   lang?: SubmitLang;
 }) {
   const s = submitStrings(lang);
+  const cols = useTargetColumns();
   function updatePerson(key: string, patch: Partial<PersonEditRow>) {
     setPersons((list) => list.map((p) => (p.key === key ? { ...p, ...patch } : p)));
   }
@@ -652,7 +683,7 @@ export function PersonEditTable({
         }
         let person = next[idx];
         rowTokens.forEach((tok, ci) => {
-          person = applyPasteToken(person, startColIdx + ci, tok, lockedKeys);
+          person = applyPasteToken(person, startColIdx + ci, tok, lockedKeys, cols);
         });
         next[idx] = person;
       });
@@ -670,7 +701,7 @@ export function PersonEditTable({
               {/* 개인별 입력은 한 행 = 한 명이라 인원수 열을 두지 않는다 (이름+배부율이 있으면 1명으로 센다). */}
               <th className="col-name">{s.colName}</th>
               {hasExpat && <th className="col-role">{s.colRole}</th>}
-              {TARGETS.map((t) => (
+              {cols.map((t) => (
                 <th key={t.key} className={t.group === "humax" ? "grp-humax" : "grp-affiliate"}>
                   {targetLabel(t, lang)}
                 </th>
@@ -712,7 +743,7 @@ export function PersonEditTable({
                       </select>
                     </td>
                   )}
-                  {TARGETS.map((t, tIdx) => (
+                  {cols.map((t, tIdx) => (
                     <td key={t.key}>
                       <div className="pct-input">
                         <input
@@ -743,7 +774,7 @@ export function PersonEditTable({
                         onPaste={(e) => {
                           if (!shouldHandlePaste(e.clipboardData)) return;
                           e.preventDefault();
-                          handlePersonCellPaste(pIdx, PASTE_NOTE_COL, e.clipboardData);
+                          handlePersonCellPaste(pIdx, cols.length + 1, e.clipboardData);
                         }}
                       />
                     </div>
@@ -788,6 +819,7 @@ export function PersonReadOnlyTable({
   lang?: SubmitLang;
 }) {
   const s = submitStrings(lang);
+  const cols = useTargetColumns();
   return (
     <div className="tbl-scroll" style={{ marginBottom: 12 }}>
       <table className="rate-tbl">
@@ -795,7 +827,7 @@ export function PersonReadOnlyTable({
           <tr>
             <th className="col-name">{s.colName}</th>
             {hasExpat && <th className="col-role">{s.colRole}</th>}
-            {TARGETS.map((t) => (
+            {cols.map((t) => (
               <th key={t.key} className={t.group === "humax" ? "grp-humax" : "grp-affiliate"}>
                 {targetLabel(t, lang)}
               </th>
@@ -809,7 +841,7 @@ export function PersonReadOnlyTable({
             <tr key={p.key} className="ro-row">
               <td>{p.name}</td>
               {hasExpat && <td>{p.role === "주재원" ? s.roleExpat : s.roleLegal}</td>}
-              {TARGETS.map((t) => (
+              {cols.map((t) => (
                 <td key={t.key}>{rateCell(p.rates[t.key], t.key, period)}</td>
               ))}
               <td className="total-col">{(totalOf(p.rates) * 100).toFixed(1)}%</td>
@@ -843,6 +875,7 @@ export function PersonHistoryBlocks({
   lang?: SubmitLang;
 }) {
   const s = submitStrings(lang);
+  const cols = useTargetColumns();
   const byQuarter = new Map<string, PersonHistoryRow[]>();
   rows.forEach((p) => {
     const list = byQuarter.get(p.period) ?? [];
@@ -863,7 +896,7 @@ export function PersonHistoryBlocks({
                 <tr>
                   <th className="col-name">{s.colName}</th>
                   {hasExpat && <th className="col-role">{s.colRole}</th>}
-                  {TARGETS.map((t) => (
+                  {cols.map((t) => (
                     <th key={t.key} className={t.group === "humax" ? "grp-humax" : "grp-affiliate"}>
                       {targetLabel(t, lang)}
                     </th>
@@ -877,7 +910,7 @@ export function PersonHistoryBlocks({
                   <tr key={`${p.name}-${p.role}`} className="ro-row">
                     <td>{p.name}</td>
                     {hasExpat && <td>{p.role === "주재원" ? s.roleExpat : s.roleLegal}</td>}
-                    {TARGETS.map((t) => (
+                    {cols.map((t) => (
                       <td key={t.key}>{rateCell(p.rates[t.key], t.key, q)}</td>
                     ))}
                     <td className="total-col">{(p.total * 100).toFixed(1)}%</td>

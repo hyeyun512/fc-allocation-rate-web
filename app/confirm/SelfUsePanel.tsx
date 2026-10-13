@@ -360,7 +360,7 @@ export default function SelfUsePanel({
           <RateTableHead />
           <tbody>
             {preview.map((row) => (
-              <ReadOnlyRateRow key={row.basis} label={row.basis} rec={toFullRec(row.rates)} />
+              <ReadOnlyRateRow key={row.basis} label={row.basis} period={quarter} rec={toFullRec(row.rates)} />
             ))}
           </tbody>
         </table>
@@ -397,7 +397,7 @@ export default function SelfUsePanel({
                     },
                     h.quarter
                   ).map((row) => (
-                    <ReadOnlyRateRow key={`${h.quarter}-${row.basis}`} label={`${h.quarter} · ${row.basis}`} rec={toFullRec(row.rates)} />
+                    <ReadOnlyRateRow key={`${h.quarter}-${row.basis}`} label={`${h.quarter} · ${row.basis}`} period={h.quarter} rec={toFullRec(row.rates)} />
                   ))
                 )}
               </tbody>

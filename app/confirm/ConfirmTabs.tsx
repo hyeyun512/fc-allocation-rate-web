@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Nav from "../Nav";
 import SurveyOverview, { SurveyOrgData } from "../SurveyOverview";
 import { prettyQuarterLabel } from "@/lib/quarter";
+import { TargetColumns } from "@/components/RateParts";
 import ConfirmReview, { OrgReviewData, RateHistoryEntry } from "./ConfirmReview";
 import ItPanel, { ItBasisRow } from "./ItPanel";
 import SelfUsePanel, { SelfuseBasisRow } from "./SelfUsePanel";
@@ -17,6 +18,20 @@ type SubTab = "survey" | "resource" | "selfuse" | "it";
 const QUARTER_OPTIONS = ["2026-Q1", "2026-Q2", "2026-Q3", "2026-Q4", "2027-BP"];
 const CUSTOM_OPTION = "__custom__";
 const FIXED_VERSION = "Forecast";
+
+/** 검토 화면에 나오는 분기 전부 — 하위·주재원 조직의 이력까지 훑는다 (보일 배부 대상 열을 정하는 데 쓴다). */
+function shownPeriods(period: string, orgs: OrgReviewData[], hkrHistory: RateHistoryEntry[]): string[] {
+  const out = [period, ...hkrHistory.map((h) => h.quarter)];
+  const walk = (o: OrgReviewData | null) => {
+    if (!o) return;
+    o.rateHistory.forEach((h) => out.push(h.quarter));
+    o.personHistory.forEach((h) => out.push(h.period));
+    walk(o.expat);
+    o.children.forEach(walk);
+  };
+  orgs.forEach(walk);
+  return Array.from(new Set(out));
+}
 
 const SUB_TABS: { key: SubTab; label: string }[] = [
   { key: "resource", label: "리소스배부율" },
@@ -155,10 +170,20 @@ export default function ConfirmTabs({
         />
       )}
       {subTab === "resource" && (
-        <ConfirmReview period={period} version={version} data={resourceData} hkrHistory={hkrHistory} hkrConfirmedThisPeriod={hkrConfirmedThisPeriod} />
+        <TargetColumns periods={shownPeriods(period, resourceData, hkrHistory)}>
+          <ConfirmReview period={period} version={version} data={resourceData} hkrHistory={hkrHistory} hkrConfirmedThisPeriod={hkrConfirmedThisPeriod} />
+        </TargetColumns>
       )}
-      {subTab === "selfuse" && <SelfUsePanel key={period} period={period} initial={selfuse} history={selfuseHistory} />}
-      {subTab === "it" && <ItPanel key={period} period={period} initialHeadcount={itHeadcount} initialSap={itSap} history={itHistory} />}
+      {subTab === "selfuse" && (
+        <TargetColumns periods={[period, ...selfuseHistory.map((h) => h.quarter)]}>
+          <SelfUsePanel key={period} period={period} initial={selfuse} history={selfuseHistory} />
+        </TargetColumns>
+      )}
+      {subTab === "it" && (
+        <TargetColumns periods={[period, ...itHistory.map((h) => h.quarter)]}>
+          <ItPanel key={period} period={period} initialHeadcount={itHeadcount} initialSap={itSap} history={itHistory} />
+        </TargetColumns>
+      )}
     </div>
   );
 }

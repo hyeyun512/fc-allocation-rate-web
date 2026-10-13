@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { TARGETS, TargetKey, getPreviousPeriod, isTargetActiveIn } from "@/lib/targets";
 import { sortQuarters } from "@/lib/quarter";
 import { computeItRates, sumItBasisInput, ItBasisInput } from "@/lib/itBasis";
-import { RateTableHead, ReadOnlyRateRow, NoteTip } from "@/components/RateParts";
+import { RateTableHead, ReadOnlyRateRow, NoteTip, useTargetColumns } from "@/components/RateParts";
 import { readPasteGrid, shouldHandlePaste } from "@/lib/paste";
 
 export interface ItBasisRow {
@@ -401,6 +401,8 @@ export default function ItPanel({
    * 맨 앞 열에 청구기준을 두고, 같은 값이 연속되면 첫 행에만 적어 아래로 합친다(rowSpan).
    * 인원수와 SAP은 청구기준이 다를 수 있어 행마다 해당하는 쪽 값을 가져온다.
    */
+  // 이 화면에 나오는 분기 중 어디서도 배부 대상이 아닌 열(예: 3Q까지의 IT)은 그리지 않는다.
+  const cols = useTargetColumns();
   const historyRows = useMemo(() => {
     const flat = confirmedByQuarter.flatMap(([q, { headcount, sap }]) =>
       computeItRates(
@@ -616,7 +618,7 @@ export default function ItPanel({
           <RateTableHead />
           <tbody>
             {preview.map((row) => (
-              <ReadOnlyRateRow key={row.basis} label={row.basis} rec={toFullRec(row.rates)} headcount={row.headcount ?? null} />
+              <ReadOnlyRateRow key={row.basis} label={row.basis} period={quarter} rec={toFullRec(row.rates)} headcount={row.headcount ?? null} />
             ))}
           </tbody>
         </table>
@@ -643,7 +645,7 @@ export default function ItPanel({
                   <th>분기</th>
                   <th>배부기준</th>
                   <th>인원수</th>
-                  {TARGETS.map((t) => (
+                  {cols.map((t) => (
                     <th key={t.key} className={t.group === "humax" ? "grp-humax" : "grp-affiliate"}>
                       {t.label}
                     </th>
@@ -672,7 +674,7 @@ export default function ItPanel({
                     )}
                     <td style={{ textAlign: "left" }}>{r.basisName}</td>
                     <td>{r.headcount != null ? `${r.headcount}명` : "-"}</td>
-                    {TARGETS.map((t) => (
+                    {cols.map((t) => (
                       <td key={t.key}>{isTargetActiveIn(t.key, r.quarter) ? `${((r.rates[t.key] || 0) * 100).toFixed(1)}%` : ""}</td>
                     ))}
                     <td className="total-col">{(r.total * 100).toFixed(1)}%</td>
