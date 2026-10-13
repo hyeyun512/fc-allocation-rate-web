@@ -10,6 +10,7 @@ import { templateFor, previousTemplate, MailTemplateRow } from "@/lib/mailTempla
 import { OrgReviewData } from "./ConfirmReview";
 import { SurveyOrgData } from "../SurveyOverview";
 import ConfirmTabs from "./ConfirmTabs";
+import { surveyPeriodsOf } from "@/lib/surveyPeriods";
 
 export const dynamic = "force-dynamic";
 
@@ -361,6 +362,9 @@ export default async function AdminConfirmPage() {
   return (
     <ConfirmTabs
       period={period}
+      surveyPeriods={surveyPeriodsOf(settings)}
+      // 컬럼이 아직 없으면(SQL 실행 전) 여러 기간을 저장할 수 없다 — 화면에서 고르는 칸을 막는다.
+      surveyPeriodsSupported={!!settings && "survey_periods" in settings}
       version={version}
       mailSubject={mailTpl?.subject ?? ""}
       mailBody={mailTpl?.body ?? ""}

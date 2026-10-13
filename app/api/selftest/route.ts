@@ -518,6 +518,15 @@ function runCases(): Case[] {
         fixedRatesFor("2026-Q4").some((d) => d.basis === "실적 제외")
     )
   );
+  c.push(ok("it사업부: 3Q에는 없다", !fixedRatesFor("2026-Q3").some((d) => d.basis === "IT사업부")));
+  c.push(
+    ok(
+      "it사업부: 4Q·BP부터 리소스배부율/본사로 IT 100%",
+      ["2026-Q4", "2027-BP"].every((q) =>
+        fixedRatesFor(q).some((d) => d.basis === "IT사업부" && d.type === "리소스배부율" && d.division === "본사" && d.rates.it === 1)
+      )
+    )
+  );
   {
     const IT = { headquarters: 70, overseasCorp: 0, hMobility: 10, hEv: 10, hiparking: 0, peoplecar: 0, winercom: 0, holdings: 10, hiparkingResident: null };
     const q3 = computeItRates(IT, null, "2026-Q3")[0];

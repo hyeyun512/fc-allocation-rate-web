@@ -1,4 +1,5 @@
 import { TARGETS, TargetKey, sumTargets, isTargetActiveIn, toDbTargets } from "./targets";
+import { quarterRank } from "./quarter";
 
 /**
  * 고정비율(type='고정비율') 배부기준.
@@ -9,12 +10,19 @@ import { TARGETS, TargetKey, sumTargets, isTargetActiveIn, toDbTargets } from ".
  * 값이 실제로 바뀌는 경우에만 이 표를 고치면 된다.
  */
 export interface FixedRateDef {
-  division: "기타" | "직접비";
+  /** 생략하면 '고정비율'. 조사 없이 정해진 비율인 리소스배부율 행(예: IT사업부)도 여기서 채운다. */
+  type?: string;
+  division: string;
   basis: string;
   rates: Partial<Record<TargetKey, number>>;
+  /** 이 기간부터 쓴다 (생략하면 처음부터). */
+  from?: string;
 }
 
 export const FIXED_RATE_TYPE = "고정비율";
+
+const typeOf = (d: FixedRateDef) => d.type ?? FIXED_RATE_TYPE;
+const keyOf = (type: string, division: string, basis: string) => `${type}|${division}|${basis}`;
 
 export const FIXED_RATES: FixedRateDef[] = [
   // 기타 — 국내/해외를 정해진 비율로 나누는 기준
@@ -33,6 +41,8 @@ export const FIXED_RATES: FixedRateDef[] = [
   { division: "직접비", basis: "H.EV 100%", rates: { h_ev: 1 } },
   // 어디에도 배부하지 않는 기준 (설계상 합계 0)
   { division: "직접비", basis: "실적 제외", rates: {} },
+  // 리소스배부율 · 본사 — IT사업부는 조사하지 않고 IT에 100% 배부한다 (IT가 대상이 된 2026-Q4부터).
+  { type: "리소스배부율", division: "본사", basis: "IT사업부", rates: { it: 1 }, from: "2026-Q4" },
 ];
 
 /**
@@ -41,6 +51,7 @@ export const FIXED_RATES: FixedRateDef[] = [
  */
 export function fixedRatesFor(quarter: string): FixedRateDef[] {
   return FIXED_RATES.filter((d) => {
+    if (d.from && quarterRank(quarter) >= 0 && quarterRank(quarter) < quarterRank(d.from)) return false;
     const keys = (Object.keys(d.rates) as TargetKey[]).filter((k) => (d.rates[k] ?? 0) > 0);
     return keys.length === 0 || keys.some((k) => isTargetActiveIn(k, quarter));
   });
@@ -51,7 +62,7 @@ function toRow(def: FixedRateDef, quarter: string) {
   TARGETS.forEach((t) => (rates[t.key] = def.rates[t.key] ?? 0));
   return {
     quarter,
-    type: FIXED_RATE_TYPE,
+    type: typeOf(def),
     division: def.division,
     basis: def.basis,
     ...toDbTargets(rates, quarter),
@@ -70,28 +81,34 @@ export async function ensureFixedRates(supabase: any, quarter: string): Promise<
   const problems: string[] = [];
   if (!quarter) return problems;
 
+  const types = Array.from(new Set(FIXED_RATES.map(typeOf)));
   const { data: existing } = await supabase
     .from("allocation_rate")
-    .select("basis")
+    .select("type,division,basis")
     .eq("quarter", quarter)
-    .eq("type", FIXED_RATE_TYPE);
+    .in("type", types);
+  const have = new Set((existing ?? []).map((r: any) => keyOf(r.type, r.division, r.basis)));
 
   // 그 분기에 쓰지 않는 기준(예: 4Q부터 'H.Holdings 100%')이 먼저 만들어져 있었다면 지운다.
-  const wanted = new Set(fixedRatesFor(quarter).map((d) => d.basis));
-  const stale = FIXED_RATES.filter((d) => !wanted.has(d.basis) && (existing ?? []).some((r: any) => r.basis === d.basis));
+  const wanted = new Set(fixedRatesFor(quarter).map((d) => keyOf(typeOf(d), d.division, d.basis)));
+  const stale = FIXED_RATES.filter((d) => {
+    const k = keyOf(typeOf(d), d.division, d.basis);
+    return !wanted.has(k) && have.has(k);
+  });
   for (const d of stale) {
     const { error } = await supabase
       .from("allocation_rate")
       .delete()
       .eq("quarter", quarter)
-      .eq("type", FIXED_RATE_TYPE)
+      .eq("type", typeOf(d))
       .eq("division", d.division)
       .eq("basis", d.basis);
     if (error) problems.push(`고정비율(${quarter} ${d.basis} 삭제): ${error.message}`);
   }
 
-  const have = new Set((existing ?? []).map((r: any) => r.basis as string));
-  const missing = fixedRatesFor(quarter).filter((d) => !have.has(d.basis)).map((d) => toRow(d, quarter));
+  const missing = fixedRatesFor(quarter)
+    .filter((d) => !have.has(keyOf(typeOf(d), d.division, d.basis)))
+    .map((d) => toRow(d, quarter));
   if (missing.length === 0) return problems;
 
   const { error } = await supabase

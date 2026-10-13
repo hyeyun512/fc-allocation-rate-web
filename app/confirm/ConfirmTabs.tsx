@@ -42,6 +42,8 @@ const SUB_TABS: { key: SubTab; label: string }[] = [
 
 export default function ConfirmTabs({
   period,
+  surveyPeriods,
+  surveyPeriodsSupported,
   version,
   mailSubject,
   mailBody,
@@ -57,6 +59,9 @@ export default function ConfirmTabs({
   selfuseHistory,
 }: {
   period: string;
+  /** 조사 링크에 여는 기간 (둘 이상이면 링크에 기간별 탭이 생긴다). */
+  surveyPeriods: string[];
+  surveyPeriodsSupported: boolean;
   version: string;
   /** 조사 링크 안내 메일 문구 (비어 있으면 기본 문구). */
   mailSubject: string;
@@ -79,6 +84,7 @@ export default function ConfirmTabs({
   const [periodInput, setPeriodInput] = useState(period);
   const [customPeriod, setCustomPeriod] = useState(!QUARTER_OPTIONS.includes(period));
   const [savingSettings, setSavingSettings] = useState(false);
+  const [surveyInput, setSurveyInput] = useState<string[]>(surveyPeriods);
   const router = useRouter();
 
   async function logout() {
@@ -102,7 +108,11 @@ export default function ConfirmTabs({
     await fetch("/api/settings", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ period: periodInput, version: FIXED_VERSION }),
+      body: JSON.stringify({
+        period: periodInput,
+        version: FIXED_VERSION,
+        ...(surveyPeriodsSupported ? { surveyPeriods: surveyInput } : {}),
+      }),
     });
     setSavingSettings(false);
     router.refresh();
@@ -143,7 +153,30 @@ export default function ConfirmTabs({
           </button>
         </div>
         <div className="field-hint" style={{ marginTop: 6 }}>
-          여기서 지정한 기간이 아래 조사/리소스배부율/자가사용(건물)/IT 전체에 적용됩니다. 조사 링크·제출 데이터에도 이 값이 함께 저장됩니다.
+          여기서 지정한 기간이 아래 조사/리소스배부율/자가사용(건물)/IT 전체에 적용됩니다.
+        </div>
+        <div className="field" style={{ marginTop: 12 }}>
+          <label>조사 링크에 여는 기간</label>
+          <div style={{ display: "flex", gap: 14, flexWrap: "wrap", alignItems: "center" }}>
+            {Array.from(new Set([...QUARTER_OPTIONS, ...surveyInput])).map((q) => (
+              <label key={q} style={{ display: "inline-flex", gap: 4, alignItems: "center", fontWeight: 400 }}>
+                <input
+                  type="checkbox"
+                  disabled={!surveyPeriodsSupported}
+                  checked={surveyInput.includes(q)}
+                  onChange={(e) =>
+                    setSurveyInput((list) => (e.target.checked ? [...list, q] : list.filter((x) => x !== q)))
+                  }
+                />
+                {prettyQuarterLabel(q)}
+              </label>
+            ))}
+          </div>
+          <div className="field-hint" style={{ marginTop: 4 }}>
+            {surveyPeriodsSupported
+              ? "둘 이상 고르면 담당자는 링크 하나에서 기간별 탭으로 각각 입력·제출합니다. 아무것도 고르지 않으면 위 기간 하나만 엽니다. '선택'을 눌러야 저장됩니다."
+              : "DB에 survey_periods 컬럼이 아직 없어 위 기간 하나만 조사 링크에 열립니다."}
+          </div>
         </div>
       </div>
 

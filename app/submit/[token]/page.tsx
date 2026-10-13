@@ -13,7 +13,8 @@ import { leaderFirst } from "@/lib/orgOrder";
 import { submitLangOf, orgLabelFor, submitterFor, noteFor } from "@/lib/englishOrgs";
 import { submitStrings } from "@/lib/submitLang";
 import type { CurrentPerson, PersonHistoryEntry, RateHistoryEntry, PersonRole } from "@/components/RateParts";
-import SubmitForm, { SubmitOrgData, SubmitPageData } from "./SubmitForm";
+import SubmitForm, { SubmitOrgData, SubmitPageData, SubmitRound } from "./SubmitForm";
+import { surveyPeriodsOf } from "@/lib/surveyPeriods";
 
 export const dynamic = "force-dynamic";
 
@@ -47,7 +48,9 @@ async function getData(token: string) {
   const lang = submitLangOf(org.basis);
 
   const { data: settings } = await supabase.from("allocation_settings").select("*").eq("id", 1).single();
-  const period = settings?.current_period ?? "이번 분기";
+  // 링크에 여는 기간 — 26년 4Q와 27년 BP처럼 둘 이상이면 화면에 기간별 탭이 생긴다.
+  const periods = surveyPeriodsOf(settings);
+  if (periods.length === 0) periods.push("이번 분기");
   const version = settings?.current_version ?? "Forecast";
 
   // 집계 조직이면 하위 조직도 같은 화면에서 입력받는다 (링크가 하나뿐이다).
@@ -70,14 +73,14 @@ async function getData(token: string) {
   const [{ data: rateRows }, { data: allSubs }, { data: drafts }, { data: unlocks }] = await Promise.all([
     supabase.from("allocation_rate").select("*").in("basis", basisList).order("quarter", { ascending: true }),
     supabase.from("allocation_submissions").select("*").in("org_id", orgIds).order("submitted_at", { ascending: false }),
-    supabase.from("allocation_submission_drafts").select("org_id,payload,updated_at").in("org_id", orgIds).eq("period", period),
+    supabase.from("allocation_submission_drafts").select("org_id,period,payload,updated_at").in("org_id", orgIds).in("period", periods),
     // 관리자가 '수정 허용'을 눌러 열어준 조직 — 이 표식이 있어야 다시 제출할 수 있다.
-    supabase.from("allocation_submit_unlocks").select("org_id").in("org_id", orgIds).eq("period", period),
+    supabase.from("allocation_submit_unlocks").select("org_id,period").in("org_id", orgIds).in("period", periods),
   ]);
 
   const subList = (allSubs ?? []) as SubmissionRow[];
 
-  function buildOrg(o: any): SubmitOrgData {
+  function buildOrg(o: any, period: string): SubmitOrgData {
     // basis만으로 거르면 다른 구분(division)의 동명 조직이 섞일 수 있어 셋 다 맞춘다.
     const orgRates = (rateRows ?? []).filter(
       (r) => r.basis === o.basis && r.division === o.division && r.type === o.type && (Number(r.total) || 0) > 0
@@ -116,7 +119,7 @@ async function getData(token: string) {
         role: (p.sub_team === "주재원" ? "주재원" : "법인") as PersonRole,
       }));
 
-    const draft = (drafts ?? []).find((d) => d.org_id === o.id) ?? null;
+    const draft = (drafts ?? []).find((d) => d.org_id === o.id && d.period === period) ?? null;
     // 제출 라우트와 같은 함수를 쓴다 — 다르면 화면은 입력을 받고 서버는 거절하는 상태가 된다.
     const hasAnyValue = hasSubmittedValue(orgSubs.filter((s) => s.period === period));
 
@@ -128,7 +131,7 @@ async function getData(token: string) {
       managerName: o.manager_name ?? null,
       submittedThisPeriod: hasAnyValue,
       // 제출 후에는 잠긴다. 관리자가 열어준 조직만 다시 제출할 수 있다.
-      editAllowed: (unlocks ?? []).some((u: any) => u.org_id === o.id),
+      editAllowed: (unlocks ?? []).some((u: any) => u.org_id === o.id && u.period === period),
       submittedBy: submitterFor(orgLevelRow?.submitted_by ?? personRows[0]?.submitted_by, lang),
       latestSubmittedAt: deduped.reduce<string | null>((max, r) => {
         if (!max || new Date(r.submitted_at) > new Date(max)) return r.submitted_at;
@@ -153,21 +156,23 @@ async function getData(token: string) {
     };
   }
 
-  const orgs = leaderFirst(editableOrgs.map((o) => ({ org: { basis: o.basis }, data: buildOrg(o) }))).map((x) => x.data);
+  function buildRound(period: string): SubmitRound {
+    const orgs = leaderFirst(editableOrgs.map((o) => ({ org: { basis: o.basis }, data: buildOrg(o, period) }))).map((x) => x.data);
+    const data: SubmitPageData = {
+      // 집계 조직은 자기가 입력하는 자리가 아니라 하위 조직 값을 모으는 자리다.
+      parent: isParent ? buildOrg(org, period) : null,
+      parentChildNames: isParent ? children.map((c) => orgLabelFor(c.basis, lang)) : [],
+      mirrors: mirroredOrgs.map((c) => ({
+        basis: orgLabelFor(c.basis, lang),
+        source: orgLabelFor(mirrorSourceOf(c.basis) as string, lang),
+        headcount: MIRROR_HEADCOUNT,
+      })),
+      orgs,
+    };
+    return { period, data };
+  }
 
-  const data: SubmitPageData = {
-    // 집계 조직은 자기가 입력하는 자리가 아니라 하위 조직 값을 모으는 자리다.
-    parent: isParent ? buildOrg(org) : null,
-    parentChildNames: isParent ? children.map((c) => orgLabelFor(c.basis, lang)) : [],
-    mirrors: mirroredOrgs.map((c) => ({
-      basis: orgLabelFor(c.basis, lang),
-      source: orgLabelFor(mirrorSourceOf(c.basis) as string, lang),
-      headcount: MIRROR_HEADCOUNT,
-    })),
-    orgs,
-  };
-
-  return { data, period, version, lang };
+  return { rounds: periods.map(buildRound), version, lang };
 }
 
 /** 탭 제목도 링크 언어에 맞춘다 — 루트 레이아웃의 제목은 한국어로 고정돼 있다. */
@@ -198,12 +203,6 @@ export default async function SubmitPage({ params }: { params: { token: string }
   }
 
   return (
-    <SubmitForm
-      token={params.token}
-      period={result.period}
-      version={result.version}
-      data={result.data}
-      lang={result.lang}
-    />
+    <SubmitForm token={params.token} rounds={result.rounds} version={result.version} lang={result.lang} />
   );
 }

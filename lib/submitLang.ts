@@ -34,6 +34,8 @@ const KO = {
   addPerson: (hasExpat: boolean) => `+ ${hasExpat ? "인원" : "팀원"} 추가`,
   quarterConfirmed: (q: string) => `${q} (확정됨)`,
   targetInactive: "이번 분기에는 배부 대상이 아닙니다",
+  multiRoundHint: (labels: string) =>
+    `이번 조사는 ${labels}을(를) 함께 받습니다. 위 탭에서 기간을 바꿔 가며 기간마다 따로 입력하고 제출해 주세요.`,
   inactiveTargetsNote: (labels: string) =>
     `※ ${labels}은(는) 이번 분기부터 배부 대상에서 제외되어 입력하지 않습니다. 전분기 데이터를 끌고오면 ${labels} 비율이 빠지므로, 합계가 100%가 되도록 다른 항목에 나눠 입력해주세요.`,
 
@@ -109,6 +111,8 @@ const EN: SubmitStrings = {
   addPerson: () => "+ Add person",
   quarterConfirmed: (q: string) => `${q} (confirmed)`,
   targetInactive: "Not an allocation target from this quarter",
+  multiRoundHint: (labels: string) =>
+    `This survey covers ${labels}. Use the tabs above to switch between periods and submit each one separately.`,
   inactiveTargetsNote: (labels: string) =>
     `* ${labels} is no longer an allocation target from this quarter and cannot be entered. If you copy last quarter's figures, the ${labels} share is left out, so please spread it over the other columns so the total is 100%.`,
 

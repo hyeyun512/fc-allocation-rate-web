@@ -4,6 +4,7 @@ import { TargetKey, sumTargets, parseTargetRates, toDbTargets } from "@/lib/targ
 import { recomputeAggregates } from "@/lib/autoAggregate";
 import { buildDeletionTombstones } from "@/lib/personTombstones";
 import { resolveTargetOrg } from "@/lib/submitScope";
+import { resolveSurveyPeriod } from "@/lib/surveyPeriods";
 import { applyOrgRate } from "@/lib/confirmRate";
 import { hasSubmittedValue, SubmissionRow } from "@/lib/rollup";
 
@@ -47,7 +48,11 @@ export async function POST(req: NextRequest) {
     .eq("id", 1)
     .single();
 
-  const period = settings?.current_period ?? "미지정";
+  // 링크 하나로 여러 기간(예: 26년 4Q와 27년 BP)을 함께 받는다 — 화면이 실어 보낸 기간이 열린 기간인지 확인한다.
+  const period = resolveSurveyPeriod(settings, body?.period);
+  if (!period) {
+    return NextResponse.json({ error: "지금 조사 중인 기간이 아닙니다. 화면을 새로고침해 주세요." }, { status: 400 });
+  }
   const version = settings?.current_version ?? "Forecast";
 
   // 이미 제출한 조직은 담당자가 임의로 고칠 수 없다. 관리자가 '수정 허용'을 눌러 열어준 경우에만

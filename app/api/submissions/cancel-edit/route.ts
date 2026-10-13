@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { resolveTargetOrg } from "@/lib/submitScope";
+import { resolveSurveyPeriod } from "@/lib/surveyPeriods";
 
 /**
  * 재수정을 도중에 그만둔다.
@@ -44,7 +45,11 @@ export async function POST(req: NextRequest) {
   }
 
   const { data: settings } = await supabase.from("allocation_settings").select("*").eq("id", 1).single();
-  const period = settings?.current_period ?? "미지정";
+  // 링크 하나로 여러 기간(예: 26년 4Q와 27년 BP)을 함께 받는다 — 화면이 실어 보낸 기간이 열린 기간인지 확인한다.
+  const period = resolveSurveyPeriod(settings, body?.period);
+  if (!period) {
+    return NextResponse.json({ error: "지금 조사 중인 기간이 아닙니다. 화면을 새로고침해 주세요." }, { status: 400 });
+  }
 
   // 되돌아갈 '원래 값'이 있어야 취소가 성립한다. 한 번도 제출한 적 없는 조직에서 이걸 부르면
   // 되돌릴 곳이 없는데 입력만 지우는 꼴이 되므로 막는다 (화면에도 버튼을 띄우지 않는다).

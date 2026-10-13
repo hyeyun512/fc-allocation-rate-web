@@ -34,6 +34,7 @@ import type {
 } from "@/components/RateParts";
 import { SubmitLang, submitStrings, targetLabel } from "@/lib/submitLang";
 import { submitLockState } from "@/lib/submitLock";
+import { prettyQuarterLabel } from "@/lib/quarter";
 
 /** 자동 임시저장에 담는 값 — 화면을 다시 열었을 때 그대로 이어서 입력할 수 있게 한다. */
 export interface SubmitDraft {
@@ -66,6 +67,12 @@ export interface SubmitOrgData {
   personHistory: PersonHistoryEntry[];
   draft: SubmitDraft | null;
   draftSavedAt: string | null;
+}
+
+/** 링크에 열린 기간 하나와 그 기간의 화면 데이터. 여러 기간을 함께 조사하면 기간별 탭이 된다. */
+export interface SubmitRound {
+  period: string;
+  data: SubmitPageData;
 }
 
 export interface SubmitPageData {
@@ -235,7 +242,7 @@ function OrgSubmitSection({
         const res = await fetch("/api/submissions/draft", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ token, orgId: data.orgId, payload: draftPayload() }),
+          body: JSON.stringify({ token, orgId: data.orgId, period, payload: draftPayload() }),
         });
         const json = await res.json();
         if (!res.ok) throw new Error(json.error ?? s.errDraft);
@@ -263,12 +270,12 @@ function OrgSubmitSection({
       const payload = draftPayloadRef.current();
       // 열어보기만 하고 닫은 경우에는 남기지 않는다 (위 자동저장과 같은 기준).
       if (JSON.stringify(payload) === initialDraftJson.current) return;
-      const blob = new Blob([JSON.stringify({ token, orgId: data.orgId, payload })], { type: "application/json" });
+      const blob = new Blob([JSON.stringify({ token, orgId: data.orgId, period, payload })], { type: "application/json" });
       navigator.sendBeacon("/api/submissions/draft", blob);
     }
     window.addEventListener("pagehide", flush);
     return () => window.removeEventListener("pagehide", flush);
-  }, [token, data.orgId]);
+  }, [token, data.orgId, period]);
 
   async function handleSubmit() {
     setError("");
@@ -295,6 +302,7 @@ function OrgSubmitSection({
         body: JSON.stringify({
           token,
           orgId: data.orgId,
+          period,
           submittedBy,
           headcount: currentOrgHeadcount,
           // 개인별 조직은 조직 단위 코멘트를 이 화면에서 고치지 않는다 —
@@ -342,7 +350,7 @@ function OrgSubmitSection({
       const res = await fetch("/api/submissions/cancel-edit", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ token, orgId: data.orgId }),
+        body: JSON.stringify({ token, orgId: data.orgId, period }),
       });
       const json = await res.json();
       if (!res.ok) throw new Error((lang === "ko" && json.error) || s.cancelEditFailed);
@@ -656,20 +664,22 @@ function ParentSummary({
 
 export default function SubmitForm({
   token,
-  period,
+  rounds,
   version,
-  data,
   lang = "ko",
 }: {
   token: string;
-  period: string;
+  rounds: SubmitRound[];
   version: string;
-  data: SubmitPageData;
   /** 담당자가 현지인이라 영어로 나가는 조직이 있다 (판단은 서버에서 — lib/englishOrgs.ts). */
   lang?: SubmitLang;
 }) {
-  const isParent = !!data.parent;
   const s = submitStrings(lang);
+  // 처음 여는 탭은 아직 제출하지 않은 첫 기간 — 다 냈으면 첫 기간.
+  const [active, setActive] = useState(() => {
+    const open = rounds.find((r) => !roundSubmitted(r));
+    return (open ?? rounds[0])?.period ?? "";
+  });
 
   // 루트 레이아웃의 <html lang>은 한국어로 고정돼 있다 — 영어로 나가는 링크에서는 실제 언어와 맞춰준다
   // (브라우저가 번역을 권하거나 스크린리더가 한국어로 읽는 걸 막는다).
@@ -677,15 +687,72 @@ export default function SubmitForm({
     document.documentElement.lang = lang;
   }, [lang]);
 
+  const multi = rounds.length > 1;
+
+  return (
+    // page-form: 배부대상 13~14개가 들어가도록 폭을 넓게, submit-tight: 표를 압축해 가로 스크롤을 없앤다.
+    <div className="page page-form submit-tight">
+      {multi && (
+        <>
+          <div className="field-hint" style={{ marginBottom: 8 }}>
+            {s.multiRoundHint(rounds.map((r) => prettyQuarterLabel(r.period)).join(", "))}
+          </div>
+          <div className="admin-subtabs" role="tablist">
+            {rounds.map((r) => (
+              <button
+                key={r.period}
+                type="button"
+                role="tab"
+                aria-selected={active === r.period}
+                className={`admin-subtab ${active === r.period ? "active" : ""}`}
+                onClick={() => setActive(r.period)}
+              >
+                {prettyQuarterLabel(r.period)}
+                {roundSubmitted(r) ? " ✓" : ""}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+      {/* 탭을 옮겨도 입력 중인 값이 남도록 모든 기간을 그려 두고 보이는 것만 바꾼다. */}
+      {rounds.map((r) => (
+        <div key={r.period} style={{ display: active === r.period || !multi ? undefined : "none" }}>
+          <RoundBody token={token} period={r.period} version={version} data={r.data} lang={lang} />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/** 이 기간에 링크의 모든 조직이 제출했는지 (탭의 ✓ 표시용 — 화면을 연 시점 기준). */
+function roundSubmitted(r: SubmitRound): boolean {
+  return r.data.orgs.length > 0 && r.data.orgs.every((o) => o.submittedThisPeriod);
+}
+
+/** 기간 하나의 입력 화면 — 집계 조직이면 위에 집계 값, 아래에 하위 조직 입력란. */
+function RoundBody({
+  token,
+  period,
+  version,
+  data,
+  lang,
+}: {
+  token: string;
+  period: string;
+  version: string;
+  data: SubmitPageData;
+  lang: SubmitLang;
+}) {
+  const isParent = !!data.parent;
+  const s = submitStrings(lang);
+
   // 이 화면에 나오는 분기 — 그중 어디서도 배부 대상이 아닌 열(예: 3Q까지의 IT)은 그리지 않는다.
   const shownPeriods = [period, ...[data.parent, ...data.orgs].flatMap((o) =>
     o ? [...o.rateHistory.map((h) => h.quarter), ...o.personHistory.map((h) => h.period)] : []
   )];
 
   return (
-    // page-form: 배부대상 13~14개가 들어가도록 폭을 넓게, submit-tight: 표를 압축해 가로 스크롤을 없앤다.
     <TargetColumns periods={shownPeriods} current={period}>
-    <div className="page page-form submit-tight">
       {isParent && <ParentSummary data={data} period={period} version={version} lang={lang} />}
 
       {isParent && (
@@ -707,7 +774,6 @@ export default function SubmitForm({
           />
         ))}
       </div>
-    </div>
     </TargetColumns>
   );
 }
