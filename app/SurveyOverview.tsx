@@ -5,6 +5,18 @@ import { leaderFirst, sortForOrgPicker, DIVISION_ORDER } from "@/lib/orgOrder";
 import { useEffect, useRef } from "react";
 import { isValidEmail, mailTemplateProblem, LINK_PLACEHOLDER, MAIL_FONT_CSS } from "@/lib/linkMail";
 import type { ResolvedManager } from "@/lib/orgManager";
+import { shortQuarterLabel } from "@/lib/quarter";
+
+/** 조직 하나의 기간 하나 제출 현황. 묶음 라운드(26년 4Q & 27년 BP)면 기간마다 하나씩 온다. */
+export interface SurveyPeriodStatus {
+  period: string;
+  hasSubmission: boolean;
+  submittedBy: string | null;
+  latestSubmittedAt: string | null;
+  personCount: number;
+  /** 제출한 링크를 다시 열어줬는지. 열어주면 담당자가 그 기간을 한 번 더 제출할 수 있다. */
+  editAllowed: boolean;
+}
 
 export interface SurveyOrgData {
   org: {
@@ -15,10 +27,8 @@ export interface SurveyOrgData {
     access_token: string;
     parent_basis: string | null;
   };
-  hasSubmission: boolean;
-  submittedBy: string | null;
-  latestSubmittedAt: string | null;
-  personCount: number;
+  /** 기간마다의 제출 현황 (기간 순서대로, 그 기간에 없던 조직이면 그 기간은 빠진다). */
+  statuses: SurveyPeriodStatus[];
   /** 이번 분기 담당자 이름·메일 (없으면 지난 분기에서 이어받은 값). */
   manager: ResolvedManager;
   /** 링크 화면 언어에 맞춘 조직 표기 — 서버가 계산해 내려준다(조직명 목록을 클라이언트에 두지 않으려고). */
@@ -27,8 +37,6 @@ export interface SurveyOrgData {
   linkToken: string;
   /** 이 조직이 링크 주인인지 — 복사 버튼과 발송(✉)이 붙는 행. */
   isTokenOwner: boolean;
-  /** 제출한 링크를 다시 열어줬는지. 열어주면 담당자가 한 번 더 제출할 수 있다. */
-  editAllowed: boolean;
   /** 하위 팀(예: 개발 그룹의 SW팀·HW팀). 조직 단위를 리소스배부율의 조직/팀 선택과 맞추려고 여기에 접어 넣는다. */
   children: SurveyOrgData[];
 }
@@ -74,53 +82,104 @@ function submitUrlOf(token: string): string {
   return typeof window !== "undefined" ? `${window.location.origin}/submit/${token}` : `/submit/${token}`;
 }
 
-function SubmitBadge({ item }: { item: SurveyOrgData }) {
-  return item.hasSubmission ? (
-    <span className="status-badge status-pending">
-      제출됨{item.personCount > 0 ? ` · ${item.personCount}명` : ""}
-    </span>
-  ) : (
-    <span className="status-badge" style={{ background: "#f1f5f9", color: "#64748b" }}>
-      미제출
-    </span>
+/** 그 기간에 제출했는지 (그 기간에 없던 조직이면 false). */
+function submittedIn(item: SurveyOrgData, period: string): boolean {
+  return item.statuses.find((s) => s.period === period)?.hasSubmission ?? false;
+}
+
+/** 기간 하나라도 제출했는지 — 다시 열어줄 것이 있는지 판단할 때 쓴다. */
+function hasAnySubmission(item: SurveyOrgData): boolean {
+  return item.statuses.some((s) => s.hasSubmission);
+}
+
+/** 기간마다의 제출 배지. 두 기간을 함께 조사하면 앞에 기간을 붙인다 (예: '4Q 제출됨', 'BP 미제출'). */
+function SubmitBadge({ item, multi }: { item: SurveyOrgData; multi: boolean }) {
+  return (
+    <>
+      {item.statuses.map((s) => {
+        const tag = multi ? `${shortQuarterLabel(s.period)} ` : "";
+        return s.hasSubmission ? (
+          <span key={s.period} className="status-badge status-pending" style={{ marginRight: 4 }}>
+            {tag}제출됨{s.personCount > 0 ? ` · ${s.personCount}명` : ""}
+          </span>
+        ) : (
+          <span key={s.period} className="status-badge" style={{ background: "#f1f5f9", color: "#64748b", marginRight: 4 }}>
+            {tag}미제출
+          </span>
+        );
+      })}
+    </>
   );
+}
+
+/** 제출 진행 상황 "3/10" — 두 기간을 함께 조사하면 기간마다 ("4Q 3/10 · BP 2/10"). */
+function progressText(items: SurveyOrgData[], periods: string[]): string {
+  return periods
+    .map((p) => {
+      const done = items.filter((i) => submittedIn(i, p)).length;
+      return `${periods.length > 1 ? `${shortQuarterLabel(p)} ` : ""}${done}/${items.length}`;
+    })
+    .join(" · ");
 }
 
 /**
  * 제출한 링크는 담당자가 임의로 고칠 수 없다. 값이 바뀌어야 할 때만 여기서 한 번 열어준다.
  * 담당자가 다시 제출하면 서버가 표식을 지워 곧바로 다시 잠긴다.
+ *
+ * 허용 표식은 기간마다 따로 남지만(allocation_submit_unlocks.period), 담당자는 링크 하나에서 두 기간을
+ * 함께 고치므로 버튼은 하나로 두고 **제출한 기간을 모두** 함께 열고 닫는다. 기간별 상태는 글자와 툴팁으로 보인다.
  */
-function UnlockButton({ item, period }: { item: SurveyOrgData; period: string }) {
-  const [allowed, setAllowed] = useState(item.editAllowed);
+function UnlockButton({ item, multi }: { item: SurveyOrgData; multi: boolean }) {
+  // 아직 제출하지 않은 기간은 잠겨 있지 않으므로 열고 닫을 대상이 아니다.
+  const submitted = item.statuses.filter((s) => s.hasSubmission);
+  const [allowed, setAllowed] = useState<Record<string, boolean>>(() =>
+    Object.fromEntries(submitted.map((s) => [s.period, s.editAllowed]))
+  );
   const [busy, setBusy] = useState(false);
+  const openPeriods = submitted.filter((s) => allowed[s.period]).map((s) => s.period);
+  const allOpen = submitted.length > 0 && openPeriods.length === submitted.length;
 
   async function toggle() {
+    // 일부만 열려 있으면 나머지도 연다 — 한 번 더 누르면 모두 잠근다.
+    const allow = !allOpen;
     setBusy(true);
     try {
-      const res = await fetch("/api/submit-unlock", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ orgId: item.org.id, period, allow: !allowed }),
-      });
-      if (res.ok) setAllowed(!allowed);
+      const next = { ...allowed };
+      for (const s of submitted.filter((x) => !!allowed[x.period] !== allow)) {
+        const res = await fetch("/api/submit-unlock", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ orgId: item.org.id, period: s.period, allow }),
+        });
+        if (res.ok) next[s.period] = allow;
+      }
+      setAllowed(next);
     } finally {
       setBusy(false);
     }
   }
 
+  const perPeriod = multi
+    ? " (" + submitted.map((s) => `${s.period} ${allowed[s.period] ? "허용됨" : "잠김"}`).join(", ") + ")"
+    : "";
+
   return (
     <button
       type="button"
-      className={`unlock-btn${allowed ? " is-open" : ""}`}
+      className={`unlock-btn${allOpen ? " is-open" : ""}`}
       disabled={busy}
       title={
-        allowed
+        (allOpen
           ? "담당자가 다시 제출할 수 있는 상태입니다 — 눌러서 다시 잠급니다"
-          : "담당자가 링크에서 다시 제출할 수 있게 한 번 열어줍니다"
+          : "담당자가 링크에서 다시 제출할 수 있게 한 번 열어줍니다") + perPeriod
       }
       onClick={toggle}
     >
-      {allowed ? "수정 허용됨" : "수정 허용"}
+      {allOpen
+        ? "수정 허용됨"
+        : openPeriods.length > 0
+        ? `수정 허용 (${openPeriods.map(shortQuarterLabel).join("·")}만 허용됨)`
+        : "수정 허용"}
     </button>
   );
 }
@@ -496,9 +555,17 @@ function ManagerCell({
   );
 }
 
-function OrgCell({ item, isChild, period }: { item: SurveyOrgData; isChild?: boolean; period: string }) {
+function OrgCell({ item, isChild, periods }: { item: SurveyOrgData; isChild?: boolean; periods: string[] }) {
   const children = item.children;
-  const submittedChildren = children.filter((c) => c.hasSubmission).length;
+  const multi = periods.length > 1;
+  const submitters = item.statuses
+    .filter((s) => s.hasSubmission && s.submittedBy)
+    .map(
+      (s) =>
+        `${multi ? `${shortQuarterLabel(s.period)} ` : ""}${s.submittedBy} 제출${
+          s.latestSubmittedAt ? ` · ${new Date(s.latestSubmittedAt).toLocaleDateString("ko-KR")}` : ""
+        }`
+    );
 
   return (
     <>
@@ -507,26 +574,31 @@ function OrgCell({ item, isChild, period }: { item: SurveyOrgData; isChild?: boo
         {item.org.basis}{" "}
         {children.length > 0 ? (
           // 집계 조직은 자기가 제출하는 대상이 아니라 하위 조직 값을 모으는 자리다 — 진행 상황으로 보여준다.
-          <span
-            className={`status-badge${submittedChildren === children.length ? " status-pending" : ""}`}
-            style={submittedChildren === children.length ? undefined : { background: "#f1f5f9", color: "#64748b" }}
-          >
-            하위 {submittedChildren}/{children.length}
-          </span>
+          periods.map((p) => {
+            const done = children.filter((c) => submittedIn(c, p)).length;
+            const all = done === children.length;
+            return (
+              <span
+                key={p}
+                className={`status-badge${all ? " status-pending" : ""}`}
+                style={{ marginRight: 4, ...(all ? {} : { background: "#f1f5f9", color: "#64748b" }) }}
+              >
+                {multi ? `${shortQuarterLabel(p)} ` : ""}하위 {done}/{children.length}
+              </span>
+            );
+          })
         ) : (
           <>
-            <SubmitBadge item={item} />
-            {item.hasSubmission && <UnlockButton item={item} period={period} />}
+            <SubmitBadge item={item} multi={multi} />
+            {hasAnySubmission(item) && <UnlockButton item={item} multi={multi} />}
           </>
         )}
       </div>
       <div className="survey-org-sub">
         {children.length > 0
           ? "하위 조직 값으로 자동 집계 · 링크 하나에 하위 조직이 모두 들어 있습니다"
-          : item.hasSubmission && item.submittedBy
-          ? `${item.submittedBy} 제출${
-              item.latestSubmittedAt ? ` · ${new Date(item.latestSubmittedAt).toLocaleDateString("ko-KR")}` : ""
-            }`
+          : submitters.length > 0
+          ? submitters.join(" / ")
           : item.org.requires_person_detail
           ? "개인별 확인 필요"
           : "조직 단위"}
@@ -538,7 +610,7 @@ function OrgCell({ item, isChild, period }: { item: SurveyOrgData; isChild?: boo
 function DivisionTable({
   title,
   items,
-  period,
+  periods,
   cells,
   patch,
   save,
@@ -547,7 +619,7 @@ function DivisionTable({
 }: {
   title: string;
   items: SurveyOrgData[];
-  period: string;
+  periods: string[];
   cells: CellMap;
   patch: (orgId: number, next: Partial<CellState>) => void;
   save: (orgId: number, field: "name" | "email") => void;
@@ -555,7 +627,6 @@ function DivisionTable({
   hasTemplate: boolean;
 }) {
   const submitting = items.flatMap((i) => (i.children.length > 0 ? i.children : [i]));
-  const done = submitting.filter((d) => d.hasSubmission).length;
 
   /** 이 링크로 보낼 수 있는 사람이 하나라도 있는지 — 주소가 하위 행에 있을 수도 있다. */
   function sendability(owner: SurveyOrgData): { canSend: boolean; hint: string } {
@@ -579,7 +650,7 @@ function DivisionTable({
       <div className="survey-panel-head">
         <span className="survey-panel-title">{title}</span>
         <span className="survey-panel-count">
-          {done}/{submitting.length} 제출
+          {progressText(submitting, periods)} 제출
         </span>
       </div>
       <table className="survey-tbl">
@@ -597,7 +668,7 @@ function DivisionTable({
               <Fragment key={item.org.id}>
                 <tr>
                   <td className="col-org">
-                    <OrgCell item={item} period={period} />
+                    <OrgCell item={item} periods={periods} />
                   </td>
                   {/* 집계 조직은 링크가 하나다 — 그 링크 한 화면에서 하위 조직을 모두 입력한다. */}
                   <td className="col-link">
@@ -620,7 +691,7 @@ function DivisionTable({
                 {leaderFirst(item.children).map((c) => (
                   <tr key={c.org.id} className="child-row">
                     <td className="col-org">
-                      <OrgCell item={c} isChild period={period} />
+                      <OrgCell item={c} isChild periods={periods} />
                     </td>
                     <td className="col-link survey-inherit-link">↑</td>
                     <td className="col-manager">
@@ -828,19 +899,23 @@ function MailTemplateEditor({
 }
 
 export default function SurveyOverview({
-  period,
+  periods,
   data,
   mailSubject,
   mailBody,
   hasPreviousMail,
 }: {
-  period: string;
+  /** 이번 라운드의 기간들. 묶음 라운드(26년 4Q & 27년 BP)면 제출 현황이 기간마다 따로 보인다. */
+  periods: string[];
   data: SurveyOrgData[];
   mailSubject: string;
   mailBody: string;
   /** 이전 분기에 저장해 둔 문구가 있는지 — 있을 때만 불러오기 버튼을 보여준다. */
   hasPreviousMail: boolean;
 }) {
+  // 링크·안내 메일·담당자는 라운드에 한 벌이다 — 묶음 라운드에서도 첫 기간 자리에 저장한다
+  // (메일 문구의 mailPeriodOf, 링크 발송 서버와 같은 기준).
+  const period = periods[0];
   // 담당자 칸 상태는 행이 아니라 **화면 전체**가 들고 있다. 발송 버튼은 링크 주인 행에 있는데
   // 주소는 하위 행에 입력될 수 있어(HR실·Staff(CEO)) 행 안에 상태를 가두면 버튼이 갱신되지 않는다.
   const [cells, setCells] = useState<CellMap>(() => initialCells(data));
@@ -946,10 +1021,6 @@ export default function SurveyOverview({
     ...Object.keys(grouped).filter((d) => !DIVISION_ORDER.includes(d)),
   ];
 
-  // 실제로 제출하는 단위(집계 조직은 빼고 하위 팀까지 펼친 것)로 진행 상황을 센다.
-  const submitting = ordered.flatMap((i) => (i.children.length > 0 ? i.children : [i]));
-  const submittedCount = submitting.filter((d) => d.hasSubmission).length;
-
   // 담당자는 적혀 있는데 메일이 없는 곳 — 발송이 막히는 유일한 이유라 상시 눈에 보이게 둔다.
   const missingEmail = useMemo(
     () =>
@@ -963,7 +1034,7 @@ export default function SurveyOverview({
   return (
     <div className="survey-wrap">
       <div className="panel survey-panel">
-        <div className="panel-title">조사 현황 ({period})</div>
+        <div className="panel-title">조사 현황 ({periods.join(" & ")})</div>
         <MailTemplateEditor
           initialSubject={mailSubject}
           initialBody={mailBody}
@@ -978,7 +1049,7 @@ export default function SurveyOverview({
           key={division}
           title={division}
           items={grouped[division]}
-          period={period}
+          periods={periods}
           cells={cells}
           patch={patch}
           save={save}

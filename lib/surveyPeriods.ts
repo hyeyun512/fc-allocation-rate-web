@@ -1,4 +1,4 @@
-import { prettyQuarterLabel } from "./quarter";
+import { prettyQuarterLabel, parseQuarter } from "./quarter";
 
 /**
  * 조사 라운드 — 한 번에 함께 조사하는 기간 묶음.
@@ -51,4 +51,13 @@ export function mailPeriodOf(period: string): string {
     if (periods.includes(period)) return periods[0];
   }
   return period;
+}
+
+/**
+ * 입력칸을 지난 분기 확정값으로 미리 채우는 기간인지.
+ * 연간 예산(BP)은 빈칸에서 시작한다(사용자 지시) — 분기 실적 배부율을 그대로 끌고 오면
+ * 예산을 새로 따져보지 않고 그대로 제출하기 쉽다. 그 기간에 이미 저장한 값은 그대로 보인다.
+ */
+export function prefillsFromEarlier(period: string): boolean {
+  return !parseQuarter(period).bp;
 }

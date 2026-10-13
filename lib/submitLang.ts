@@ -38,11 +38,8 @@ const KO = {
     `이번 조사는 ${labels} 두 기간을 함께 받습니다. 조직마다 기간별 입력 행이 있으니 둘 다 입력한 뒤 제출해 주세요.`,
   copyFromPeriod: (from: string, to: string) => `${from} 입력값을 ${to}에 복사`,
   periodLocked: (label: string) => `${label}은(는) 이미 제출되었습니다`,
-  confirmUntouched: (labels: string) =>
-    `${labels}은(는) 미리 채워진 값(지난 분기 확정값)을 고치지 않았습니다.
-그대로 함께 제출할까요?
-
-[확인] 함께 제출  ·  [취소] 고친 기간만 제출`,
+  errMustEditAll: (labels: string) =>
+    `${labels}은(는) 아직 수정하지 않았습니다. 두 기간을 모두 확인·수정한 뒤 제출해 주세요. (미리 채워진 값은 지난 분기 확정값입니다)`,
   errNothingToSubmit: "제출할 값이 없습니다. 배부율을 입력한 뒤 제출해 주세요.",
   inactiveTargetsNote: (labels: string) =>
     `※ ${labels}은(는) 이번 분기부터 배부 대상에서 제외되어 입력하지 않습니다. 전분기 데이터를 끌고오면 ${labels} 비율이 빠지므로, 합계가 100%가 되도록 다른 항목에 나눠 입력해주세요.`,
@@ -123,11 +120,8 @@ const EN: SubmitStrings = {
     `This survey covers two periods: ${labels}. Each organisation has one input row per period — fill in both, then submit.`,
   copyFromPeriod: (from: string, to: string) => `Copy ${from} figures to ${to}`,
   periodLocked: (label: string) => `${label} has already been submitted`,
-  confirmUntouched: (labels: string) =>
-    `You have not changed the pre-filled figures (last quarter's) for ${labels}.
-Submit them as they are?
-
-[OK] submit together  ·  [Cancel] submit only the periods you changed`,
+  errMustEditAll: (labels: string) =>
+    `You have not updated ${labels} yet. Please review and update both periods before submitting. (The pre-filled figures are last quarter's.)`,
   errNothingToSubmit: "There is nothing to submit. Please enter the allocation rates first.",
   inactiveTargetsNote: (labels: string) =>
     `* ${labels} is no longer an allocation target from this quarter and cannot be entered. If you copy last quarter's figures, the ${labels} share is left out, so please spread it over the other columns so the total is 100%.`,

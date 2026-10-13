@@ -1,9 +1,9 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { TARGETS, TargetKey, getPreviousPeriod, isTargetActiveIn } from "@/lib/targets";
-import { sortQuarters } from "@/lib/quarter";
+import { prettyQuarterLabel, sortQuarters } from "@/lib/quarter";
 import { computeItRates, sumItBasisInput, ItBasisInput } from "@/lib/itBasis";
 import { RateTableHead, ReadOnlyRateRow, NoteTip, useTargetColumns } from "@/components/RateParts";
 import { readPasteGrid, shouldHandlePaste } from "@/lib/paste";
@@ -105,29 +105,11 @@ function toFullRec(rates: Partial<Record<TargetKey, number>>): Record<TargetKey,
   return r;
 }
 
-function BasisForm({
-  quarter,
-  state,
-  onChange,
-  withResident,
-  pastRows,
-  billingBasis,
-  onBillingBasisChange,
-  note,
-  onNoteChange,
-  submittedBy,
-  onSubmittedByChange,
-  onSave,
-  saving,
-  noteDirty,
-  editable,
-  confirmedAt,
-}: {
+/** 기준정보 표에서 이번 라운드 기간 하나의 행 (입력 중이면 입력칸, 확정됐으면 읽기 전용). */
+interface CurrentBasisRowProps {
   quarter: string;
   state: FormState;
   onChange: (key: FieldKey, v: string) => void;
-  withResident?: boolean;
-  pastRows: ItBasisRow[];
   billingBasis: string;
   onBillingBasisChange: (v: string) => void;
   note: string;
@@ -141,7 +123,25 @@ function BasisForm({
   confirmedAt: string | null;
   /** 저장하지 않은 코멘트 변경이 있으면 버튼을 짙게 칠해 눈에 띄게 한다. */
   noteDirty: boolean;
-}) {
+}
+
+function CurrentBasisRow({
+  quarter,
+  state,
+  onChange,
+  withResident,
+  billingBasis,
+  onBillingBasisChange,
+  note,
+  onNoteChange,
+  submittedBy,
+  onSubmittedByChange,
+  onSave,
+  saving,
+  noteDirty,
+  editable,
+  confirmedAt,
+}: CurrentBasisRowProps & { withResident?: boolean }) {
   // 목록에 없는 값이 저장돼 있으면 '직접 입력'으로 열어둔다.
   // (선택 직후에는 값이 비어 있어 값만으로는 판단할 수 없어 별도 상태로 둔다.)
   const [customBasis, setCustomBasis] = useState(
@@ -149,7 +149,7 @@ function BasisForm({
   );
   const isCustomBasis = customBasis;
   const total = sumItBasisInput(toBasisInput(state));
-  const currentRow = !editable ? (
+  return !editable ? (
     // 확정된 분기 — 과거 분기 행과 같은 읽기 전용 모양.
     <tr key={quarter} className="ro-row">
       <td style={{ textAlign: "left" }}>{quarter}</td>
@@ -268,9 +268,24 @@ function BasisForm({
       </td>
     </tr>
   );
-  // 과거 이력 + 현재 분기를 항상 연도->분기 순으로 정렬해서, 현재 분기가 과거 데이터보다
+}
+
+/** 기준정보 표 하나 (인원수 또는 SAP ID 개수) — 지난 분기 이력 + 이번 라운드 기간마다의 행. */
+function BasisForm({
+  withResident,
+  pastRows,
+  current,
+}: {
+  withResident?: boolean;
+  pastRows: ItBasisRow[];
+  /** 이번 라운드 기간들의 행 (기간 순서대로). 묶음 라운드면 둘이다. */
+  current: CurrentBasisRowProps[];
+}) {
+  // 과거 이력 + 이번 기간들을 항상 연도->분기 순으로 정렬해서, 이번 기간이 과거 데이터보다
   // 이전 분기여도(예: 2Q까지 입력된 상태에서 1Q를 다시 열람) 순서가 뒤집히지 않게 한다.
-  const orderedQuarterList = sortQuarters(Array.from(new Set([...pastRows.map((r) => r.quarter), quarter])));
+  const orderedQuarterList = sortQuarters(
+    Array.from(new Set([...pastRows.map((r) => r.quarter), ...current.map((c) => c.quarter)]))
+  );
   return (
     <div className="tbl-scroll" style={{ marginBottom: 12 }}>
       <table className="rate-tbl">
@@ -291,7 +306,8 @@ function BasisForm({
         </thead>
         <tbody>
           {orderedQuarterList.map((q) => {
-            if (q === quarter) return currentRow;
+            const cur = current.find((c) => c.quarter === q);
+            if (cur) return <CurrentBasisRow key={q} {...cur} withResident={withResident} />;
             const r = pastRows.find((row) => row.quarter === q)!;
             const rTotal = sumItBasisInput({
               headquarters: r.headquarters,
@@ -330,18 +346,14 @@ function BasisForm({
   );
 }
 
-export default function ItPanel({
-  period,
-  initialHeadcount,
-  initialSap,
-  history,
-}: {
-  period: string;
-  initialHeadcount: ItBasisRow | null;
-  initialSap: ItBasisRow | null;
-  history: ItBasisRow[];
-}) {
-  const quarter = period;
+/**
+ * 기간 하나의 IT 기준정보 입력 상태 (인원수·SAP ID 개수 두 표의 그 기간 행).
+ * 26년 4Q와 27년 BP처럼 두 기간을 함께 검토하면 두 표에 기간마다 입력 행이 붙고, 저장도 기간마다 따로 된다
+ * (/api/it-basis의 quarter).
+ */
+function useItEntry(quarter: string, history: ItBasisRow[]) {
+  const initialHeadcount = history.find((r) => r.quarter === quarter && r.metric === "인원수") ?? null;
+  const initialSap = history.find((r) => r.quarter === quarter && r.metric === "SAP ID 개수") ?? null;
   const [headcountForm, setHeadcountForm] = useState<FormState>(() => fromRow(initialHeadcount, quarter));
   const [sapForm, setSapForm] = useState<FormState>(() => fromRow(initialSap, quarter));
   // 인원수와 SAP ID 개수는 담당자가 달라 입력자를 따로 받는다.
@@ -355,8 +367,6 @@ export default function ItPanel({
   // 마지막으로 저장된 코멘트. 지금 값과 다르면 아직 저장 전이라 버튼을 짙게 칠한다.
   const [savedHeadcountNote, setSavedHeadcountNote] = useState(initialHeadcount?.note ?? "");
   const [savedSapNote, setSavedSapNote] = useState(initialSap?.note ?? "");
-  const router = useRouter();
-  const [confirming, setConfirming] = useState(false);
   // 이미 확정된 분기를 '입력중'으로 보여주면 아직 안 한 것처럼 보인다 —
   // 확정 상태면 읽기 전용으로 두고 '수정'을 눌렀을 때만 다시 입력할 수 있게 한다.
   const [savedConfirmedAt, setSavedConfirmedAt] = useState(
@@ -364,21 +374,105 @@ export default function ItPanel({
   );
   const [unlocked, setUnlocked] = useState(false);
   const editable = !savedConfirmedAt || unlocked;
-  const [confirmed, setConfirmed] = useState(false);
-  const [error, setError] = useState("");
 
   const preview = useMemo(() => computeItRates(toBasisInput(headcountForm), toBasisInput(sapForm), quarter), [headcountForm, sapForm, quarter]);
+  // 빈 화면에서 저장(또는 코멘트 칸 엔터)이 눌리면 값이 0인 분기가 확정된 것처럼 남는다 —
+  // 실제로 3Q를 연 적도 없는데 View에 3Q IT 배부율이 생긴 적이 있어 저장 전에 이걸로 막는다.
+  const hasInput = sumItBasisInput(toBasisInput(headcountForm)) > 0 || sumItBasisInput(toBasisInput(sapForm)) > 0;
+  // 두 기간을 함께 검토할 때 아래 저장 버튼은 이 화면에서 값을 바꾼 기간만 저장한다 — 손대지 않은 기간을
+  // 다시 저장하면 그 기간의 확인일자·입력자가 덮어써진다. 처음 불러온 값(또는 마지막 저장값)과 비교한다.
+  const currentJson = JSON.stringify({ headcountForm, sapForm, headcountBy, sapBy, headcountBasis, sapBasis, headcountNote, sapNote });
+  const snapshotRef = useRef<string | null>(null);
+  if (snapshotRef.current === null) snapshotRef.current = currentJson;
+  const dirty = currentJson !== snapshotRef.current;
 
+  /** 이 기간을 저장한다. 실패하면 던진다. */
+  async function save() {
+    const res = await fetch("/api/it-basis", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        quarter,
+        headcount: toBasisInput(headcountForm),
+        sap: toBasisInput(sapForm),
+        headcountBy: headcountBy || null,
+        sapBy: sapBy || null,
+        headcountBasis: headcountBasis || null,
+        sapBasis: sapBasis || null,
+        headcountNote: headcountNote || null,
+        sapNote: sapNote || null,
+        // 예전 형식(단일 입력자)과 호환 — 서버가 개별 값이 없을 때만 쓴다.
+        submittedBy: headcountBy || sapBy || null,
+      }),
+    });
+    const json = await res.json();
+    if (!res.ok) throw new Error(json.error || "확정 처리 중 오류가 발생했습니다.");
+    setSavedHeadcountNote(headcountNote);
+    setSavedSapNote(sapNote);
+    setSavedConfirmedAt(new Date().toISOString());
+    setUnlocked(false);
+    snapshotRef.current = currentJson;
+  }
+
+  return {
+    quarter,
+    headcountForm,
+    setHeadcountForm,
+    sapForm,
+    setSapForm,
+    headcountBy,
+    setHeadcountBy,
+    sapBy,
+    setSapBy,
+    headcountBasis,
+    setHeadcountBasis,
+    sapBasis,
+    setSapBasis,
+    headcountNote,
+    setHeadcountNote,
+    sapNote,
+    setSapNote,
+    savedHeadcountNote,
+    savedSapNote,
+    savedConfirmedAt,
+    editable,
+    setUnlocked,
+    preview,
+    hasInput,
+    dirty,
+    save,
+  };
+}
+
+type ItEntry = ReturnType<typeof useItEntry>;
+
+export default function ItPanel({
+  periods,
+  history,
+}: {
+  /** 이번 라운드의 기간들 (기간 순서대로). 묶음 라운드(26년 4Q & 27년 BP)면 기간마다 입력 행이 붙는다. */
+  periods: string[];
+  history: ItBasisRow[];
+}) {
+  // 기간 수는 라운드가 정하고 화면을 여는 동안 바뀌지 않으므로, 훅을 기간마다 한 번씩 불러도 순서가 고정된다.
+  // eslint-disable-next-line react-hooks/rules-of-hooks
+  const entries: ItEntry[] = periods.map((p) => useItEntry(p, history));
+  const multi = entries.length > 1;
+  const router = useRouter();
+  const [confirming, setConfirming] = useState(false);
+  const [error, setError] = useState("");
+
+  // 이번 라운드 기간들은 입력 행으로 따로 그리므로 이력 행에서는 뺀다.
   const pastHeadcountRows = useMemo(
-    () => history.filter((r) => r.metric === "인원수" && r.quarter !== quarter).sort((a, b) => a.quarter.localeCompare(b.quarter)),
-    [history, quarter]
+    () => history.filter((r) => r.metric === "인원수" && !periods.includes(r.quarter)).sort((a, b) => a.quarter.localeCompare(b.quarter)),
+    [history, periods]
   );
   const pastSapRows = useMemo(
-    () => history.filter((r) => r.metric === "SAP ID 개수" && r.quarter !== quarter).sort((a, b) => a.quarter.localeCompare(b.quarter)),
-    [history, quarter]
+    () => history.filter((r) => r.metric === "SAP ID 개수" && !periods.includes(r.quarter)).sort((a, b) => a.quarter.localeCompare(b.quarter)),
+    [history, periods]
   );
 
-  const prevPeriod = getPreviousPeriod(quarter);
+  const prevPeriod = getPreviousPeriod(periods[0]);
   const prevHeadcountRow = prevPeriod ? pastHeadcountRows.find((r) => r.quarter === prevPeriod) ?? null : null;
   const prevSapRow = prevPeriod ? pastSapRows.find((r) => r.quarter === prevPeriod) ?? null : null;
 
@@ -481,48 +575,78 @@ export default function ItPanel({
     });
   }, [confirmedByQuarter]);
 
-  async function handleConfirm() {
+  /** 기간들을 저장한다. 값이 비어 있는 기간은 건너뛴다(빈 기간을 저장하면 0인 분기가 확정된 것처럼 남는다). */
+  async function saveEntries(targets: ItEntry[]) {
     setError("");
-    // 빈 화면에서 저장(또는 코멘트 칸 엔터)이 눌리면 값이 0인 분기가 확정된 것처럼 남는다 —
-    // 실제로 3Q를 연 적도 없는데 View에 3Q IT 배부율이 생긴 적이 있어 여기서 막는다.
-    if (sumItBasisInput(toBasisInput(headcountForm)) <= 0 && sumItBasisInput(toBasisInput(sapForm)) <= 0) {
+    const toSave = targets.filter((e) => e.hasInput);
+    if (toSave.length === 0) {
       setError("인원수·SAP ID 개수가 비어 있어 저장하지 않았습니다.");
       return;
     }
     setConfirming(true);
-    try {
-      const res = await fetch("/api/it-basis", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          quarter,
-          headcount: toBasisInput(headcountForm),
-          sap: toBasisInput(sapForm),
-          headcountBy: headcountBy || null,
-          sapBy: sapBy || null,
-          headcountBasis: headcountBasis || null,
-          sapBasis: sapBasis || null,
-          headcountNote: headcountNote || null,
-          sapNote: sapNote || null,
-          // 예전 형식(단일 입력자)과 호환 — 서버가 개별 값이 없을 때만 쓴다.
-          submittedBy: headcountBy || sapBy || null,
-        }),
-      });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error || "확정 처리 중 오류가 발생했습니다.");
-      setConfirmed(true);
-      setSavedHeadcountNote(headcountNote);
-      setSavedSapNote(sapNote);
-      setSavedConfirmedAt(new Date().toISOString());
-      setUnlocked(false);
-      // 서버 컴포넌트는 진입 시 한 번만 조회한다 — 새로고침하지 않으면
-      // 탭을 옮겼다 돌아왔을 때 저장 전 값으로 다시 그려진다.
-      router.refresh();
-    } catch (e: any) {
-      setError(e.message);
-    } finally {
-      setConfirming(false);
+    const failures: string[] = [];
+    for (const e of toSave) {
+      try {
+        await e.save();
+      } catch (err: any) {
+        failures.push(multi ? `${e.quarter}: ${err.message}` : err.message);
+      }
     }
+    if (failures.length > 0) setError(failures.join(" / "));
+    setConfirming(false);
+    // 서버 컴포넌트는 진입 시 한 번만 조회한다 — 새로고침하지 않으면
+    // 탭을 옮겼다 돌아왔을 때 저장 전 값으로 다시 그려진다.
+    router.refresh();
+  }
+
+  /**
+   * 아래 저장 버튼 — 열려 있고 값을 바꾼 기간을 저장한다 (기간이 하나뿐이면 예전처럼 그 기간).
+   * 표 안의 코멘트 ✓는 그 행의 기간만 저장한다.
+   */
+  function handleConfirm() {
+    // 두 기간을 함께 조사할 때는 열린 기간을 모두 고쳐야 저장된다(사용자 지시) — 미리 채워진 지난 분기
+    // 값이 그대로 확정되거나, 한 기간만 고치고 다른 기간을 빠뜨리는 일을 막는다.
+    if (multi) {
+      const untouched = entries.filter((e) => e.editable && !e.dirty);
+      if (untouched.length > 0) {
+        setError(`${untouched.map((e) => prettyQuarterLabel(e.quarter)).join(", ")}은(는) 아직 수정하지 않았습니다. 두 기간을 모두 수정한 뒤 저장해 주세요.`);
+        return;
+      }
+    }
+    const changed = entries.filter((e) => e.editable && (!multi || e.dirty));
+    if (changed.length === 0) {
+      setError("바뀐 값이 없어 저장하지 않았습니다.");
+      return;
+    }
+    return saveEntries(changed);
+  }
+
+  /** 표 하나의 불러오기 버튼 — 첫 기간은 전분기 확정값, 다음 기간은 바로 앞 기간에 지금 넣은 값. */
+  function loadButtons(kind: "headcount" | "sap") {
+    const prevRow = kind === "headcount" ? prevHeadcountRow : prevSapRow;
+    return entries.map((e, i) => {
+      if (!e.editable) return null;
+      const setForm = kind === "headcount" ? e.setHeadcountForm : e.setSapForm;
+      // 전분기(라운드 첫 기간의 직전, 예: 3Q) 끌고오기는 모든 기간에 두고, 뒤 기간에는 복사 버튼도 붙인다.
+      const prev = i > 0 ? entries[i - 1] : null;
+      return (
+        <span key={e.quarter} style={{ display: "inline-flex", gap: 6, flexWrap: "wrap" }}>
+          {prevRow && (
+            <button className="btn btn-secondary btn-sm" onClick={() => setForm(fromRow(prevRow, e.quarter))}>
+              {multi ? `${prettyQuarterLabel(e.quarter)}: ` : ""}전분기 데이터 끌고오기
+            </button>
+          )}
+          {prev && (
+            <button
+              className="btn btn-secondary btn-sm"
+              onClick={() => setForm({ ...(kind === "headcount" ? prev.headcountForm : prev.sapForm) })}
+            >
+              {prettyQuarterLabel(prev.quarter)} 입력값을 {prettyQuarterLabel(e.quarter)}에 복사
+            </button>
+          )}
+        </span>
+      );
+    });
   }
 
   return (
@@ -534,7 +658,7 @@ export default function ItPanel({
 
       <div style={{ marginBottom: 12, display: "flex", gap: 16, flexWrap: "wrap" }}>
         <div className="field-hint">
-          적용 분기: <b>{quarter}</b> (검토 및 확정 상단의 현재 라운드에서 변경)
+          적용 분기: <b>{periods.join(", ")}</b> (검토 및 확정 상단의 현재 라운드에서 변경)
         </div>
       </div>
 
@@ -543,90 +667,97 @@ export default function ItPanel({
         <div className="panel-sub" style={{ fontWeight: 700, color: "#1a202c", margin: 0 }}>
           ■ 인원수 (명) — 분기별 이력
         </div>
-        {prevHeadcountRow && (
-          <button className="btn btn-secondary btn-sm" onClick={() => setHeadcountForm(fromRow(prevHeadcountRow, quarter))}>
-            전분기 데이터 끌고오기
-          </button>
-        )}
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>{loadButtons("headcount")}</div>
       </div>
       <BasisForm
-        quarter={quarter}
-        state={headcountForm}
-        onChange={(k, v) => setHeadcountForm((s) => ({ ...s, [k]: v }))}
         withResident
         pastRows={pastHeadcountRows}
-        billingBasis={headcountBasis}
-        onBillingBasisChange={setHeadcountBasis}
-        note={headcountNote}
-        onNoteChange={setHeadcountNote}
-        submittedBy={headcountBy}
-        onSubmittedByChange={setHeadcountBy}
-        onSave={handleConfirm}
-        saving={confirming}
-        noteDirty={headcountNote !== savedHeadcountNote}
-        editable={editable}
-        confirmedAt={savedConfirmedAt}
+        current={entries.map((e) => ({
+          quarter: e.quarter,
+          state: e.headcountForm,
+          onChange: (k: FieldKey, v: string) => e.setHeadcountForm((s) => ({ ...s, [k]: v })),
+          billingBasis: e.headcountBasis,
+          onBillingBasisChange: e.setHeadcountBasis,
+          note: e.headcountNote,
+          onNoteChange: e.setHeadcountNote,
+          submittedBy: e.headcountBy,
+          onSubmittedByChange: e.setHeadcountBy,
+          onSave: () => saveEntries([e]),
+          saving: confirming,
+          noteDirty: e.headcountNote !== e.savedHeadcountNote,
+          editable: e.editable,
+          confirmedAt: e.savedConfirmedAt,
+        }))}
       />
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8, margin: "16px 0 8px" }}>
         <div className="panel-sub" style={{ fontWeight: 700, color: "#1a202c", margin: 0 }}>
           ■ SAP ID 개수 (Ea) — 분기별 이력
         </div>
-        {prevSapRow && (
-          <button className="btn btn-secondary btn-sm" onClick={() => setSapForm(fromRow(prevSapRow, quarter))}>
-            전분기 데이터 끌고오기
-          </button>
-        )}
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>{loadButtons("sap")}</div>
       </div>
       <BasisForm
-        quarter={quarter}
-        state={sapForm}
-        onChange={(k, v) => setSapForm((s) => ({ ...s, [k]: v }))}
         pastRows={pastSapRows}
-        billingBasis={sapBasis}
-        onBillingBasisChange={setSapBasis}
-        note={sapNote}
-        onNoteChange={setSapNote}
-        submittedBy={sapBy}
-        onSubmittedByChange={setSapBy}
-        onSave={handleConfirm}
-        saving={confirming}
-        noteDirty={sapNote !== savedSapNote}
-        editable={editable}
-        confirmedAt={savedConfirmedAt}
+        current={entries.map((e) => ({
+          quarter: e.quarter,
+          state: e.sapForm,
+          onChange: (k: FieldKey, v: string) => e.setSapForm((s) => ({ ...s, [k]: v })),
+          billingBasis: e.sapBasis,
+          onBillingBasisChange: e.setSapBasis,
+          note: e.sapNote,
+          onNoteChange: e.setSapNote,
+          submittedBy: e.sapBy,
+          onSubmittedByChange: e.setSapBy,
+          onSave: () => saveEntries([e]),
+          saving: confirming,
+          noteDirty: e.sapNote !== e.savedSapNote,
+          editable: e.editable,
+          confirmedAt: e.savedConfirmedAt,
+        }))}
       />
 
-      {/* 확정된 분기는 잠가두고, 고칠 때만 연다. 고칠 대상이 위 두 표이므로 버튼도 그 아래에 둔다. */}
-      {!editable && (
+      {/* 확정된 분기는 잠가두고, 고칠 때만 연다 (기간마다 따로). 고칠 대상이 위 두 표이므로 버튼도 그 아래에 둔다. */}
+      {entries.some((e) => !e.editable) && (
         <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", margin: "4px 0 12px" }}>
-          <span className="status-badge status-confirmed">확정됨 ({quarter})</span>
-          <button className="btn btn-secondary btn-sm" onClick={() => setUnlocked(true)}>
-            수정
-          </button>
+          {entries
+            .filter((e) => !e.editable)
+            .map((e) => (
+              <span key={e.quarter} style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                <span className="status-badge status-confirmed">확정됨 ({e.quarter})</span>
+                <button className="btn btn-secondary btn-sm" onClick={() => e.setUnlocked(true)}>
+                  {multi ? `${prettyQuarterLabel(e.quarter)} 수정` : "수정"}
+                </button>
+              </span>
+            ))}
         </div>
       )}
 
-      <div className="panel-sub" style={{ fontWeight: 700, color: "#1a202c", margin: "12px 0 8px" }}>
-        {/* 어떤 청구기준으로 만들어진 비율인지 함께 밝힌다 (인원수·SAP의 기준이 다를 수 있다). */}
-        ■ 자동계산 미리보기 ({quarter}
-        {headcountBasis || sapBasis
-          ? ` · 청구기준 인원수 ${headcountBasis || "미지정"} / SAP ${sapBasis || "미지정"}`
-          : ""}
-        )
-      </div>
-      <div className="tbl-scroll" style={{ marginBottom: 12 }}>
-        <table className="rate-tbl">
-          <RateTableHead />
-          <tbody>
-            {preview.map((row) => (
-              <ReadOnlyRateRow key={row.basis} label={row.basis} period={quarter} rec={toFullRec(row.rates)} headcount={row.headcount ?? null} />
-            ))}
-          </tbody>
-        </table>
-      </div>
+      {entries.map((e) => (
+        <div key={e.quarter}>
+          <div className="panel-sub" style={{ fontWeight: 700, color: "#1a202c", margin: "12px 0 8px" }}>
+            {/* 어떤 청구기준으로 만들어진 비율인지 함께 밝힌다 (인원수·SAP의 기준이 다를 수 있다). */}
+            ■ 자동계산 미리보기 ({e.quarter}
+            {e.headcountBasis || e.sapBasis
+              ? ` · 청구기준 인원수 ${e.headcountBasis || "미지정"} / SAP ${e.sapBasis || "미지정"}`
+              : ""}
+            )
+          </div>
+          <div className="tbl-scroll" style={{ marginBottom: 12 }}>
+            <table className="rate-tbl">
+              <RateTableHead />
+              <tbody>
+                {e.preview.map((row) => (
+                  <ReadOnlyRateRow key={row.basis} label={row.basis} period={e.quarter} rec={toFullRec(row.rates)} headcount={row.headcount ?? null} />
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      ))}
 
       {error && <div className="callout alert" style={{ marginBottom: 12 }}>{error}</div>}
-      {/* 확정된 분기에는 저장 버튼을 감춘다 — 다시 열려면 위 기준정보 표 아래의 '수정'을 누른다. */}
-      {editable && (
+      {/* 확정된 분기에는 저장 버튼을 감춘다 — 다시 열려면 위 기준정보 표 아래의 '수정'을 누른다.
+          두 기간을 함께 검토하면 열려 있고 값을 넣은 기간을 모두 저장한다. */}
+      {entries.some((e) => e.editable) && (
         <button className="btn btn-primary btn-sm" disabled={confirming} onClick={handleConfirm}>
           {confirming ? "저장 중..." : "저장 (allocation_rate 반영)"}
         </button>

@@ -175,7 +175,9 @@ function useOrgEntry({
   // 임시저장본이 있으면 담당자가 이미 손댄 기간이다.
   const valuesJson = JSON.stringify({ orgRates, orgHeadcountInput, orgNoteInput, persons });
   const [initialValuesJson] = useState(valuesJson);
-  const touched = !!draft || valuesJson !== initialValuesJson;
+  // 불러오기·복사 버튼은 값이 우연히 같아도 '손댄 것'으로 본다 (담당자가 그 기간을 확인했다는 뜻).
+  const [actedOn, setActedOn] = useState(false);
+  const touched = !!draft || actedOn || valuesJson !== initialValuesJson;
 
   function updateOrgRate(key: TargetKey, value: string) {
     setOrgRates((r) => ({ ...r, [key]: value }));
@@ -183,12 +185,14 @@ function useOrgEntry({
 
   function loadPreviousOrgRate() {
     if (!previousOrgRate) return;
+    setActedOn(true);
     setOrgRates(forPeriod(toRateMap(previousOrgRate.rates)));
     setOrgHeadcountInput(previousOrgRate.headcount != null ? String(previousOrgRate.headcount) : "");
     setOrgNoteInput(previousOrgRate.note ?? "");
   }
 
   function loadPreviousPersons() {
+    setActedOn(true);
     setPersons(
       previousPersons.map((p, i) => ({
         key: `prev-${i}-${Date.now()}`,
@@ -203,6 +207,7 @@ function useOrgEntry({
 
   /** 같은 조직의 다른 기간에 지금 입력 중인 값을 그대로 가져온다 (예: 4Q 값을 27년 BP에). */
   function copyFrom(other: { orgRates: RateMap; orgHeadcountInput: string; orgNoteInput: string; persons: PersonEditRow[] }) {
+    setActedOn(true);
     setOrgRates(forPeriod({ ...other.orgRates }));
     setOrgHeadcountInput(other.orgHeadcountInput);
     setOrgNoteInput(other.orgNoteInput);
@@ -463,13 +468,15 @@ function OrgSubmitSection({
   async function handleSubmit() {
     setError("");
     // 함께 제출할 기간: 열려 있고 값을 넣은 기간. 기간이 하나뿐이면 예전처럼 그대로 제출한다.
-    let targets = entries.filter((e) => e.editable && (!multi || e.hasInput));
-    // 고치지 않은(미리 채워진 값 그대로인) 기간이 섞여 있으면 함께 낼지 묻는다 — 4Q만 고치고 눌렀는데
-    // 27년 BP까지 지난 분기 값으로 제출되어 잠기면 안 된다.
-    const untouched = multi ? targets.filter((e) => !e.touched) : [];
-    if (untouched.length > 0 && untouched.length < targets.length) {
-      const ok = window.confirm(s.confirmUntouched(untouched.map((e) => prettyQuarterLabel(e.period)).join(", ")));
-      if (!ok) targets = targets.filter((e) => e.touched);
+    const targets = entries.filter((e) => e.editable);
+    // 두 기간을 함께 조사할 때는 열린 기간을 모두 고쳐야 제출된다 — 미리 채워진 지난 분기 값을
+    // 그대로 둔 기간이 함께 제출되어 잠기면 안 된다(4Q만 고치고 눌러 27년 BP가 지난 값으로 나가는 일).
+    if (multi) {
+      const untouched = targets.filter((e) => !e.touched);
+      if (untouched.length > 0) {
+        setError(s.errMustEditAll(untouched.map((e) => prettyQuarterLabel(e.period)).join(", ")));
+        return;
+      }
     }
     if (targets.length === 0) {
       setError(s.errNothingToSubmit);
@@ -590,29 +597,33 @@ function OrgSubmitSection({
   /** 기간 하나의 불러오기 버튼 — 첫 기간은 전분기 확정값, 다음 기간은 바로 앞 기간에 지금 넣은 값. */
   function loadButton(e: OrgEntry, i: number) {
     if (usesPersonTable ? !e.personsEditable : !e.orgEditable) return null;
-    if (i > 0) {
-      const prev = entries[i - 1];
-      return (
-        <button key={e.period} className="btn btn-secondary btn-sm" onClick={() => e.copyFrom(prev)}>
-          {s.copyFromPeriod(prettyQuarterLabel(prev.period), prettyQuarterLabel(e.period))}
-        </button>
-      );
-    }
+    // 전분기 끌고오기는 모든 기간에 둔다 — BP도 4Q처럼 확정된 3Q 값을 가져온다(lib/targets getPreviousPeriod).
+    // 뒤 기간에는 앞 기간에 지금 넣은 값을 복사하는 버튼도 붙인다.
+    const prev = i > 0 ? entries[i - 1] : null;
     const prefix = multi ? `${prettyQuarterLabel(e.period)}: ` : "";
-    if (usesPersonTable) {
-      return e.previousPersons.length > 0 ? (
-        <button key={e.period} className="btn btn-secondary btn-sm" onClick={e.loadPreviousPersons}>
-          {prefix}
-          {s.loadPrevPersons(e.previousPersons.length)}
-        </button>
-      ) : null;
-    }
-    return e.previousOrgRate ? (
-      <button key={e.period} className="btn btn-secondary btn-sm" onClick={e.loadPreviousOrgRate}>
-        {prefix}
-        {s.loadPrev}
-      </button>
-    ) : null;
+    const loadBtn = usesPersonTable
+      ? e.previousPersons.length > 0 && (
+          <button className="btn btn-secondary btn-sm" onClick={e.loadPreviousPersons}>
+            {prefix}
+            {s.loadPrevPersons(e.previousPersons.length)}
+          </button>
+        )
+      : e.previousOrgRate && (
+          <button className="btn btn-secondary btn-sm" onClick={e.loadPreviousOrgRate}>
+            {prefix}
+            {s.loadPrev}
+          </button>
+        );
+    return (
+      <span key={e.period} style={{ display: "inline-flex", gap: 6, flexWrap: "wrap" }}>
+        {loadBtn}
+        {prev && (
+          <button className="btn btn-secondary btn-sm" onClick={() => e.copyFrom(prev)}>
+            {s.copyFromPeriod(prettyQuarterLabel(prev.period), prettyQuarterLabel(e.period))}
+          </button>
+        )}
+      </span>
+    );
   }
 
   return (

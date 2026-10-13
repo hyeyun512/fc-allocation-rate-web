@@ -4,10 +4,9 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Nav from "../Nav";
 import SurveyOverview, { SurveyOrgData } from "../SurveyOverview";
-import { prettyQuarterLabel } from "@/lib/quarter";
 import { TargetColumns } from "@/components/RateParts";
-import { roundLabel, roundPeriods } from "@/lib/surveyPeriods";
-import ConfirmReview, { OrgReviewData, RateHistoryEntry } from "./ConfirmReview";
+import { roundLabel } from "@/lib/surveyPeriods";
+import ConfirmReview, { OrgReviewData, RateHistoryEntry, ReviewRound } from "./ConfirmReview";
 import ItPanel, { ItBasisRow } from "./ItPanel";
 import SelfUsePanel, { SelfuseBasisRow } from "./SelfUsePanel";
 
@@ -21,8 +20,8 @@ const CUSTOM_OPTION = "__custom__";
 const FIXED_VERSION = "Forecast";
 
 /** 검토 화면에 나오는 분기 전부 — 하위·주재원 조직의 이력까지 훑는다 (보일 배부 대상 열을 정하는 데 쓴다). */
-function shownPeriods(period: string, orgs: OrgReviewData[], hkrHistory: RateHistoryEntry[]): string[] {
-  const out = [period, ...hkrHistory.map((h) => h.quarter)];
+function shownPeriods(periods: string[], orgs: OrgReviewData[], hkrHistory: RateHistoryEntry[]): string[] {
+  const out = [...periods, ...hkrHistory.map((h) => h.quarter)];
   const walk = (o: OrgReviewData | null) => {
     if (!o) return;
     o.rateHistory.forEach((h) => out.push(h.quarter));
@@ -42,24 +41,23 @@ const SUB_TABS: { key: SubTab; label: string }[] = [
 ];
 
 export default function ConfirmTabs({
-  period,
+  periods,
   round,
   version,
   mailSubject,
   mailBody,
   hasPreviousMail,
   surveyData,
-  resourceData,
+  reviewRounds,
   hkrHistory,
-  hkrConfirmedThisPeriod,
-  itHeadcount,
-  itSap,
   itHistory,
-  selfuse,
   selfuseHistory,
 }: {
-  /** 지금 검토하는 기간 (라운드가 묶음이면 그중 하나). */
-  period: string;
+  /**
+   * 지금 라운드의 기간들 (기간 순서대로). 묶음 라운드(26년 4Q & 27년 BP)면 둘이고,
+   * 검토·확정도 두 기간을 한 화면에서 함께 한다 — 표마다 기간별 행이 붙는다.
+   */
+  periods: string[];
   /** 지금 라운드 — 기간 하나이거나 묶음("2026-Q4+2027-BP"). 조사 링크는 라운드의 기간을 모두 연다. */
   round: string;
   version: string;
@@ -69,13 +67,10 @@ export default function ConfirmTabs({
   /** 이전 분기에 저장해 둔 문구가 있는지 — 있을 때만 불러오기 버튼을 보여준다. */
   hasPreviousMail: boolean;
   surveyData: SurveyOrgData[];
-  resourceData: OrgReviewData[];
+  /** 기간마다의 리소스배부율 검토 데이터 (periods와 같은 순서). */
+  reviewRounds: ReviewRound[];
   hkrHistory: RateHistoryEntry[];
-  hkrConfirmedThisPeriod: boolean;
-  itHeadcount: ItBasisRow | null;
-  itSap: ItBasisRow | null;
   itHistory: ItBasisRow[];
-  selfuse: SelfuseBasisRow | null;
   selfuseHistory: SelfuseBasisRow[];
 }) {
   // 처음 열리는 탭은 언제나 맨 앞 탭이다. 순서를 바꾸면 첫 화면도 따라오게 두어,
@@ -113,8 +108,6 @@ export default function ConfirmTabs({
       }),
     });
     setSavingSettings(false);
-    // 라운드를 바꾸면 검토 기간도 새 라운드의 첫 기간으로 돌아가야 한다 — 이전 ?p=를 떼고 다시 연다.
-    router.replace("/confirm");
     router.refresh();
   }
 
@@ -157,26 +150,6 @@ export default function ConfirmTabs({
         </div>
       </div>
 
-      {/* 두 기간을 함께 조사하는 라운드 — 검토는 한 기간씩 한다. 표 바로 위에 두어 다른 기간이 있다는 걸 놓치지 않게 한다. */}
-      {roundPeriods(round).length > 1 && (
-        <div className="round-heading" style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-          <span>검토 기간</span>
-          {roundPeriods(round).map((p) => (
-            <button
-              key={p}
-              type="button"
-              className={`btn btn-sm ${period === p ? "btn-primary" : "btn-secondary"}`}
-              onClick={() => router.push(`/confirm?p=${encodeURIComponent(p)}`)}
-            >
-              {prettyQuarterLabel(p)}
-            </button>
-          ))}
-          <span style={{ fontSize: 12, fontWeight: 400, color: "#475569" }}>
-            조사 링크에는 {roundLabel(round)}이(가) 함께 열려 있습니다. 여기서 기간을 바꿔 하나씩 검토·확정합니다.
-          </span>
-        </div>
-      )}
-
       <div className="admin-subtabs">
         {SUB_TABS.map((t) => (
           <button
@@ -192,26 +165,30 @@ export default function ConfirmTabs({
 
       {subTab === "survey" && (
         <SurveyOverview
-          period={period}
+          periods={periods}
           data={surveyData}
           mailSubject={mailSubject}
           mailBody={mailBody}
           hasPreviousMail={hasPreviousMail}
         />
       )}
+      {/* 보일 배부 대상 열은 라운드의 마지막 기간 기준 — 27년 BP가 있으면 없어진 홀딩스 열은 감춘다. */}
       {subTab === "resource" && (
-        <TargetColumns periods={shownPeriods(period, resourceData, hkrHistory)} current={period}>
-          <ConfirmReview period={period} version={version} data={resourceData} hkrHistory={hkrHistory} hkrConfirmedThisPeriod={hkrConfirmedThisPeriod} />
+        <TargetColumns
+          periods={shownPeriods(periods, reviewRounds.flatMap((r) => r.data), hkrHistory)}
+          current={periods[periods.length - 1]}
+        >
+          <ConfirmReview rounds={reviewRounds} version={version} hkrHistory={hkrHistory} />
         </TargetColumns>
       )}
       {subTab === "selfuse" && (
-        <TargetColumns periods={[period, ...selfuseHistory.map((h) => h.quarter)]} current={period}>
-          <SelfUsePanel key={period} period={period} initial={selfuse} history={selfuseHistory} />
+        <TargetColumns periods={[...periods, ...selfuseHistory.map((h) => h.quarter)]} current={periods[periods.length - 1]}>
+          <SelfUsePanel key={periods.join("+")} periods={periods} history={selfuseHistory} />
         </TargetColumns>
       )}
       {subTab === "it" && (
-        <TargetColumns periods={[period, ...itHistory.map((h) => h.quarter)]} current={period}>
-          <ItPanel key={period} period={period} initialHeadcount={itHeadcount} initialSap={itSap} history={itHistory} />
+        <TargetColumns periods={[...periods, ...itHistory.map((h) => h.quarter)]} current={periods[periods.length - 1]}>
+          <ItPanel key={periods.join("+")} periods={periods} history={itHistory} />
         </TargetColumns>
       )}
     </div>

@@ -14,7 +14,7 @@ import { submitLangOf, orgLabelFor, submitterFor, noteFor } from "@/lib/englishO
 import { submitStrings } from "@/lib/submitLang";
 import type { CurrentPerson, PersonHistoryEntry, RateHistoryEntry, PersonRole } from "@/components/RateParts";
 import SubmitForm, { SubmitOrgData, SubmitPageData, SubmitRound } from "./SubmitForm";
-import { surveyPeriodsOf } from "@/lib/surveyPeriods";
+import { surveyPeriodsOf, prefillsFromEarlier } from "@/lib/surveyPeriods";
 import { quarterRank } from "@/lib/quarter";
 
 export const dynamic = "force-dynamic";
@@ -154,6 +154,8 @@ async function getData(token: string) {
       currentRate: (() => {
         const own = orgRates.find((r) => r.quarter === period);
         if (own) return toRateRecord(own);
+        // 27년 BP 같은 예산 기간은 빈칸에서 시작한다 — 앞선 기간 값으로 채우지 않는다.
+        if (!prefillsFromEarlier(period)) return null;
         const rank = quarterRank(period);
         const earlier = orgRates
           .filter((r) => quarterRank(r.quarter as string) >= 0 && quarterRank(r.quarter as string) < rank)

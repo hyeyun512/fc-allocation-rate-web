@@ -224,10 +224,11 @@ export function groupDivisionLabel(division: string): string {
 }
 
 // 'YYYY-Qn' 형식의 기간에서 바로 직전 분기 라벨을 계산 (예: '2026-Q3' -> '2026-Q2', '2026-Q1' -> '2025-Q4').
-// 연간 예산 'YYYY-BP'는 전년 4Q 다음에 받으므로 직전은 전년 4Q다 (예: '2027-BP' -> '2026-Q4').
+// 연간 예산 'YYYY-BP'는 전년 4Q와 함께 조사하므로, 끌고 올 '전분기'는 확정이 끝난 전년 3Q다
+// (예: '2027-BP' -> '2026-Q3'). 4Q는 BP와 함께 입력 중이라 아직 확정값이 없다.
 export function getPreviousPeriod(period: string): string | null {
   const bp = /^(\d{4})-BP$/.exec(period.trim());
-  if (bp) return `${Number(bp[1]) - 1}-Q4`;
+  if (bp) return `${Number(bp[1]) - 1}-Q3`;
   const m = /^(\d{4})-Q([1-4])$/.exec(period.trim());
   if (!m) return null;
   const year = Number(m[1]);
