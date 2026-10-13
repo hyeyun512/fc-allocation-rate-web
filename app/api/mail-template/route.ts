@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { mailTemplateProblem } from "@/lib/linkMail";
 import { previousTemplate, MailTemplateRow } from "@/lib/mailTemplateStore";
+import { mailPeriodOf } from "@/lib/surveyPeriods";
 
 /**
  * 조사 링크 안내 메일의 제목·본문 저장 (**분기별**).
@@ -12,7 +13,8 @@ import { previousTemplate, MailTemplateRow } from "@/lib/mailTemplateStore";
 export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => null);
   const supabase = getSupabaseAdmin();
-  const period = String(body?.period ?? "").trim();
+  // 묶음 라운드(26년 4Q & 27년 BP)는 문구 한 벌을 함께 쓴다 — 어느 기간으로 와도 같은 자리에 저장한다.
+  const period = mailPeriodOf(String(body?.period ?? "").trim());
   if (!period) return NextResponse.json({ error: "기간이 필요합니다." }, { status: 400 });
 
   // 지난 분기 문구 불러오기 — 저장하지 않고 돌려주기만 한다. 화면에서 보고 고친 뒤 저장하게.

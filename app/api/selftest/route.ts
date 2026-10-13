@@ -6,7 +6,7 @@ import { deltaPairOptions, defaultDeltaPairKey, deltaQuarterLabel, sortQuarters,
 import { TARGETS, toDbTargets, visibleTargets, isTargetActiveIn, inactiveTargetKeys, parseTargetRates, stripInactiveTargets, getPreviousPeriod } from "@/lib/targets";
 import { isOrgActiveIn } from "@/lib/orgLifespan";
 import { fixedRatesFor } from "@/lib/fixedRates";
-import { roundPeriods, roundLabel, resolveSurveyPeriod } from "@/lib/surveyPeriods";
+import { roundPeriods, roundLabel, resolveSurveyPeriod, mailPeriodOf } from "@/lib/surveyPeriods";
 import { computeItRates } from "@/lib/itBasis";
 import { submitLockState } from "@/lib/submitLock";
 import { computeSelfuseRates, hasBundangSelfuse2 } from "@/lib/selfuseBasis";
@@ -522,6 +522,8 @@ function runCases(): Case[] {
   // ── 묶음 라운드: 26년 4Q & 27년 BP를 링크 하나로 ──
   c.push(eq("round: 묶음은 두 기간으로 풀린다", roundPeriods("2026-Q4+2027-BP"), ["2026-Q4", "2027-BP"]));
   c.push(eq("round: 보통 라운드는 그 기간 하나", roundPeriods("2026-Q3"), ["2026-Q3"]));
+  c.push(eq("round: BP를 봐도 메일 문구는 4Q 자리", mailPeriodOf("2027-BP"), "2026-Q4"));
+  c.push(eq("round: 보통 기간의 메일 문구는 그 기간", mailPeriodOf("2026-Q3"), "2026-Q3"));
   c.push(eq("round: 표기", roundLabel("2026-Q4+2027-BP"), "2026-4Q & 2027-BP"));
   c.push(eq("round: 묶음 안의 기간은 받는다", resolveSurveyPeriod({ current_period: "2026-Q4+2027-BP" }, "2027-BP"), "2027-BP"));
   c.push(eq("round: 묶음 밖의 기간은 거절", resolveSurveyPeriod({ current_period: "2026-Q4+2027-BP" }, "2026-Q3"), null));

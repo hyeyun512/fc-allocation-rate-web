@@ -1,3 +1,4 @@
+import { mailPeriodOf } from "@/lib/surveyPeriods";
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { resolveManagerPair, OrgManagerRow } from "@/lib/orgManager";
@@ -70,7 +71,8 @@ export async function POST(req: NextRequest) {
   const [{ data: orgRows }, { data: managerRows }, { data: tpl }] = await Promise.all([
     supabase.from("allocation_orgs").select("id,basis,parent_basis,access_token,active"),
     supabase.from("allocation_org_managers").select("org_id,period,manager_name,manager_email,email_set_period"),
-    supabase.from("allocation_mail_templates").select("period,subject,body").eq("period", period).maybeSingle(),
+    // 묶음 라운드는 문구 한 벌을 함께 쓴다 (검토 기간이 BP여도 4Q 자리에 저장된 문구).
+    supabase.from("allocation_mail_templates").select("period,subject,body").eq("period", mailPeriodOf(period)).maybeSingle(),
   ]);
 
   const orgs = (orgRows ?? []) as OrgLite[];

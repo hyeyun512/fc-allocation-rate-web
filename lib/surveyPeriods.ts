@@ -40,3 +40,15 @@ export function resolveSurveyPeriod(settings: { current_period?: string | null }
   const p = String(requested);
   return open.includes(p) ? p : null;
 }
+
+/**
+ * 안내 메일 문구를 저장·조회하는 기간.
+ * 묶음 라운드(26년 4Q & 27년 BP)는 링크도 메일도 하나라서, 검토 기간을 4Q로 보든 BP로 보든
+ * 같은 문구를 써야 한다 — 묶음의 첫 기간에 한 벌만 둔다. 예전에는 BP로 바꾸면 문구가 없어 보였다.
+ */
+export function mailPeriodOf(period: string): string {
+  for (const periods of Object.values(ROUND_GROUPS)) {
+    if (periods.includes(period)) return periods[0];
+  }
+  return period;
+}

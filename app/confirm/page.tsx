@@ -10,7 +10,7 @@ import { templateFor, previousTemplate, MailTemplateRow } from "@/lib/mailTempla
 import { OrgReviewData } from "./ConfirmReview";
 import { SurveyOrgData } from "../SurveyOverview";
 import ConfirmTabs from "./ConfirmTabs";
-import { roundPeriods } from "@/lib/surveyPeriods";
+import { roundPeriods, mailPeriodOf } from "@/lib/surveyPeriods";
 
 export const dynamic = "force-dynamic";
 
@@ -37,8 +37,8 @@ export default async function AdminConfirmPage({ searchParams }: { searchParams?
   // 메일 문구는 분기별로 남긴다 — 새 분기 문구를 저장해도 지난 분기에 뭐라고 보냈는지가 남아 있어야
   // 그걸 그대로 불러다 쓸 수 있다.
   const { data: mailTplRows } = await supabase.from("allocation_mail_templates").select("period,subject,body");
-  const mailTpl = templateFor((mailTplRows ?? []) as MailTemplateRow[], period);
-  const hasPreviousMail = previousTemplate((mailTplRows ?? []) as MailTemplateRow[], period) != null;
+  const mailTpl = templateFor((mailTplRows ?? []) as MailTemplateRow[], mailPeriodOf(period));
+  const hasPreviousMail = previousTemplate((mailTplRows ?? []) as MailTemplateRow[], mailPeriodOf(period)) != null;
 
   const { data: orgs } = await supabase
     .from("allocation_orgs")
