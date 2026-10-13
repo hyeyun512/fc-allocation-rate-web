@@ -348,11 +348,11 @@ export default function SelfUsePanel({
   /** 기간 하나의 불러오기 버튼 — 첫 기간은 전분기 확정값, 다음 기간은 바로 앞 기간에 지금 넣은 값. */
   function loadButton(e: SelfuseEntry, i: number) {
     if (!e.editable) return null;
-    // 전분기(라운드 첫 기간의 직전, 예: 3Q) 끌고오기는 모든 기간에 두고, 뒤 기간에는 복사 버튼도 붙인다.
+    // 전분기(예: 3Q) 끌고오기는 첫 기간(4Q)에만 두고, 뒤 기간(27년 BP)에는 앞 기간 입력값 복사 버튼만 둔다.
     const prev = i > 0 ? entries[i - 1] : null;
     return (
       <span key={e.period} style={{ display: "inline-flex", gap: 6, flexWrap: "wrap" }}>
-        {prevRow && (
+        {!prev && prevRow && (
           <button className="btn btn-secondary btn-sm" onClick={() => e.setForm(fromRow(prevRow))}>
             {multi ? `${prettyQuarterLabel(e.period)}: ` : ""}전분기 데이터 끌고오기
           </button>

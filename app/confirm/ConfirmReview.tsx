@@ -1052,8 +1052,8 @@ function OrgDetail({ entries: entryData, version }: { entries: ReviewEntryData[]
   /** 기간 하나의 불러오기 버튼 — 첫 기간은 전분기 확정값, 다음 기간은 바로 앞 기간에 지금 들어 있는 값. */
   function loadButton(e: OrgReviewEntry, i: number) {
     if (!editable(e)) return null;
-    // 전분기 끌고오기는 모든 기간에 둔다 — BP도 4Q처럼 확정된 3Q 값을 가져온다(lib/targets getPreviousPeriod).
-    // 뒤 기간에는 앞 기간에 지금 넣은 값을 복사하는 버튼도 붙인다.
+    // 전분기 끌고오기는 첫 기간(4Q)에만 둔다. 뒤 기간(27년 BP)은 앞 기간에 지금 넣은 값을 복사하는 버튼만 둔다
+    // — BP는 4Q 입력값을 바탕으로 고쳐 넣는다(사용자 지시).
     const prev = i > 0 ? entries[i - 1] : null;
     const prefix = multi ? `${prettyQuarterLabel(e.period)}: ` : "";
     const loadBtn = usesPersonTable
@@ -1069,7 +1069,7 @@ function OrgDetail({ entries: entryData, version }: { entries: ReviewEntryData[]
         );
     return (
       <span key={e.period} style={{ display: "inline-flex", gap: 6, flexWrap: "wrap" }}>
-        {loadBtn}
+        {!prev && loadBtn}
         {prev && (
           <button className="btn btn-secondary btn-sm" onClick={() => e.copyFrom(prev)}>
             {prettyQuarterLabel(prev.period)} 입력값을 {prettyQuarterLabel(e.period)}에 복사
