@@ -339,7 +339,7 @@ function SendDialog({
             <div className="send-title">Outlook 초안을 열었습니다</div>
             {state.copied ? (
               <p className="send-lead">
-                초안 본문은 <b>서식 없는 글자</b>입니다. 서식(굵게·색)을 살리려면 본문에서{" "}
+                초안 본문은 <b>서식 없는 글자</b>입니다. 서식(굵게·기울임꼴·색)을 살리려면 본문에서{" "}
                 <b>Ctrl+A → Ctrl+V</b> 하세요 — 서식 있는 본문을 클립보드에 넣어 두었습니다.
                 <br />
                 확인 후 <b>[보내기]</b>를 눌러 주세요. 아직 발송되지 않았습니다.
@@ -720,7 +720,7 @@ function DivisionTable({
 
 /* ─────────────────── 메일 문구 ───────────────────
    제목 한 줄과 본문 한 칸. 분기·제출 기한도 손으로 적으므로 자리표시자는 두지 않았다.
-   본문은 서식(굵게·글자색·배경색)을 쓸 수 있어야 해서 contenteditable로 받아 HTML로 저장한다.
+   본문은 서식(굵게·기울임꼴·글자색·배경색)을 쓸 수 있어야 해서 contenteditable로 받아 HTML로 저장한다.
    글꼴은 Outlook에서 그대로 보이도록 맑은 고딕 10pt를 인라인으로 고정한다. */
 
 const SWATCHES = ["#1a202c", "#dc2626", "#2563eb", "#16a34a", "#b45309"];
@@ -841,6 +841,9 @@ function MailTemplateEditor({
       <label className="mail-tpl-label">본문</label>
       <div className="mail-tpl-toolbar">
         <button type="button" title="굵게" className="is-bold" onMouseDown={(e) => e.preventDefault()} onClick={() => exec("bold")}>
+          가
+        </button>
+        <button type="button" title="기울임꼴" className="is-italic" onMouseDown={(e) => e.preventDefault()} onClick={() => exec("italic")}>
           가
         </button>
         <span className="mail-tpl-sep" />
