@@ -43,6 +43,8 @@ a{color:inherit}
 .rate-tbl td{padding:6px;border-bottom:0.5px solid #f1f5f9;text-align:center}
 .rate-tbl td:first-child{text-align:left;font-size:13px;color:#374151;white-space:nowrap;padding-right:12px}
 .rate-tbl input{width:56px;font-size:13px;padding:6px 7px;border:0.5px solid #cbd5e1;border-radius:6px;text-align:right;font-variant-numeric:tabular-nums}
+/* 오른쪽 정렬은 숫자 칸 얘기다 — 코멘트처럼 글을 적는 칸은 왼쪽부터 쓴다(자가사용 탭 코멘트가 오른쪽에 붙어 있었다). */
+.rate-tbl input:not([type="number"]){text-align:left}
 /* 입력칸 너비는 여기서 정한다 — 좁은 화면용 압축 표기(.submit-tight)가 덮어쓸 수 있어야 한다. */
 .rate-tbl input.hc-field{width:48px}
 .rate-tbl input.name-field{width:100px;text-align:center}
