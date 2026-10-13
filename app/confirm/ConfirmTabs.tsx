@@ -155,26 +155,27 @@ export default function ConfirmTabs({
         <div className="field-hint" style={{ marginTop: 6 }}>
           여기서 지정한 기간이 아래 조사/리소스배부율/자가사용(건물)/IT 전체에 적용되고, 조사 링크에도 이 기간이 열립니다.
         </div>
-        {roundPeriods(round).length > 1 && (
-          <div style={{ marginTop: 12 }}>
-            <div className="field-hint" style={{ marginBottom: 6 }}>
-              조사 링크에는 {roundLabel(round)}이(가) 탭으로 함께 열립니다. 검토는 아래에서 기간을 골라 하나씩 합니다.
-            </div>
-            <div className="admin-subtabs" style={{ margin: 0 }}>
-              {roundPeriods(round).map((p) => (
-                <button
-                  key={p}
-                  type="button"
-                  className={`admin-subtab ${period === p ? "active" : ""}`}
-                  onClick={() => router.push(`/confirm?p=${encodeURIComponent(p)}`)}
-                >
-                  {prettyQuarterLabel(p)} 검토
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
       </div>
+
+      {/* 두 기간을 함께 조사하는 라운드 — 검토는 한 기간씩 한다. 표 바로 위에 두어 다른 기간이 있다는 걸 놓치지 않게 한다. */}
+      {roundPeriods(round).length > 1 && (
+        <div className="round-heading" style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+          <span>검토 기간</span>
+          {roundPeriods(round).map((p) => (
+            <button
+              key={p}
+              type="button"
+              className={`btn btn-sm ${period === p ? "btn-primary" : "btn-secondary"}`}
+              onClick={() => router.push(`/confirm?p=${encodeURIComponent(p)}`)}
+            >
+              {prettyQuarterLabel(p)}
+            </button>
+          ))}
+          <span style={{ fontSize: 12, fontWeight: 400, color: "#475569" }}>
+            조사 링크에는 {roundLabel(round)}이(가) 함께 열려 있습니다. 여기서 기간을 바꿔 하나씩 검토·확정합니다.
+          </span>
+        </div>
+      )}
 
       <div className="admin-subtabs">
         {SUB_TABS.map((t) => (

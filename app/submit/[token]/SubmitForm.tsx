@@ -675,11 +675,6 @@ export default function SubmitForm({
   lang?: SubmitLang;
 }) {
   const s = submitStrings(lang);
-  // 처음 여는 탭은 아직 제출하지 않은 첫 기간 — 다 냈으면 첫 기간.
-  const [active, setActive] = useState(() => {
-    const open = rounds.find((r) => !roundSubmitted(r));
-    return (open ?? rounds[0])?.period ?? "";
-  });
 
   // 루트 레이아웃의 <html lang>은 한국어로 고정돼 있다 — 영어로 나가는 링크에서는 실제 언어와 맞춰준다
   // (브라우저가 번역을 권하거나 스크린리더가 한국어로 읽는 걸 막는다).
@@ -693,32 +688,21 @@ export default function SubmitForm({
     // page-form: 배부대상 13~14개가 들어가도록 폭을 넓게, submit-tight: 표를 압축해 가로 스크롤을 없앤다.
     <div className="page page-form submit-tight">
       {multi && (
-        <>
-          <div className="field-hint" style={{ marginBottom: 8 }}>
-            {s.multiRoundHint(rounds.map((r) => prettyQuarterLabel(r.period)).join(", "))}
-          </div>
-          <div className="admin-subtabs" role="tablist">
-            {rounds.map((r) => (
-              <button
-                key={r.period}
-                type="button"
-                role="tab"
-                aria-selected={active === r.period}
-                className={`admin-subtab ${active === r.period ? "active" : ""}`}
-                onClick={() => setActive(r.period)}
-              >
-                {prettyQuarterLabel(r.period)}
-                {roundSubmitted(r) ? " ✓" : ""}
-              </button>
-            ))}
-          </div>
-        </>
-      )}
-      {/* 탭을 옮겨도 입력 중인 값이 남도록 모든 기간을 그려 두고 보이는 것만 바꾼다. */}
-      {rounds.map((r) => (
-        <div key={r.period} style={{ display: active === r.period || !multi ? undefined : "none" }}>
-          <RoundBody token={token} period={r.period} version={version} data={r.data} lang={lang} />
+        <div className="callout info" style={{ marginBottom: 16 }}>
+          {s.multiRoundHint(rounds.map((r) => prettyQuarterLabel(r.period)).join(", "))}
         </div>
+      )}
+      {/* 기간을 탭으로 나누면 뒤 기간을 못 보고 지나친다 — 위아래로 펼쳐 둘 다 바로 보이게 한다. */}
+      {rounds.map((r, i) => (
+        <section key={r.period} style={{ marginTop: multi && i > 0 ? 36 : 0 }}>
+          {multi && (
+            <div className="round-heading">
+              {s.roundHeading(prettyQuarterLabel(r.period))}
+              {roundSubmitted(r) && <span className="tag" style={{ marginLeft: 8 }}>{s.roundDone}</span>}
+            </div>
+          )}
+          <RoundBody token={token} period={r.period} version={version} data={r.data} lang={lang} />
+        </section>
       ))}
     </div>
   );
