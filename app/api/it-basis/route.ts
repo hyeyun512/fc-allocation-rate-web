@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { computeItRates } from "@/lib/itBasis";
-import { TARGETS, TargetKey, sumTargets, normalizeTargets, RATE_TOTAL_TOLERANCE } from "@/lib/targets";
+import { TARGETS, TargetKey, sumTargets, normalizeTargets, RATE_TOTAL_TOLERANCE, isTargetActiveIn } from "@/lib/targets";
 
 export async function POST(req: NextRequest) {
   const { quarter, headcount, sap, submittedBy, headcountBy, sapBy, headcountBasis, sapBasis, headcountNote, sapNote } = await req.json();
@@ -16,6 +16,9 @@ export async function POST(req: NextRequest) {
 
   const supabase = getSupabaseAdmin();
 
+  // 홀딩스가 배부 대상이 아닌 기간에는 홀딩스 인원을 0으로 남긴다 (계산에서도 빠진다).
+  const holdingsOf = (input: any) => (isTargetActiveIn("holdings", quarter) ? Number(input.holdings) || 0 : 0);
+
   const rowsToUpsert = [];
   if (headcount) {
     rowsToUpsert.push({
@@ -29,7 +32,7 @@ export async function POST(req: NextRequest) {
         hiparking: Number(headcount.hiparking) || 0,
         peoplecar: Number(headcount.peoplecar) || 0,
         winercom: Number(headcount.winercom) || 0,
-        holdings: Number(headcount.holdings) || 0,
+        holdings: holdingsOf(headcount),
         hiparking_resident: headcount.hiparkingResident === "" || headcount.hiparkingResident == null ? null : Number(headcount.hiparkingResident),
         // 청구기준·코멘트는 표마다 따로 받는다 (분기와 청구 반기가 항상 같지는 않다).
         billing_basis: headcountBasis ?? null,
@@ -51,7 +54,7 @@ export async function POST(req: NextRequest) {
         hiparking: Number(sap.hiparking) || 0,
         peoplecar: Number(sap.peoplecar) || 0,
         winercom: Number(sap.winercom) || 0,
-        holdings: Number(sap.holdings) || 0,
+        holdings: holdingsOf(sap),
         hiparking_resident: null,
         billing_basis: sapBasis ?? null,
         note: sapNote ?? null,
@@ -76,7 +79,7 @@ export async function POST(req: NextRequest) {
           hiparking: Number(headcount.hiparking) || 0,
           peoplecar: Number(headcount.peoplecar) || 0,
           winercom: Number(headcount.winercom) || 0,
-          holdings: Number(headcount.holdings) || 0,
+          holdings: holdingsOf(headcount),
           hiparkingResident: headcount.hiparkingResident === "" || headcount.hiparkingResident == null ? null : Number(headcount.hiparkingResident),
         }
       : null,
@@ -89,10 +92,11 @@ export async function POST(req: NextRequest) {
           hiparking: Number(sap.hiparking) || 0,
           peoplecar: Number(sap.peoplecar) || 0,
           winercom: Number(sap.winercom) || 0,
-          holdings: Number(sap.holdings) || 0,
+          holdings: holdingsOf(sap),
           hiparkingResident: null,
         }
-      : null
+      : null,
+    quarter
   );
 
   for (const row of computed) {

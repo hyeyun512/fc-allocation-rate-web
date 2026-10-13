@@ -278,6 +278,12 @@ export function toPersonPayload(list: PersonEditRow[]) {
     }));
 }
 
+/** 배부하지 않는 대상 칸 — 값은 비워 두고 입력을 막는다. */
+function lockedInputProps(locked: boolean, lang: SubmitLang) {
+  if (!locked) return {};
+  return { disabled: true, placeholder: "-", title: submitStrings(lang).targetInactive };
+}
+
 export function RateTableHead({
   withClear,
   withNote,
@@ -467,6 +473,7 @@ export function EditableRateRow({
   withNoteEn,
   noteEnValue,
   onNoteEnChange,
+  lockedKeys = [],
   lang = "ko",
 }: {
   label: string;
@@ -484,6 +491,8 @@ export function EditableRateRow({
   withNoteEn?: boolean;
   noteEnValue?: string;
   onNoteEnChange?: (value: string) => void;
+  /** 이번 분기에 배부하지 않는 대상(inactiveTargetKeys) — 열은 남기고 입력만 막는다. */
+  lockedKeys?: TargetKey[];
   lang?: SubmitLang;
 }) {
   const s = submitStrings(lang);
@@ -524,14 +533,17 @@ export function EditableRateRow({
               max="100"
               value={fractionToPercentInput(rates[t.key])}
               onChange={(e) => onChange(t.key, percentInputToFraction(e.target.value))}
+              {...lockedInputProps(lockedKeys.includes(t.key), lang)}
               onPaste={(e) => {
                 if (!shouldHandlePaste(e.clipboardData)) return;
                 e.preventDefault();
                 const row = readPasteGrid(e.clipboardData)[0] ?? [];
                 row.forEach((tok, offset) => {
                   const target = TARGETS[i + offset];
+                  // 열 위치는 화면 그대로 맞추되, 막힌 열에 걸린 값은 버린다.
+                  if (!target || lockedKeys.includes(target.key)) return;
                   // 빈 칸은 건너뛰지 않고 0%로 채운다 — 건너뛰면 예전 값이 그대로 남는다.
-                  if (target) onChange(target.key, tok === "" ? "0" : percentInputToFraction(tok));
+                  onChange(target.key, tok === "" ? "0" : percentInputToFraction(tok));
                 });
               }}
             />
@@ -569,11 +581,11 @@ export function EditableRateRow({
 // 개인별 표 붙여넣기: 열 순서를 [이름, ...13개 배부대상, 코멘트]로 보고, 시작 셀부터 채운다.
 // (인원수 열은 화면에 없다 — 한 행이 곧 한 명이다.)
 const PASTE_NOTE_COL = TARGETS.length + 1;
-function applyPasteToken(person: PersonEditRow, colIdx: number, token: string): PersonEditRow {
+function applyPasteToken(person: PersonEditRow, colIdx: number, token: string, lockedKeys: TargetKey[]): PersonEditRow {
   if (colIdx === 0) return { ...person, name: token };
   if (colIdx === PASTE_NOTE_COL) return { ...person, note: token };
   const target = TARGETS[colIdx - 1];
-  if (!target) return person;
+  if (!target || lockedKeys.includes(target.key)) return person;
   // 빈 칸은 건너뛰지 않고 0%로 채운다 — 건너뛰면 그 사람 값이 예전 값 그대로 남아버린다.
   return {
     ...person,
@@ -587,6 +599,7 @@ export function PersonEditTable({
   setPersons,
   hasExpat,
   withNoteEn,
+  lockedKeys = [],
   lang = "ko",
 }: {
   persons: PersonEditRow[];
@@ -594,6 +607,8 @@ export function PersonEditTable({
   hasExpat: boolean;
   /** 링크가 영어로 나가는 조직에서만 붙는 '코멘트(영문)' 열 (관리자 화면 전용). */
   withNoteEn?: boolean;
+  /** 이번 분기에 배부하지 않는 대상(inactiveTargetKeys) — 열은 남기고 입력만 막는다. */
+  lockedKeys?: TargetKey[];
   lang?: SubmitLang;
 }) {
   const s = submitStrings(lang);
@@ -624,7 +639,7 @@ export function PersonEditTable({
         }
         let person = next[idx];
         rowTokens.forEach((tok, ci) => {
-          person = applyPasteToken(person, startColIdx + ci, tok);
+          person = applyPasteToken(person, startColIdx + ci, tok, lockedKeys);
         });
         next[idx] = person;
       });
@@ -694,6 +709,7 @@ export function PersonEditTable({
                           max="100"
                           value={fractionToPercentInput(p.rates[t.key])}
                           onChange={(e) => updatePersonRate(p.key, t.key, percentInputToFraction(e.target.value))}
+                          {...lockedInputProps(lockedKeys.includes(t.key), lang)}
                           onPaste={(e) => {
                             if (!shouldHandlePaste(e.clipboardData)) return;
                             e.preventDefault();

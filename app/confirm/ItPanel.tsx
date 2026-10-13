@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { TARGETS, TargetKey, getPreviousPeriod } from "@/lib/targets";
+import { TARGETS, TargetKey, getPreviousPeriod, isTargetActiveIn } from "@/lib/targets";
 import { sortQuarters } from "@/lib/quarter";
 import { computeItRates, sumItBasisInput, ItBasisInput } from "@/lib/itBasis";
 import { RateTableHead, ReadOnlyRateRow, NoteTip } from "@/components/RateParts";
@@ -56,10 +56,17 @@ const FIELDS: { key: FieldKey; label: string }[] = [
   { key: "holdings", label: "홀딩스" },
 ];
 
-function fromRow(row: ItBasisRow | null): FormState {
+/** 그 기간에 입력받는 칸인지 — 홀딩스는 배부 대상에서 빠진 기간(2026-Q4~)에는 받지 않는다. */
+function fieldActiveIn(key: FieldKey, quarter: string): boolean {
+  return key === "holdings" ? isTargetActiveIn("holdings", quarter) : true;
+}
+
+function fromRow(row: ItBasisRow | null, quarter: string): FormState {
   if (!row) {
     return { headquarters: "", overseasCorp: "", hMobility: "", hEv: "", hiparking: "", peoplecar: "", winercom: "", holdings: "", hiparkingResident: "" };
   }
+  // 지난 분기 값을 불러와도 이번 분기에 받지 않는 칸은 비워 둔다.
+  const holdings = fieldActiveIn("holdings", quarter) ? String(row.holdings ?? "") : "";
   return {
     headquarters: String(row.headquarters ?? ""),
     overseasCorp: String(row.overseas_corp ?? ""),
@@ -68,7 +75,7 @@ function fromRow(row: ItBasisRow | null): FormState {
     hiparking: String(row.hiparking ?? ""),
     peoplecar: String(row.peoplecar ?? ""),
     winercom: String(row.winercom ?? ""),
-    holdings: String(row.holdings ?? ""),
+    holdings,
     hiparkingResident: row.hiparking_resident != null ? String(row.hiparking_resident) : "",
   };
 }
@@ -194,6 +201,9 @@ function BasisForm({
             value={state[f.key]}
             onChange={(e) => onChange(f.key, e.target.value)}
             style={{ width: 64 }}
+            disabled={!fieldActiveIn(f.key, quarter)}
+            placeholder={fieldActiveIn(f.key, quarter) ? undefined : "-"}
+            title={fieldActiveIn(f.key, quarter) ? undefined : "이 분기에는 배부 대상이 아닙니다"}
             onPaste={(e) => {
               // 엑셀에서 여러 칸을 복사해 붙여넣으면 그 칸부터 순서대로 채운다.
               if (!shouldHandlePaste(e.clipboardData)) return;
@@ -201,7 +211,7 @@ function BasisForm({
               const row = readPasteGrid(e.clipboardData)[0] ?? [];
               row.forEach((tok, offset) => {
                 const target = FIELDS[i + offset];
-                if (target) onChange(target.key, tok);
+                if (target && fieldActiveIn(target.key, quarter)) onChange(target.key, tok);
               });
             }}
           />
@@ -332,8 +342,8 @@ export default function ItPanel({
   history: ItBasisRow[];
 }) {
   const quarter = period;
-  const [headcountForm, setHeadcountForm] = useState<FormState>(() => fromRow(initialHeadcount));
-  const [sapForm, setSapForm] = useState<FormState>(() => fromRow(initialSap));
+  const [headcountForm, setHeadcountForm] = useState<FormState>(() => fromRow(initialHeadcount, quarter));
+  const [sapForm, setSapForm] = useState<FormState>(() => fromRow(initialSap, quarter));
   // 인원수와 SAP ID 개수는 담당자가 달라 입력자를 따로 받는다.
   const [headcountBy, setHeadcountBy] = useState(initialHeadcount?.submitted_by ?? "");
   const [sapBy, setSapBy] = useState(initialSap?.submitted_by ?? "");
@@ -357,7 +367,7 @@ export default function ItPanel({
   const [confirmed, setConfirmed] = useState(false);
   const [error, setError] = useState("");
 
-  const preview = useMemo(() => computeItRates(toBasisInput(headcountForm), toBasisInput(sapForm)), [headcountForm, sapForm]);
+  const preview = useMemo(() => computeItRates(toBasisInput(headcountForm), toBasisInput(sapForm), quarter), [headcountForm, sapForm, quarter]);
 
   const pastHeadcountRows = useMemo(
     () => history.filter((r) => r.metric === "인원수" && r.quarter !== quarter).sort((a, b) => a.quarter.localeCompare(b.quarter)),
@@ -419,7 +429,8 @@ export default function ItPanel({
               holdings: sap.holdings,
               hiparkingResident: null,
             }
-          : null
+          : null,
+        q
       ).map((row) => {
         const rates = toFullRec(row.rates);
         return {
@@ -531,7 +542,7 @@ export default function ItPanel({
           ■ 인원수 (명) — 분기별 이력
         </div>
         {prevHeadcountRow && (
-          <button className="btn btn-secondary btn-sm" onClick={() => setHeadcountForm(fromRow(prevHeadcountRow))}>
+          <button className="btn btn-secondary btn-sm" onClick={() => setHeadcountForm(fromRow(prevHeadcountRow, quarter))}>
             전분기 데이터 끌고오기
           </button>
         )}
@@ -559,7 +570,7 @@ export default function ItPanel({
           ■ SAP ID 개수 (Ea) — 분기별 이력
         </div>
         {prevSapRow && (
-          <button className="btn btn-secondary btn-sm" onClick={() => setSapForm(fromRow(prevSapRow))}>
+          <button className="btn btn-secondary btn-sm" onClick={() => setSapForm(fromRow(prevSapRow, quarter))}>
             전분기 데이터 끌고오기
           </button>
         )}

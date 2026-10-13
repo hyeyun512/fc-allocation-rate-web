@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
-import { TARGETS, TargetKey, sumTargets } from "@/lib/targets";
+import { sumTargets, parseTargetRates } from "@/lib/targets";
 
 /**
  * 자동계산 조직(개인별 조직 · 상위 집계 조직)의 코멘트만 저장하는 라우트.
@@ -30,11 +30,7 @@ export async function POST(req: NextRequest) {
   }
 
   // 코멘트 행에도 그 시점의 자동계산 값을 함께 남겨 이력이 어긋나지 않게 한다.
-  const parsed = {} as Record<TargetKey, number>;
-  TARGETS.forEach((t) => {
-    const v = Number(rates?.[t.key]);
-    parsed[t.key] = Number.isFinite(v) ? v : 0;
-  });
+  const parsed = parseTargetRates(rates, period);
 
   const { error } = await supabase.from("allocation_submissions").insert({
     org_id: orgId,

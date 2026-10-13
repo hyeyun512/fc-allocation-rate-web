@@ -2,7 +2,15 @@
 
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { TARGETS, TargetKey, getPreviousPeriod, normalizeTargets, RATE_TOTAL_TOLERANCE } from "@/lib/targets";
+import {
+  TARGETS,
+  TargetKey,
+  getPreviousPeriod,
+  normalizeTargets,
+  RATE_TOTAL_TOLERANCE,
+  inactiveTargetKeys,
+  stripInactiveTargets,
+} from "@/lib/targets";
 import { HIDDEN_IN_CONFIRM, MIRROR_HEADCOUNT, mirrorSourceOf } from "@/lib/autoAggregate";
 import { isOrgActiveIn } from "@/lib/orgLifespan";
 // 조사 현황과 같은 단위·순서로 보여야 해서 정렬 규칙을 함께 쓴다.
@@ -585,13 +593,18 @@ function OrgDetail({
 }) {
   const [orgUnlocked, setOrgUnlocked] = useState(false);
   const [personsUnlocked, setPersonsUnlocked] = useState(false);
-  const [orgRates, setOrgRates] = useState<RateMap>(() => toRateMap(item.currentOrgSubmission ?? item.currentRate));
+  const [orgRates, setOrgRates] = useState<RateMap>(() =>
+    stripInactiveTargets(toRateMap(item.currentOrgSubmission ?? item.currentRate), period)
+  );
   // 인원수를 비워두고 저장하면 0명으로 남긴다 (빈칸으로 두지 않는다).
   const [orgHeadcountInput, setOrgHeadcountInput] = useState(() => String(item.submittedHeadcount ?? 0));
   const [orgNoteInput, setOrgNoteInput] = useState(() => item.submittedNote ?? "");
   // 링크가 영어로 나가는 조직에서만 쓰는 영문 코멘트 (한국어 코멘트와 함께 확정 시 저장된다).
   const [orgNoteEnInput, setOrgNoteEnInput] = useState(() => item.submittedNoteEn ?? "");
-  const [persons, setPersons] = useState<PersonEditRow[]>(() => initialPersons(item));
+  const [persons, setPersons] = useState<PersonEditRow[]>(() =>
+    // 잠긴 칸(이번 분기에 배부하지 않는 대상)에 지울 수 없는 값이 남지 않게 한다.
+    initialPersons(item).map((p) => ({ ...p, rates: stripInactiveTargets(p.rates, period) }))
+  );
   const [confirming, setConfirming] = useState(false);
   const [confirmed, setConfirmed] = useState(item.confirmedThisPeriod && (!item.expat || item.expat.confirmedThisPeriod));
   const [error, setError] = useState("");
@@ -647,14 +660,15 @@ function OrgDetail({
         headcount: p.headcount != null ? String(p.headcount) : "0",
         note: p.note ?? "",
         role: p.role,
-        rates: toRateMap(p.rates),
+        // 이번 분기에 배부하지 않는 대상(예: 2026-Q4부터 홀딩스)은 불러오지 않는다.
+        rates: stripInactiveTargets(toRateMap(p.rates), period),
       }))
     );
   }
 
   function loadPreviousOrgRate() {
     if (!previousOrgRate) return;
-    setOrgRates(toRateMap(previousOrgRate.rates));
+    setOrgRates(stripInactiveTargets(toRateMap(previousOrgRate.rates), period));
     setOrgHeadcountInput(previousOrgRate.headcount != null ? String(previousOrgRate.headcount) : "");
     setOrgNoteInput(previousOrgRate.note ?? "");
     setOrgNoteEnInput(previousOrgRate.noteEn ?? "");
@@ -783,11 +797,11 @@ function OrgDetail({
     if (!window.confirm("수정하던 내용을 버리고 저장된 값으로 되돌립니다. 계속할까요?")) return;
     setError("");
     setNotice("");
-    setOrgRates(toRateMap(item.currentOrgSubmission ?? item.currentRate));
+    setOrgRates(stripInactiveTargets(toRateMap(item.currentOrgSubmission ?? item.currentRate), period));
     setOrgHeadcountInput(String(item.submittedHeadcount ?? 0));
     setOrgNoteInput(item.submittedNote ?? "");
     setOrgNoteEnInput(item.submittedNoteEn ?? "");
-    setPersons(initialPersons(item));
+    setPersons(initialPersons(item).map((p) => ({ ...p, rates: stripInactiveTargets(p.rates, period) })));
     setOrgUnlocked(false);
     setPersonsUnlocked(false);
   }
@@ -892,6 +906,7 @@ function OrgDetail({
                   withNoteEn={item.needsEnglishNote}
                   noteEnValue={orgNoteEnInput}
                   onNoteEnChange={setOrgNoteEnInput}
+                  lockedKeys={inactiveTargetKeys(period)}
                 />
               ) : (
                 <ReadOnlyRateRow
@@ -985,6 +1000,7 @@ function OrgDetail({
               setPersons={setPersons}
               hasExpat={hasExpat}
               withNoteEn={item.needsEnglishNote}
+              lockedKeys={inactiveTargetKeys(period)}
             />
           ) : (
             <PersonReadOnlyTable persons={persons} hasExpat={hasExpat} />

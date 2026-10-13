@@ -5,7 +5,7 @@
  * 두 곳이 다른 순서로 분기를 세면 "지난 분기"가 서로 다른 분기를 가리키게 된다.
  */
 
-import { parseQuarter } from "./quarter";
+import { quarterRank } from "./quarter";
 
 export interface MailTemplateRow {
   period: string;
@@ -13,12 +13,8 @@ export interface MailTemplateRow {
   body: string;
 }
 
-function rank(raw: string): number {
-  const q = parseQuarter(raw);
-  // 분기 표기를 못 읽는 값(직접 입력한 기간 등)은 비교에서 뺀다.
-  if (!q.year) return -1;
-  return q.year * 10 + q.q;
-}
+// 분기 표기를 못 읽는 값(직접 입력한 기간 등)은 -1이 되어 비교에서 빠진다.
+const rank = quarterRank;
 
 /** 이 분기에 저장해 둔 문구. 없으면 null(= 기본 문구를 쓴다). */
 export function templateFor(rows: MailTemplateRow[], period: string): MailTemplateRow | null {

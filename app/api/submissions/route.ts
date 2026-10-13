@@ -1,20 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
-import { TARGETS, TargetKey, sumTargets } from "@/lib/targets";
+import { TargetKey, sumTargets, parseTargetRates } from "@/lib/targets";
 import { recomputeAggregates } from "@/lib/autoAggregate";
 import { buildDeletionTombstones } from "@/lib/personTombstones";
 import { resolveTargetOrg } from "@/lib/submitScope";
 import { applyOrgRate } from "@/lib/confirmRate";
 import { hasSubmittedValue, SubmissionRow } from "@/lib/rollup";
-
-function parseRates(rates: Record<string, string>) {
-  const out = {} as Record<TargetKey, number>;
-  TARGETS.forEach((t) => {
-    const v = Number(rates?.[t.key]);
-    out[t.key] = Number.isFinite(v) ? v : 0;
-  });
-  return out;
-}
 
 // 합계가 0(미입력)이거나 100%에 근접해야 통과. 값은 있는데 100%가 아닌 경우만 오류로 취급.
 function totalIsValid(parsed: Record<TargetKey, number>): boolean {
@@ -89,7 +80,7 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const parsedOrgRates = parseRates(orgRates);
+  const parsedOrgRates = parseTargetRates(orgRates, period);
   const personsProvided = Array.isArray(persons) && persons.some((p: any) => p?.name && String(p.name).trim());
   // 조직 단위 값이 팀 구성원별 값의 평균으로 자동 계산된 경우(personsProvided)는 아래에서 개인별로 이미 검증하므로 중복 검증하지 않는다.
   if (!personsProvided && !totalIsValid(parsedOrgRates)) {
@@ -98,7 +89,7 @@ export async function POST(req: NextRequest) {
   if (Array.isArray(persons)) {
     for (const p of persons) {
       if (!p?.name || !String(p.name).trim()) continue;
-      if (!totalIsValid(parseRates(p.rates ?? {}))) {
+      if (!totalIsValid(parseTargetRates(p.rates, period))) {
         return NextResponse.json({ error: `'${p.name}'님의 비율 합계가 100%가 아닙니다.` }, { status: 400 });
       }
     }
@@ -124,7 +115,7 @@ export async function POST(req: NextRequest) {
   if (Array.isArray(persons)) {
     for (const p of persons) {
       if (!p?.name || !String(p.name).trim()) continue;
-      const parsed = parseRates(p.rates ?? {});
+      const parsed = parseTargetRates(p.rates, period);
       rows.push({
         org_id: org.id,
         period,

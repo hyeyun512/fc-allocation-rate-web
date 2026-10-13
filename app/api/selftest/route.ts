@@ -2,7 +2,11 @@ import { NextResponse } from "next/server";
 import { resolveManagerPair, OrgManagerRow } from "@/lib/orgManager";
 import { linkOrgOf, linkTokenOf, tokenScopeOf, isTokenOwner, OrgLite } from "@/lib/orgLink";
 import { hasSubmittedValue, SubmissionRow } from "@/lib/rollup";
-import { deltaPairOptions, defaultDeltaPairKey, deltaQuarterLabel } from "@/lib/quarter";
+import { deltaPairOptions, defaultDeltaPairKey, deltaQuarterLabel, sortQuarters, prettyQuarterLabel, quarterRank } from "@/lib/quarter";
+import { isTargetActiveIn, inactiveTargetKeys, parseTargetRates, stripInactiveTargets, getPreviousPeriod } from "@/lib/targets";
+import { isOrgActiveIn } from "@/lib/orgLifespan";
+import { fixedRatesFor } from "@/lib/fixedRates";
+import { computeItRates } from "@/lib/itBasis";
 import { submitLockState } from "@/lib/submitLock";
 import { computeSelfuseRates, hasBundangSelfuse2 } from "@/lib/selfuseBasis";
 import {
@@ -445,6 +449,57 @@ function runCases(): Case[] {
       computeSelfuseRates({ ...SELFUSE, bundangSelfuseRatio2: 0 }, "2026-Q2").map((r) => r.basis)
     )
   );
+
+  // ── 연간 예산(BP) 기간: 전년 4Q 뒤, 그 해 1Q 앞 ──
+  c.push(
+    eq(
+      "bp: 정렬은 4Q 다음, 다음 해 1Q 앞",
+      sortQuarters(["2027-Q1", "2027-BP", "2026-Q4", "2026-Q3"]),
+      ["2026-Q3", "2026-Q4", "2027-BP", "2027-Q1"]
+    )
+  );
+  c.push(eq("bp: 표시는 그대로 2027-BP", prettyQuarterLabel("2027-BP"), "2027-BP"));
+  c.push(eq("bp: 직전 기간은 전년 4Q", getPreviousPeriod("2027-BP"), "2026-Q4"));
+  c.push(ok("bp: 4Q < BP < 다음 해 1Q", quarterRank("2026-Q4") < quarterRank("2027-BP") && quarterRank("2027-BP") < quarterRank("2027-Q1")));
+  c.push(eq("bp: 변화 비교 라벨", deltaPairOptions(["2026-Q4", "2027-BP"]).map((o) => o.label), ["BP-4Q"]));
+  // 없어진 조직이 BP에서 되살아나면 안 된다 (예전 quarterKey는 'YYYY-Qn'만 읽어 BP를 '항상 존재'로 봤다).
+  c.push(ok("bp: 1Q에만 있던 조직은 BP에 없다", !isOrgActiveIn("Staff(CEO) 직속", "2027-BP")));
+  c.push(
+    eq(
+      "bp: 담당자는 직전 4Q에서 이어받는다",
+      resolveManagerPair(
+        [{ org_id: 1, period: "2026-Q4", manager_name: "홍길동", manager_email: "", email_set_period: "" } as OrgManagerRow],
+        1,
+        "2027-BP"
+      ).name,
+      "홍길동"
+    )
+  );
+
+  // ── 홀딩스: 2026-Q4부터 배부 대상 아님 ──
+  c.push(ok("holdings: 3Q까지 대상", isTargetActiveIn("holdings", "2026-Q3") && isTargetActiveIn("holdings", "2026-Q3(청구)")));
+  c.push(ok("holdings: 4Q·BP부터 제외", !isTargetActiveIn("holdings", "2026-Q4") && !isTargetActiveIn("holdings", "2027-BP")));
+  c.push(eq("holdings: 4Q에 막히는 대상은 홀딩스뿐", inactiveTargetKeys("2026-Q4"), ["holdings"]));
+  c.push(eq("holdings: 3Q에는 막히는 대상 없음", inactiveTargetKeys("2026-Q3"), []));
+  c.push(eq("holdings: 4Q 저장값은 0", parseTargetRates({ stb: "0.9", holdings: "0.1" }, "2026-Q4").holdings, 0));
+  c.push(eq("holdings: 3Q 저장값은 그대로", parseTargetRates({ stb: "0.9", holdings: "0.1" }, "2026-Q3").holdings, 0.1));
+  c.push(eq("holdings: 전분기 값을 불러오면 비운다(문자열)", stripInactiveTargets({ stb: "0.9", holdings: "0.1" }, "2026-Q4").holdings, "0"));
+  c.push(
+    ok(
+      "holdings: 'H.Holdings 100%'는 4Q부터 만들지 않는다",
+      fixedRatesFor("2026-Q3").some((d) => d.basis === "H.Holdings 100%") &&
+        !fixedRatesFor("2026-Q4").some((d) => d.basis === "H.Holdings 100%") &&
+        fixedRatesFor("2026-Q4").some((d) => d.basis === "실적 제외")
+    )
+  );
+  {
+    const IT = { headquarters: 70, overseasCorp: 0, hMobility: 10, hEv: 10, hiparking: 0, peoplecar: 0, winercom: 0, holdings: 10, hiparkingResident: null };
+    const q3 = computeItRates(IT, null, "2026-Q3")[0];
+    const q4 = computeItRates(IT, null, "2026-Q4")[0];
+    c.push(eq("holdings: IT 3Q는 분모에 홀딩스 포함", q3.headcount, 100));
+    c.push(eq("holdings: IT 4Q는 분모에서 홀딩스 제외", q4.headcount, 90));
+    c.push(eq("holdings: IT 4Q 홀딩스 배부율 0", q4.rates.holdings ?? 0, 0));
+  }
 
   return c;
 }

@@ -13,7 +13,8 @@ type SubTab = "survey" | "resource" | "selfuse" | "it";
 
 // 저장값(raw)은 기존 데이터와 동일한 "2026-Q1" 표기를 그대로 쓴다 — 화면 표기만 prettyQuarterLabel로 "2026-1Q"처럼 보여준다.
 // 두 표기를 섞어 쓰면 같은 분기가 서로 다른 문자열로 저장되어 View 등에서 중복 분기로 보이는 문제가 생긴다.
-const QUARTER_OPTIONS = ["2026-Q1", "2026-Q2", "2026-Q3", "2026-Q4"];
+// 연간 예산(BP) 라운드는 "2027-BP"로 저장한다 — lib/quarter가 그 해 1Q 앞, 전년 4Q 뒤로 정렬한다.
+const QUARTER_OPTIONS = ["2026-Q1", "2026-Q2", "2026-Q3", "2026-Q4", "2027-BP"];
 const CUSTOM_OPTION = "__custom__";
 const FIXED_VERSION = "Forecast";
 

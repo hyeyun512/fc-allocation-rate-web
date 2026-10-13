@@ -1,4 +1,4 @@
-import { TargetKey } from "./targets";
+import { TargetKey, isTargetActiveIn } from "./targets";
 
 // IT탭 "기준정보" 원본 입력 1행 (인원수 또는 SAP ID 개수).
 export interface ItBasisInput {
@@ -38,10 +38,22 @@ export function sumItBasisInput(input: ItBasisInput): number {
   );
 }
 
+/** 그 기간에 홀딩스가 배부 대상이 아니면 홀딩스 인원을 빼고 계산한다 (분모에서도 빠진다). */
+function forPeriod(input: ItBasisInput | null, quarter: string): ItBasisInput | null {
+  if (!input || isTargetActiveIn("holdings", quarter)) return input;
+  return { ...input, holdings: 0 };
+}
+
 // 엑셀 '요약' 시트 B52:P68 수식을 그대로 코드화.
 // P(대상인원, 분모)를 basis마다 다르게 구성하는 것이 핵심 — 단순 전체합이 아니다.
-export function computeItRates(headcount: ItBasisInput | null, sap: ItBasisInput | null): ComputedBasisRow[] {
+export function computeItRates(
+  headcountInput: ItBasisInput | null,
+  sapInput: ItBasisInput | null,
+  quarter: string
+): ComputedBasisRow[] {
   const rows: ComputedBasisRow[] = [];
+  const headcount = forPeriod(headcountInput, quarter);
+  const sap = forPeriod(sapInput, quarter);
 
   if (headcount) {
     const { headquarters: E, hMobility: G, hEv: H, hiparking: I, peoplecar: J, winercom: K, holdings: L, hiparkingResident: N, overseasCorp: F } = headcount;

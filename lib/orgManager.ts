@@ -13,7 +13,8 @@
  * 출처를 행 단위로만 보면 그 주소가 '이번 분기에 확인한 주소'로 승격되어 경고 없이 발송된다.
  */
 
-import { parseQuarter } from "./quarter";
+// 분기 표기를 못 읽는 값(직접 입력한 기간 등)은 -1이 되어 비교에서 빠진다 — 엉뚱한 분기에서 값을 끌어오지 않게.
+import { quarterRank } from "./quarter";
 
 export interface OrgManagerRow {
   org_id: number;
@@ -46,13 +47,6 @@ const EMPTY: ResolvedManager = {
   emailInherited: false,
   emailFromPeriod: null,
 };
-
-function quarterRank(raw: string): number {
-  const q = parseQuarter(raw);
-  // 분기 표기를 못 읽는 값(직접 입력한 기간 등)은 비교에서 빼둔다 — 엉뚱한 분기에서 값을 끌어오지 않게.
-  if (!q.year) return -1;
-  return q.year * 10 + q.q;
-}
 
 /**
  * 이번 분기에 쓸 행 하나를 고른다 — 이번 분기 행이 있으면 그것, 없으면 그보다 앞선 분기 중 가장 최근 행.

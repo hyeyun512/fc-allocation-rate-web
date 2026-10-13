@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
-import { TARGETS, TargetKey, sumTargets } from "@/lib/targets";
+import { sumTargets, parseTargetRates } from "@/lib/targets";
 import { applyOrgRate } from "@/lib/confirmRate";
 import { recomputeAggregates } from "@/lib/autoAggregate";
 import { buildDeletionTombstones } from "@/lib/personTombstones";
@@ -33,11 +33,7 @@ export async function POST(req: NextRequest) {
   // 주재원 전용 조직인지 (division이 '주재원'이거나 basis가 _주재원으로 끝난다)
   const isExpatOrg = org.division === "주재원" || String(org.basis).endsWith("_주재원");
 
-  const parsed = {} as Record<TargetKey, number>;
-  TARGETS.forEach((t) => {
-    const v = Number(rates[t.key]);
-    parsed[t.key] = Number.isFinite(v) ? v : 0;
-  });
+  const parsed = parseTargetRates(rates, period);
 
   // 배부율 표 반영은 링크 제출과 같은 경로를 쓴다 — 두 곳이 다르게 저장되면 안 된다.
   const applied = await applyOrgRate(supabase, org, period, parsed, `관리자 저장 (${version})`);
@@ -52,11 +48,7 @@ export async function POST(req: NextRequest) {
     const personRows = (persons as PersonPayload[])
       .filter((p) => p?.name && String(p.name).trim())
       .map((p) => {
-        const personParsed = {} as Record<TargetKey, number>;
-        TARGETS.forEach((t) => {
-          const v = Number(p.rates?.[t.key]);
-          personParsed[t.key] = Number.isFinite(v) ? v : 0;
-        });
+        const personParsed = parseTargetRates(p.rates, period);
         return {
           org_id: orgId,
           period,

@@ -1,3 +1,5 @@
+import { quarterRank } from "./quarter";
+
 // allocation_rate / allocation_submissions 테이블의 13개 배부 대상 컬럼 정의.
 // 이 컬럼명 세트는 26년 예산(BP) / 26년 실적_N월 누계 테이블의 *_pct, *_krw 컬럼과 그대로 대응되므로
 // 임의로 컬럼을 추가/삭제하지 말고, 대상 조직이 실제로 바뀔 때만 신중히 변경할 것.
@@ -40,6 +42,58 @@ export const TARGETS: TargetDef[] = [
   { key: "holdings", label: "홀딩스", labelEn: "Holdings", group: "affiliate" },
   { key: "h_networks", label: "H.Networks", labelEn: "H.Networks", group: "affiliate" },
 ];
+
+/**
+ * 배부 대상 존속 기간 (lib/orgLifespan.ts의 조직 존속과 같은 방식).
+ *
+ * 컬럼은 과거 분기 값과 하위 테이블 때문에 그대로 두고, 범위 밖 기간에는 그 대상에 배부하지 않는다 —
+ * 입력칸이 잠기고 저장값은 언제나 0이다.
+ *   to 생략 → 지금도 대상
+ */
+export const TARGET_LIFESPAN: Partial<Record<TargetKey, { to: string }>> = {
+  // 홀딩스가 회사에 합병되어 2026-Q4부터 배부하지 않는다.
+  holdings: { to: "2026-Q3" },
+};
+
+/** 이 기간에 배부 대상인지. 기간 표기를 못 읽으면 대상으로 본다(직접 입력한 기간에서 값이 사라지지 않게). */
+export function isTargetActiveIn(key: TargetKey, period: string): boolean {
+  const span = TARGET_LIFESPAN[key];
+  if (!span) return true;
+  const p = quarterRank(period);
+  return p < 0 || p <= quarterRank(span.to);
+}
+
+/** 이 기간에 배부하지 않는 대상. */
+export function inactiveTargetKeys(period: string): TargetKey[] {
+  return TARGETS.filter((t) => !isTargetActiveIn(t.key, period)).map((t) => t.key);
+}
+
+/** 이 기간에 배부하지 않는 대상 값을 0으로 비운다 (지난 분기 값을 불러오거나 저장할 때 쓴다). */
+export function stripInactiveTargets<T extends Partial<Record<TargetKey, number | string | null | undefined>>>(
+  rates: T,
+  period: string
+): T {
+  const off = inactiveTargetKeys(period);
+  if (off.length === 0) return rates;
+  const out = { ...rates };
+  off.forEach((k) => {
+    (out as any)[k] = typeof rates[k] === "string" ? "0" : 0;
+  });
+  return out;
+}
+
+/** 요청으로 받은 배부율을 숫자로 읽는다 — 그 기간에 배부하지 않는 대상은 0으로 둔다. */
+export function parseTargetRates(
+  raw: Partial<Record<string, unknown>> | null | undefined,
+  period: string
+): Record<TargetKey, number> {
+  const out = {} as Record<TargetKey, number>;
+  TARGETS.forEach((t) => {
+    const v = Number(raw?.[t.key]);
+    out[t.key] = Number.isFinite(v) && isTargetActiveIn(t.key, period) ? v : 0;
+  });
+  return out;
+}
 
 export function sumTargets(row: Partial<Record<TargetKey, number | null | undefined>>): number {
   return TARGETS.reduce((sum, t) => sum + (Number(row[t.key]) || 0), 0);
@@ -121,7 +175,10 @@ export function groupDivisionLabel(division: string): string {
 }
 
 // 'YYYY-Qn' 형식의 기간에서 바로 직전 분기 라벨을 계산 (예: '2026-Q3' -> '2026-Q2', '2026-Q1' -> '2025-Q4').
+// 연간 예산 'YYYY-BP'는 전년 4Q 다음에 받으므로 직전은 전년 4Q다 (예: '2027-BP' -> '2026-Q4').
 export function getPreviousPeriod(period: string): string | null {
+  const bp = /^(\d{4})-BP$/.exec(period.trim());
+  if (bp) return `${Number(bp[1]) - 1}-Q4`;
   const m = /^(\d{4})-Q([1-4])$/.exec(period.trim());
   if (!m) return null;
   const year = Number(m[1]);

@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { TargetKey, getPreviousPeriod } from "@/lib/targets";
+import { TARGETS, TargetKey, getPreviousPeriod, inactiveTargetKeys, stripInactiveTargets } from "@/lib/targets";
 import {
   RateTableHead,
   ReadOnlyRateRow,
@@ -31,7 +31,7 @@ import type {
   RateHistoryEntry,
   RateMap,
 } from "@/components/RateParts";
-import { SubmitLang, submitStrings } from "@/lib/submitLang";
+import { SubmitLang, submitStrings, targetLabel } from "@/lib/submitLang";
 import { submitLockState } from "@/lib/submitLock";
 
 /** 자동 임시저장에 담는 값 — 화면을 다시 열었을 때 그대로 이어서 입력할 수 있게 한다. */
@@ -111,12 +111,18 @@ function OrgSubmitSection({
   const s = submitStrings(lang);
   const draft = data.draft;
   const router = useRouter();
+  // 이번 분기에 배부하지 않는 대상(예: 2026-Q4부터 홀딩스) — 열은 남기되 입력을 막고, 불러온 값에서도 뺀다.
+  const lockedKeys = inactiveTargetKeys(period);
+  const lockedLabels = TARGETS.filter((t) => lockedKeys.includes(t.key)).map((t) => targetLabel(t, lang)).join(", ");
+  const forPeriod = (rates: RateMap) => stripInactiveTargets(rates, period);
 
   const [submittedBy, setSubmittedBy] = useState(draft?.submittedBy ?? data.submittedBy ?? data.managerName ?? "");
   const [orgRates, setOrgRates] = useState<RateMap>(() =>
-    draft?.orgRates
-      ? ({ ...emptyRates(), ...draft.orgRates } as RateMap)
-      : toRateMap(data.currentOrgSubmission ?? data.currentRate)
+    forPeriod(
+      draft?.orgRates
+        ? ({ ...emptyRates(), ...draft.orgRates } as RateMap)
+        : toRateMap(data.currentOrgSubmission ?? data.currentRate)
+    )
   );
   // 인원수를 비워두고 제출하면 0명으로 남긴다 (빈칸으로 두지 않는다).
   const [orgHeadcountInput, setOrgHeadcountInput] = useState(
@@ -124,7 +130,7 @@ function OrgSubmitSection({
   );
   const [orgNoteInput, setOrgNoteInput] = useState(() => draft?.orgNote ?? data.submittedNote ?? "");
   const [persons, setPersons] = useState<PersonEditRow[]>(
-    () => draft?.persons ?? data.currentPersons.map(personRowFromCurrent)
+    () => (draft?.persons ?? data.currentPersons.map(personRowFromCurrent)).map((p) => ({ ...p, rates: forPeriod(p.rates) }))
   );
 
   const [submitted, setSubmitted] = useState(data.submittedThisPeriod);
@@ -184,7 +190,7 @@ function OrgSubmitSection({
 
   function loadPreviousOrgRate() {
     if (!previousOrgRate) return;
-    setOrgRates(toRateMap(previousOrgRate.rates));
+    setOrgRates(forPeriod(toRateMap(previousOrgRate.rates)));
     setOrgHeadcountInput(previousOrgRate.headcount != null ? String(previousOrgRate.headcount) : "");
     setOrgNoteInput(previousOrgRate.note ?? "");
   }
@@ -197,7 +203,7 @@ function OrgSubmitSection({
         headcount: p.headcount != null ? String(p.headcount) : "0",
         note: p.note ?? "",
         role: p.role,
-        rates: toRateMap(p.rates),
+        rates: forPeriod(toRateMap(p.rates)),
       }))
     );
   }
@@ -341,10 +347,10 @@ function OrgSubmitSection({
       if (!res.ok) throw new Error((lang === "ko" && json.error) || s.cancelEditFailed);
 
       setSubmittedBy(data.submittedBy ?? data.managerName ?? "");
-      setOrgRates(toRateMap(data.currentOrgSubmission ?? data.currentRate));
+      setOrgRates(forPeriod(toRateMap(data.currentOrgSubmission ?? data.currentRate)));
       setOrgHeadcountInput(String(data.submittedHeadcount ?? 0));
       setOrgNoteInput(data.submittedNote ?? "");
-      setPersons(data.currentPersons.map(personRowFromCurrent));
+      setPersons(data.currentPersons.map(personRowFromCurrent).map((p) => ({ ...p, rates: forPeriod(p.rates) })));
       setJustSubmitted(false);
       setDraftSavedAt(null);
       setSubmitted(true);
@@ -477,6 +483,7 @@ function OrgSubmitSection({
                   withNote
                   noteValue={orgNoteInput}
                   onNoteChange={setOrgNoteInput}
+                  lockedKeys={lockedKeys}
                   lang={lang}
                 />
               ) : (
@@ -497,6 +504,11 @@ function OrgSubmitSection({
       {!totalOk && (
         <div className="field-hint" style={{ color: "#dc2626", marginBottom: 12 }}>
           {s.totalWarning(period)}
+        </div>
+      )}
+      {editable && lockedKeys.length > 0 && (
+        <div className="field-hint" style={{ marginBottom: 12 }}>
+          {s.inactiveTargetsNote(lockedLabels)}
         </div>
       )}
 
@@ -522,7 +534,7 @@ function OrgSubmitSection({
             )}
           </div>
           {personsEditable ? (
-            <PersonEditTable persons={persons} setPersons={setPersons} hasExpat={false} lang={lang} />
+            <PersonEditTable persons={persons} setPersons={setPersons} hasExpat={false} lockedKeys={lockedKeys} lang={lang} />
           ) : (
             <PersonReadOnlyTable persons={persons} hasExpat={false} lang={lang} />
           )}

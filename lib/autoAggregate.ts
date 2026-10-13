@@ -1,4 +1,4 @@
-import { TARGETS, TargetKey, sumTargets, normalizeTargets } from "./targets";
+import { TARGETS, TargetKey, sumTargets, normalizeTargets, stripInactiveTargets } from "./targets";
 import { latestByPerson, computeRollup, countedPersonRows, SubmissionRow } from "./rollup";
 import { ensureFixedRates } from "./fixedRates";
 import { isOrgActiveIn } from "./orgLifespan";
@@ -143,10 +143,12 @@ async function upsertRate(
 ) {
   // 하위 조직에 아직 입력이 없으면 합이 0이 된다. 0%짜리 확정 행을 남기면 실제로는 미입력인데
   // 확정된 것처럼 보이므로, 남아 있던 행이 있으면 지우고 새로 쓰지는 않는다.
-  if (sumTargets(row.rates) <= 0) return deleteRate(supabase, row);
+  // 그 분기에 배부하지 않는 대상(예: 2026-Q4부터 홀딩스)은 근거 값에 남아 있어도 싣지 않는다.
+  const source = stripInactiveTargets(row.rates, row.quarter);
+  if (sumTargets(source) <= 0) return deleteRate(supabase, row);
 
   // 저장 직전에 한 번 더 100%로 맞춘다 — 어느 경로로 불려도 저장값의 합계는 항상 100%다.
-  const rates = normalizeTargets(row.rates);
+  const rates = normalizeTargets(source);
 
   const { error } = await supabase.from("allocation_rate").upsert(
     {

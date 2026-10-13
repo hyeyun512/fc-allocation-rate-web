@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
-import { TARGETS, TargetKey, sumTargets } from "@/lib/targets";
+import { sumTargets, parseTargetRates } from "@/lib/targets";
 
 // HKR 자동계산 확정 전용 라우트. allocation_rate(운영, fc-dashboard-web 소비)에 직접 upsert한다.
 export async function POST(req: NextRequest) {
@@ -12,11 +12,7 @@ export async function POST(req: NextRequest) {
 
   const supabase = getSupabaseAdmin();
 
-  const parsed = {} as Record<TargetKey, number>;
-  TARGETS.forEach((t) => {
-    const v = Number(rates[t.key]);
-    parsed[t.key] = Number.isFinite(v) ? v : 0;
-  });
+  const parsed = parseTargetRates(rates, quarter);
 
   const { error: upsertError } = await supabase
     .from("allocation_rate")

@@ -2,7 +2,7 @@
 
 import React, { useMemo, useState } from "react";
 import Nav from "../Nav";
-import { TARGETS, TargetKey } from "@/lib/targets";
+import { TARGETS, TargetKey, isTargetActiveIn } from "@/lib/targets";
 import { defaultDeltaPairKey, deltaPairOptions, parseQuarter, prettyQuarterLabel, shortQuarterLabel } from "@/lib/quarter";
 
 export interface AllocRateRow extends Partial<Record<TargetKey, number | null>> {
@@ -359,7 +359,8 @@ export default function AllocationView({
     const excluded = total - validated;
     stats = [
       { label: "배부기준", value: `${total}건`, sub: `${DIVISION_ORDER.length}개 구분 · ${TYPE_ORDER.length}개 유형` },
-      { label: "적용 법인", value: `${TARGETS.length}개`, sub: "STB ~ H.Networks" },
+      // 배부 대상이 빠진 분기(예: 2026-Q4부터 홀딩스)에는 그만큼 줄여 센다.
+      { label: "적용 법인", value: `${TARGETS.filter((t) => isTargetActiveIn(t.key, view)).length}개`, sub: "STB ~ H.Networks" },
       { label: "배부 유형", value: `${TYPE_ORDER.length}종`, sub: "리소스 · 건물 · IT · 고정비율" },
       { label: "합계 검증", value: `${validated}/${total}`, sub: excluded ? `${excluded}건 실적 제외 (설계상 total=0)` : "전건 100% 일치", ok: true },
     ];

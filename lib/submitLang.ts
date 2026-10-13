@@ -33,6 +33,9 @@ const KO = {
   deleteRow: "행 삭제",
   addPerson: (hasExpat: boolean) => `+ ${hasExpat ? "인원" : "팀원"} 추가`,
   quarterConfirmed: (q: string) => `${q} (확정됨)`,
+  targetInactive: "이번 분기에는 배부 대상이 아닙니다",
+  inactiveTargetsNote: (labels: string) =>
+    `※ ${labels}은(는) 이번 분기부터 배부 대상에서 제외되어 입력하지 않습니다. 전분기 데이터를 끌고오면 ${labels} 비율이 빠지므로, 합계가 100%가 되도록 다른 항목에 나눠 입력해주세요.`,
 
   // ── 조직 입력 구역 (SubmitForm) ─────────────────────────────────────
   divisionLabel: (d: string) => d,
@@ -105,6 +108,9 @@ const EN: SubmitStrings = {
   deleteRow: "Delete row",
   addPerson: () => "+ Add person",
   quarterConfirmed: (q: string) => `${q} (confirmed)`,
+  targetInactive: "Not an allocation target from this quarter",
+  inactiveTargetsNote: (labels: string) =>
+    `* ${labels} is no longer an allocation target from this quarter and cannot be entered. If you copy last quarter's figures, the ${labels} share is left out, so please spread it over the other columns so the total is 100%.`,
 
   divisionLabel: (d: string) =>
     d === "법인" ? "Subsidiary" : d === "주재원" ? "Expatriates" : d === "본사" ? "Head office" : d,

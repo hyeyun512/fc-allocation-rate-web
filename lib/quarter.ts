@@ -2,25 +2,42 @@
 // 표기가 섞여 들어온다 (원본 엑셀 입력자에 따라 'Qn' / 'nQ' 순서가 다름).
 // 화면 정렬·표시는 이 파서로 통일해서, 원본 문자열 표기와 무관하게
 // 연도 -> 분기 -> 확정치(청구) 순으로 정렬되도록 한다.
+//
+// 연간 예산(BP) 라운드는 "2027-BP"로 저장한다. 다음 해 예산은 그 해 4Q 조사 뒤에 받으므로
+// 분기 0으로 보고 "2026-Q4" 다음, "2027-Q1" 앞에 둔다.
 
 export interface QuarterInfo {
   raw: string;
   year: number;
+  /** 1~4. BP는 0 (그 해 1Q보다 앞). */
   q: number;
   billing: boolean;
+  bp: boolean;
 }
 
-const QUARTER_RE = /^(\d{4})-(?:Q(\d)|(\d)Q)(\(청구\))?$/;
+const QUARTER_RE = /^(\d{4})-(?:Q(\d)|(\d)Q|(BP))(\(청구\))?$/;
 
 export function parseQuarter(raw: string): QuarterInfo {
   const m = QUARTER_RE.exec(raw.trim());
-  if (!m) return { raw, year: 0, q: 0, billing: false };
+  if (!m) return { raw, year: 0, q: 0, billing: false, bp: false };
+  const bp = !!m[4];
   return {
     raw,
     year: Number(m[1]),
-    q: Number(m[2] ?? m[3]),
-    billing: !!m[4],
+    q: bp ? 0 : Number(m[2] ?? m[3]),
+    billing: !!m[5],
+    bp,
   };
+}
+
+/**
+ * 기간의 앞뒤를 비교하는 수 ("2026-Q3" → 20263, "2027-BP" → 20270). 못 읽는 표기는 -1.
+ * 확정치(청구) 여부는 보지 않는다 — 같은 분기의 입력본과 청구본은 같은 자리다.
+ */
+export function quarterRank(raw: string): number {
+  const q = parseQuarter(raw);
+  if (!q.year) return -1;
+  return q.year * 10 + q.q;
 }
 
 export function sortQuarters(quarters: string[]): string[] {
@@ -37,14 +54,14 @@ export function sortQuarters(quarters: string[]): string[] {
 export function prettyQuarterLabel(raw: string): string {
   const info = parseQuarter(raw);
   if (!info.year) return raw;
-  return `${info.year}-${info.q}Q${info.billing ? "(청구)" : ""}`;
+  return `${info.year}-${info.bp ? "BP" : `${info.q}Q`}${info.billing ? "(청구)" : ""}`;
 }
 
 // 변화 탭 라벨용 짧은 표기: "2026-Q2(청구)" -> "2Q"
 export function shortQuarterLabel(raw: string): string {
   const info = parseQuarter(raw);
   if (!info.year) return raw;
-  return `${info.q}Q`;
+  return info.bp ? "BP" : `${info.q}Q`;
 }
 
 /* ─────────────────── 변화(diff) 비교 분기 쌍 ───────────────────
@@ -56,7 +73,7 @@ export function shortQuarterLabel(raw: string): string {
 export function deltaQuarterLabel(raw: string): string {
   const info = parseQuarter(raw);
   if (!info.year) return raw;
-  return `${info.q}Q${info.billing ? "(청구)" : ""}`;
+  return `${info.bp ? "BP" : `${info.q}Q`}${info.billing ? "(청구)" : ""}`;
 }
 
 export interface QuarterPair {
