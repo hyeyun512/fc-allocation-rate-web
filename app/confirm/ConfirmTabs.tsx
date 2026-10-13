@@ -6,6 +6,7 @@ import Nav from "../Nav";
 import SurveyOverview, { SurveyOrgData } from "../SurveyOverview";
 import { prettyQuarterLabel } from "@/lib/quarter";
 import { TargetColumns } from "@/components/RateParts";
+import { roundLabel, roundPeriods } from "@/lib/surveyPeriods";
 import ConfirmReview, { OrgReviewData, RateHistoryEntry } from "./ConfirmReview";
 import ItPanel, { ItBasisRow } from "./ItPanel";
 import SelfUsePanel, { SelfuseBasisRow } from "./SelfUsePanel";
@@ -14,8 +15,8 @@ type SubTab = "survey" | "resource" | "selfuse" | "it";
 
 // 저장값(raw)은 기존 데이터와 동일한 "2026-Q1" 표기를 그대로 쓴다 — 화면 표기만 prettyQuarterLabel로 "2026-1Q"처럼 보여준다.
 // 두 표기를 섞어 쓰면 같은 분기가 서로 다른 문자열로 저장되어 View 등에서 중복 분기로 보이는 문제가 생긴다.
-// 연간 예산(BP) 라운드는 "2027-BP"로 저장한다 — lib/quarter가 그 해 1Q 앞, 전년 4Q 뒤로 정렬한다.
-const QUARTER_OPTIONS = ["2026-Q1", "2026-Q2", "2026-Q3", "2026-Q4", "2027-BP"];
+// 26년 4Q와 27년 BP는 함께 조사한다 — 묶음 라운드 하나로 고른다(lib/surveyPeriods의 ROUND_GROUPS).
+const QUARTER_OPTIONS = ["2026-Q1", "2026-Q2", "2026-Q3", "2026-Q4+2027-BP"];
 const CUSTOM_OPTION = "__custom__";
 const FIXED_VERSION = "Forecast";
 
@@ -42,8 +43,7 @@ const SUB_TABS: { key: SubTab; label: string }[] = [
 
 export default function ConfirmTabs({
   period,
-  surveyPeriods,
-  surveyPeriodsSupported,
+  round,
   version,
   mailSubject,
   mailBody,
@@ -58,10 +58,10 @@ export default function ConfirmTabs({
   selfuse,
   selfuseHistory,
 }: {
+  /** 지금 검토하는 기간 (라운드가 묶음이면 그중 하나). */
   period: string;
-  /** 조사 링크에 여는 기간 (둘 이상이면 링크에 기간별 탭이 생긴다). */
-  surveyPeriods: string[];
-  surveyPeriodsSupported: boolean;
+  /** 지금 라운드 — 기간 하나이거나 묶음("2026-Q4+2027-BP"). 조사 링크는 라운드의 기간을 모두 연다. */
+  round: string;
   version: string;
   /** 조사 링크 안내 메일 문구 (비어 있으면 기본 문구). */
   mailSubject: string;
@@ -81,10 +81,9 @@ export default function ConfirmTabs({
   // 처음 열리는 탭은 언제나 맨 앞 탭이다. 순서를 바꾸면 첫 화면도 따라오게 두어,
   // 탭 목록과 기본값이 따로 놀지 않게 한다.
   const [subTab, setSubTab] = useState<SubTab>(SUB_TABS[0].key);
-  const [periodInput, setPeriodInput] = useState(period);
-  const [customPeriod, setCustomPeriod] = useState(!QUARTER_OPTIONS.includes(period));
+  const [periodInput, setPeriodInput] = useState(round);
+  const [customPeriod, setCustomPeriod] = useState(!QUARTER_OPTIONS.includes(round));
   const [savingSettings, setSavingSettings] = useState(false);
-  const [surveyInput, setSurveyInput] = useState<string[]>(surveyPeriods);
   const router = useRouter();
 
   async function logout() {
@@ -111,10 +110,11 @@ export default function ConfirmTabs({
       body: JSON.stringify({
         period: periodInput,
         version: FIXED_VERSION,
-        ...(surveyPeriodsSupported ? { surveyPeriods: surveyInput } : {}),
       }),
     });
     setSavingSettings(false);
+    // 라운드를 바꾸면 검토 기간도 새 라운드의 첫 기간으로 돌아가야 한다 — 이전 ?p=를 떼고 다시 연다.
+    router.replace("/confirm");
     router.refresh();
   }
 
@@ -136,7 +136,7 @@ export default function ConfirmTabs({
             <select value={customPeriod ? CUSTOM_OPTION : periodInput} onChange={(e) => handlePeriodSelect(e.target.value)}>
               {QUARTER_OPTIONS.map((q) => (
                 <option key={q} value={q}>
-                  {prettyQuarterLabel(q)}
+                  {roundLabel(q)}
                 </option>
               ))}
               <option value={CUSTOM_OPTION}>직접 입력...</option>
@@ -153,31 +153,27 @@ export default function ConfirmTabs({
           </button>
         </div>
         <div className="field-hint" style={{ marginTop: 6 }}>
-          여기서 지정한 기간이 아래 조사/리소스배부율/자가사용(건물)/IT 전체에 적용됩니다.
+          여기서 지정한 기간이 아래 조사/리소스배부율/자가사용(건물)/IT 전체에 적용되고, 조사 링크에도 이 기간이 열립니다.
         </div>
-        <div className="field" style={{ marginTop: 12 }}>
-          <label>조사 링크에 여는 기간</label>
-          <div style={{ display: "flex", gap: 14, flexWrap: "wrap", alignItems: "center" }}>
-            {Array.from(new Set([...QUARTER_OPTIONS, ...surveyInput])).map((q) => (
-              <label key={q} style={{ display: "inline-flex", gap: 4, alignItems: "center", fontWeight: 400 }}>
-                <input
-                  type="checkbox"
-                  disabled={!surveyPeriodsSupported}
-                  checked={surveyInput.includes(q)}
-                  onChange={(e) =>
-                    setSurveyInput((list) => (e.target.checked ? [...list, q] : list.filter((x) => x !== q)))
-                  }
-                />
-                {prettyQuarterLabel(q)}
-              </label>
-            ))}
+        {roundPeriods(round).length > 1 && (
+          <div style={{ marginTop: 12 }}>
+            <div className="field-hint" style={{ marginBottom: 6 }}>
+              조사 링크에는 {roundLabel(round)}이(가) 탭으로 함께 열립니다. 검토는 아래에서 기간을 골라 하나씩 합니다.
+            </div>
+            <div className="admin-subtabs" style={{ margin: 0 }}>
+              {roundPeriods(round).map((p) => (
+                <button
+                  key={p}
+                  type="button"
+                  className={`admin-subtab ${period === p ? "active" : ""}`}
+                  onClick={() => router.push(`/confirm?p=${encodeURIComponent(p)}`)}
+                >
+                  {prettyQuarterLabel(p)} 검토
+                </button>
+              ))}
+            </div>
           </div>
-          <div className="field-hint" style={{ marginTop: 4 }}>
-            {surveyPeriodsSupported
-              ? "둘 이상 고르면 담당자는 링크 하나에서 기간별 탭으로 각각 입력·제출합니다. 아무것도 고르지 않으면 위 기간 하나만 엽니다. '선택'을 눌러야 저장됩니다."
-              : "DB에 survey_periods 컬럼이 아직 없어 위 기간 하나만 조사 링크에 열립니다."}
-          </div>
-        </div>
+        )}
       </div>
 
       <div className="admin-subtabs">

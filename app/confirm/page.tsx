@@ -10,7 +10,7 @@ import { templateFor, previousTemplate, MailTemplateRow } from "@/lib/mailTempla
 import { OrgReviewData } from "./ConfirmReview";
 import { SurveyOrgData } from "../SurveyOverview";
 import ConfirmTabs from "./ConfirmTabs";
-import { surveyPeriodsOf } from "@/lib/surveyPeriods";
+import { roundPeriods } from "@/lib/surveyPeriods";
 
 export const dynamic = "force-dynamic";
 
@@ -18,11 +18,14 @@ function toRateRecord(row: Record<string, any>): Record<TargetKey, number> {
   return Object.fromEntries(TARGETS.map((t) => [t.key, Number(row[t.key]) || 0])) as Record<TargetKey, number>;
 }
 
-export default async function AdminConfirmPage() {
+export default async function AdminConfirmPage({ searchParams }: { searchParams?: { p?: string } }) {
   const supabase = getSupabaseAdmin();
 
   const { data: settings } = await supabase.from("allocation_settings").select("*").eq("id", 1).single();
-  const period = settings?.current_period ?? "";
+  // 라운드(current_period)가 두 기간 묶음(26년 4Q & 27년 BP)이면 검토는 그중 한 기간씩 한다 — ?p=로 고른다.
+  const round = settings?.current_period ?? "";
+  const periodsInRound = roundPeriods(round);
+  const period = (searchParams?.p && periodsInRound.includes(searchParams.p) ? searchParams.p : periodsInRound[0]) ?? "";
   const version = settings?.current_version ?? "Forecast";
 
   // 제출을 마친 링크를 다시 열어준 조직 (조사 탭의 '수정 허용').
@@ -362,9 +365,7 @@ export default async function AdminConfirmPage() {
   return (
     <ConfirmTabs
       period={period}
-      surveyPeriods={surveyPeriodsOf(settings)}
-      // 컬럼이 아직 없으면(SQL 실행 전) 여러 기간을 저장할 수 없다 — 화면에서 고르는 칸을 막는다.
-      surveyPeriodsSupported={!!settings && "survey_periods" in settings}
+      round={round}
       version={version}
       mailSubject={mailTpl?.subject ?? ""}
       mailBody={mailTpl?.body ?? ""}
