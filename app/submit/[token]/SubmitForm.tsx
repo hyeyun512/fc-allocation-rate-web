@@ -34,7 +34,7 @@ import type {
 } from "@/components/RateParts";
 import { SubmitLang, submitStrings, targetLabel } from "@/lib/submitLang";
 import { submitLockState } from "@/lib/submitLock";
-import { prettyQuarterLabel } from "@/lib/quarter";
+import { prettyQuarterLabel, sortQuarters } from "@/lib/quarter";
 
 /** 자동 임시저장에 담는 값 — 화면을 다시 열었을 때 그대로 이어서 입력할 수 있게 한다. */
 export interface SubmitDraft {
@@ -94,34 +94,28 @@ function fmtTime(iso: string | null, locale: string): string {
 }
 
 /**
- * 조직 하나의 입력 구역.
+ * 한 조직 · 한 기간의 입력 상태(입력값·임시저장·제출·수정 취소).
  *
- * 관리자 '검토 및 확정 > 리소스배부율'의 조직 상세(OrgDetail)와 같은 구성이다
- * (같은 표 컴포넌트를 @/components/RateParts에서 함께 쓴다).
- * 다만 하단 버튼은 관리자 화면의 '저장'이 아니라 '제출하기'다.
+ * 26년 4Q와 27년 BP처럼 두 기간을 함께 조사하면 한 조직의 표에 입력 행이 기간마다 하나씩 붙는다.
+ * 기간마다 저장되는 곳(임시저장·제출·재수정 허용)이 따로라 상태도 기간마다 따로 둔다.
+ * 기간 하나만 조사할 때도 같은 훅을 한 번 쓴다 — 화면 구성이 갈라지지 않게.
  */
-function OrgSubmitSection({
+function useOrgEntry({
   token,
   period,
-  version,
   data,
-  showPeriodTag,
   lang,
 }: {
   token: string;
   period: string;
-  version: string;
   data: SubmitOrgData;
-  /** 조직이 하나뿐인 화면에서는 제목 옆에 분기를 함께 보여준다 (집계 화면은 맨 위에 이미 있다). */
-  showPeriodTag: boolean;
   lang: SubmitLang;
 }) {
   const s = submitStrings(lang);
   const draft = data.draft;
   const router = useRouter();
-  // 이번 분기에 배부하지 않는 대상(예: 2026-Q4부터 홀딩스) — 열은 남기되 입력을 막고, 불러온 값에서도 뺀다.
+  // 이번 분기에 배부하지 않는 대상(예: 2026-Q4부터 홀딩스) — 입력을 막고, 불러온 값에서도 뺀다.
   const lockedKeys = inactiveTargetKeys(period);
-  const lockedLabels = TARGETS.filter((t) => lockedKeys.includes(t.key)).map((t) => targetLabel(t, lang)).join(", ");
   const forPeriod = (rates: RateMap) => stripInactiveTargets(rates, period);
 
   const [submittedBy, setSubmittedBy] = useState(draft?.submittedBy ?? data.submittedBy ?? data.managerName ?? "");
@@ -146,15 +140,12 @@ function OrgSubmitSection({
   // '수정 취소'를 눌렀을 때, 그리고 서버가 '이미 제출됨'으로 막았을 때.
   const [forceLocked, setForceLocked] = useState(false);
   const [cancelling, setCancelling] = useState(false);
-  // 제출을 마친 뒤에는 **관리자가 열어준 경우에만** 다시 고칠 수 있다 —
-  // 예전에는 화면의 '수정하기' 버튼으로 담당자가 스스로 풀 수 있었다.
+  // 제출을 마친 뒤에는 **관리자가 열어준 경우에만** 다시 고칠 수 있다.
   //
   // 임시저장본은 '아직 제출 전'이라는 뜻일 때만 잠금을 푼다. 제출한 뒤에 남거나 되살아난
   // 임시저장본까지 잠금을 풀면 제출 잠금이 통째로 무력화된다 — 제출 직후 창을 닫으면
   // pagehide 비콘이 방금 지워진 임시저장본을 다시 만들어 실제로 그렇게 됐다.
   const unlocked = !forceLocked && (data.editAllowed || (!!draft && !data.submittedThisPeriod));
-  const [sending, setSending] = useState(false);
-  const [error, setError] = useState("");
   const [justSubmitted, setJustSubmitted] = useState(false);
   const [draftSavedAt, setDraftSavedAt] = useState<string | null>(data.draftSavedAt);
   const [draftState, setDraftState] = useState<"idle" | "saving" | "error">("idle");
@@ -167,23 +158,9 @@ function OrgSubmitSection({
   const orgEditable = usesPersonTable ? false : editable;
   const personsEditable = usesPersonTable ? editable : false;
 
-  const pastRateHistory = data.rateHistory.filter((h) => h.quarter !== period);
-  const pastPersonHistory = data.personHistory.filter((h) => h.period !== period);
   const prevPeriod = getPreviousPeriod(period);
-  const previousPersonsForOrg = prevPeriod ? data.personHistory.filter((h) => h.period === prevPeriod) : [];
-  const previousOrgRate = prevPeriod ? pastRateHistory.find((h) => h.quarter === prevPeriod) ?? null : null;
-
-  // 개인별 과거 이력을 현재 분기 기준으로 이전/이후로 나눈다 — 항상 연도->분기 순으로 보이게 하기 위해,
-  // 현재 분기보다 나중 분기가 이미 있으면 그 이력은 현재 분기 아래에 따로 보여준다.
-  const personCombinedHistory: PersonHistoryRow[] = pastPersonHistory;
-  const personQuarterOrder = orderedQuarters(personCombinedHistory.map((h) => h.period), period);
-  const currentQuarterIdx = personQuarterOrder.indexOf(period);
-  const beforeQuarterSet = new Set(personQuarterOrder.slice(0, currentQuarterIdx));
-  const afterQuarterSet = new Set(personQuarterOrder.slice(currentQuarterIdx + 1));
-  const personRowSort = (a: PersonHistoryRow, b: PersonHistoryRow) =>
-    personQuarterOrder.indexOf(a.period) - personQuarterOrder.indexOf(b.period);
-  const beforePersonRows = personCombinedHistory.filter((r) => beforeQuarterSet.has(r.period)).sort(personRowSort);
-  const afterPersonRows = personCombinedHistory.filter((r) => afterQuarterSet.has(r.period)).sort(personRowSort);
+  const previousPersons = prevPeriod ? data.personHistory.filter((h) => h.period === prevPeriod) : [];
+  const previousOrgRate = prevPeriod ? data.rateHistory.find((h) => h.quarter === prevPeriod) ?? null : null;
 
   const legalPersons = isExpatOnlyOrg ? persons : persons.filter((p) => p.role !== "주재원");
   const computedOrgRates = usesPersonTable ? averageFromPersons(legalPersons) : orgRates;
@@ -191,6 +168,8 @@ function OrgSubmitSection({
 
   const total = totalOf(computedOrgRates);
   const totalOk = Math.abs(total - 1) < 0.005 || total === 0;
+  /** 이 기간에 입력한 값이 있는지 — 함께 제출할 때 비워 둔 기간은 건너뛴다. */
+  const hasInput = usesPersonTable ? persons.some((p) => p.name.trim() && totalOf(p.rates) > 0) : totalOf(orgRates) > 0;
 
   function updateOrgRate(key: TargetKey, value: string) {
     setOrgRates((r) => ({ ...r, [key]: value }));
@@ -205,7 +184,7 @@ function OrgSubmitSection({
 
   function loadPreviousPersons() {
     setPersons(
-      previousPersonsForOrg.map((p, i) => ({
+      previousPersons.map((p, i) => ({
         key: `prev-${i}-${Date.now()}`,
         name: p.name,
         headcount: p.headcount != null ? String(p.headcount) : "0",
@@ -214,6 +193,14 @@ function OrgSubmitSection({
         rates: forPeriod(toRateMap(p.rates)),
       }))
     );
+  }
+
+  /** 같은 조직의 다른 기간에 지금 입력 중인 값을 그대로 가져온다 (예: 4Q 값을 27년 BP에). */
+  function copyFrom(other: { orgRates: RateMap; orgHeadcountInput: string; orgNoteInput: string; persons: PersonEditRow[] }) {
+    setOrgRates(forPeriod({ ...other.orgRates }));
+    setOrgHeadcountInput(other.orgHeadcountInput);
+    setOrgNoteInput(other.orgNoteInput);
+    setPersons(other.persons.map((p, i) => ({ ...p, key: `copy-${i}-${Date.now()}`, rates: forPeriod({ ...p.rates }) })));
   }
 
   function draftPayload(): SubmitDraft {
@@ -277,24 +264,20 @@ function OrgSubmitSection({
     return () => window.removeEventListener("pagehide", flush);
   }, [token, data.orgId, period]);
 
-  async function handleSubmit() {
-    setError("");
-    if (!submittedBy.trim()) {
-      setError(s.errNoName);
-      return;
-    }
+  /** 제출 전 검사. 문제가 있으면 안내 문구, 없으면 null. */
+  function validate(): string | null {
+    if (!submittedBy.trim()) return s.errNoName;
     if (usesPersonTable) {
       const invalid = persons.find((p) => p.name.trim() && !totalIsValid(p.rates));
-      if (invalid) {
-        setError(s.errPersonTotal(invalid.name));
-        return;
-      }
+      if (invalid) return s.errPersonTotal(invalid.name);
     } else if (!totalIsValid(orgRates)) {
-      setError(s.errOrgTotal);
-      return;
+      return s.errOrgTotal;
     }
+    return null;
+  }
 
-    setSending(true);
+  /** 이 기간을 제출한다. 오류 문구를 돌려주고, 성공하면 null. */
+  async function submit(): Promise<string | null> {
     try {
       const res = await fetch("/api/submissions", {
         method: "POST",
@@ -314,27 +297,21 @@ function OrgSubmitSection({
       });
       const json = await res.json();
       // 서버가 '이미 제출됨'으로 막았다면 이 화면의 인식이 낡은 것이다(다른 창에서 먼저 제출한 경우 등).
-      // 안내만 띄우고 입력칸을 열어두면 '이미 제출되었습니다'와 고칠 수 있는 표가 함께 보인다 —
-      // 있을 수 없는 조합이므로 곧바로 잠근 상태로 맞추고 서버 값을 다시 읽어온다.
+      // 곧바로 잠근 상태로 맞추고 서버 값을 다시 읽어온다.
       if (res.status === 409 && json?.code === "already-submitted") {
         setSubmitted(true);
         setForceLocked(true);
-        setError(s.lockedNotice);
-        router.refresh();
-        return;
+        return s.lockedNotice;
       }
       // 서버가 돌려주는 오류 문구는 한국어라 영어 링크에서는 쓰지 않는다
       // (합계·입력자 이름은 위에서 이미 걸러지므로 남는 건 통신/저장 실패뿐이다).
-      if (!res.ok) throw new Error((lang === "ko" && json.error) || s.errSubmit);
+      if (!res.ok) return (lang === "ko" && json.error) || s.errSubmit;
       setSubmitted(true);
       setJustSubmitted(true);
       setDraftSavedAt(null);
-      // 제출과 함께 서버가 재제출 허용 표식을 지운다 — 새로 읽어와 잠긴 상태로 되돌린다.
-      router.refresh();
+      return null;
     } catch (e: any) {
-      setError(e.message || s.errSubmit);
-    } finally {
-      setSending(false);
+      return e?.message || s.errSubmit;
     }
   }
 
@@ -342,9 +319,7 @@ function OrgSubmitSection({
    * 재수정을 그만둔다. 서버가 임시저장본과 재수정 허용 표식을 지우고, 화면은 제출된 값으로 되돌린다.
    * 되돌아갈 값은 서버가 이미 넘겨준 data.*(= 제출된 값)라 따로 받아올 것이 없다.
    */
-  async function handleCancelEdit() {
-    if (!window.confirm(s.cancelEditConfirm)) return;
-    setError("");
+  async function cancelEdit(): Promise<string | null> {
     setCancelling(true);
     try {
       const res = await fetch("/api/submissions/cancel-edit", {
@@ -353,7 +328,7 @@ function OrgSubmitSection({
         body: JSON.stringify({ token, orgId: data.orgId, period }),
       });
       const json = await res.json();
-      if (!res.ok) throw new Error((lang === "ko" && json.error) || s.cancelEditFailed);
+      if (!res.ok) return (lang === "ko" && json.error) || s.cancelEditFailed;
 
       setSubmittedBy(data.submittedBy ?? data.managerName ?? "");
       setOrgRates(forPeriod(toRateMap(data.currentOrgSubmission ?? data.currentRate)));
@@ -365,34 +340,191 @@ function OrgSubmitSection({
       setSubmitted(true);
       setForceLocked(true);
       // 값이 되돌아간 것을 '고쳤다'고 보고 자동 임시저장이 돌면 방금 지운 것이 되살아난다.
-      // 잠긴 뒤라 저장 조건에서 걸러지지만, 비교 기준도 다시 잡아 둔다.
       initialDraftJson.current = null;
       router.refresh();
+      return null;
     } catch (e: any) {
-      setError(e.message || s.cancelEditFailed);
+      return e?.message || s.cancelEditFailed;
     } finally {
       setCancelling(false);
     }
   }
 
+  return {
+    period,
+    data,
+    lockedKeys,
+    submittedBy,
+    setSubmittedBy,
+    orgRates,
+    setOrgRates,
+    updateOrgRate,
+    orgHeadcountInput,
+    setOrgHeadcountInput,
+    orgNoteInput,
+    setOrgNoteInput,
+    persons,
+    setPersons,
+    submitted,
+    cancelling,
+    justSubmitted,
+    draftSavedAt,
+    draftState,
+    usesPersonTable,
+    isExpatOnlyOrg,
+    editable,
+    showLockedNotice,
+    orgEditable,
+    personsEditable,
+    previousOrgRate,
+    previousPersons,
+    computedOrgRates,
+    currentOrgHeadcount,
+    totalOk,
+    hasInput,
+    loadPreviousOrgRate,
+    loadPreviousPersons,
+    copyFrom,
+    validate,
+    submit,
+    cancelEdit,
+  };
+}
+
+type OrgEntry = ReturnType<typeof useOrgEntry>;
+
+/**
+ * 조직 하나의 입력 구역.
+ *
+ * 관리자 '검토 및 확정 > 리소스배부율'의 조직 상세(OrgDetail)와 같은 구성이다
+ * (같은 표 컴포넌트를 @/components/RateParts에서 함께 쓴다).
+ * 두 기간을 함께 조사하면 지난 분기 이력은 한 번만 보이고, 그 아래에 기간마다 입력 행이 붙는다 —
+ * 기간별로 구역을 따로 그리면 같은 이력이 두 번 나와 읽기 어렵다.
+ * 제출하기는 하나다 — 값을 넣은 기간을 모두 제출한다.
+ */
+function OrgSubmitSection({
+  token,
+  entries: entryData,
+  version,
+  showPeriodTag,
+  lang,
+}: {
+  token: string;
+  /** 기간마다의 이 조직 데이터 (기간 순서대로). 조사 중인 기간 수는 화면을 여는 동안 바뀌지 않는다. */
+  entries: { period: string; data: SubmitOrgData }[];
+  version: string;
+  /** 조직이 하나뿐인 화면에서는 제목 옆에 분기를 함께 보여준다 (집계 화면은 맨 위에 이미 있다). */
+  showPeriodTag: boolean;
+  lang: SubmitLang;
+}) {
+  const s = submitStrings(lang);
+  const router = useRouter();
+  // 기간 수는 서버가 정해 내려주고 화면을 여는 동안 바뀌지 않으므로, 훅을 기간마다 한 번씩 불러도 순서가 고정된다.
+  // eslint-disable-next-line react-hooks/rules-of-hooks
+  const entries: OrgEntry[] = entryData.map((e) => useOrgEntry({ token, period: e.period, data: e.data, lang }));
+  const [sending, setSending] = useState(false);
+  const [error, setError] = useState("");
+
+  const first = entries[0];
+  const data = first.data;
+  const multi = entries.length > 1;
+  const periods = entries.map((e) => e.period);
+  const usesPersonTable = first.usesPersonTable;
+  const isExpatOnlyOrg = first.isExpatOnlyOrg;
+  const anyEditable = entries.some((e) => e.editable);
+  const anyOrgEditable = entries.some((e) => e.orgEditable);
+  const allLocked = entries.every((e) => e.showLockedNotice);
+
+  // 지난 분기 이력은 한 번만 — 지금 입력하는 기간들은 아래 입력 행으로 그린다.
+  const pastRateHistory = data.rateHistory.filter((h) => !periods.includes(h.quarter));
+  const pastPersonHistory = data.personHistory.filter((h) => !periods.includes(h.period));
+  const quarterOrder = sortQuarters(Array.from(new Set([...pastRateHistory.map((h) => h.quarter), ...periods])));
+  const personOrder = sortQuarters(Array.from(new Set([...quarterOrder, ...pastPersonHistory.map((h) => h.period)])));
+  const firstIdx = personOrder.indexOf(periods[0]);
+  const lastIdx = personOrder.indexOf(periods[periods.length - 1]);
+  const personRowSort = (a: PersonHistoryRow, b: PersonHistoryRow) => personOrder.indexOf(a.period) - personOrder.indexOf(b.period);
+  const beforePersonRows = pastPersonHistory.filter((r) => personOrder.indexOf(r.period) < firstIdx).sort(personRowSort);
+  const afterPersonRows = pastPersonHistory.filter((r) => personOrder.indexOf(r.period) > lastIdx).sort(personRowSort);
+
+  const lockedNoteKeys = Array.from(new Set(entries.filter((e) => e.editable).flatMap((e) => e.lockedKeys)));
+  const lockedNoteLabels = TARGETS.filter((t) => lockedNoteKeys.includes(t.key)).map((t) => targetLabel(t, lang)).join(", ");
+
+  function setSubmitter(v: string) {
+    entries.forEach((e) => e.setSubmittedBy(v));
+  }
+
+  async function handleSubmit() {
+    setError("");
+    // 함께 제출할 기간: 열려 있고 값을 넣은 기간. 기간이 하나뿐이면 예전처럼 그대로 제출한다.
+    const targets = entries.filter((e) => e.editable && (!multi || e.hasInput));
+    if (targets.length === 0) {
+      setError(s.errNothingToSubmit);
+      return;
+    }
+    for (const e of targets) {
+      const problem = e.validate();
+      if (problem) {
+        setError(multi ? `${prettyQuarterLabel(e.period)}: ${problem}` : problem);
+        return;
+      }
+    }
+    setSending(true);
+    const failures: string[] = [];
+    for (const e of targets) {
+      const problem = await e.submit();
+      if (problem) failures.push(multi ? `${prettyQuarterLabel(e.period)}: ${problem}` : problem);
+    }
+    setSending(false);
+    if (failures.length) setError(failures.join(" / "));
+    // 제출과 함께 서버가 재제출 허용 표식을 지운다 — 새로 읽어와 잠긴 상태로 되돌린다.
+    router.refresh();
+  }
+
+  async function handleCancelEdit(e: OrgEntry) {
+    if (!window.confirm(s.cancelEditConfirm)) return;
+    setError("");
+    const problem = await e.cancelEdit();
+    if (problem) setError(problem);
+  }
+
+  const draftState = entries.some((e) => e.draftState === "saving")
+    ? "saving"
+    : entries.some((e) => e.draftState === "error")
+    ? "error"
+    : "idle";
+  const draftSavedAt = entries.map((e) => e.draftSavedAt).filter((x): x is string => !!x).sort().pop() ?? null;
+
   const actionButton = (
     <div style={{ marginTop: 14, display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-      {showLockedNotice ? (
+      {allLocked ? (
         <span className="submit-locked">{s.lockedNotice}</span>
       ) : (
         <>
-          <button className="btn btn-primary" disabled={sending || cancelling} onClick={handleSubmit}>
-            {sending ? s.btnSubmitting : s.btnSubmit}
-          </button>
-          {/* 이미 제출한 조직을 다시 연 경우에만 — 되돌아갈 '원래 값'이 있어야 취소가 뜻을 갖는다. */}
-          {submitted && (
-            <button className="btn btn-secondary" disabled={sending || cancelling} onClick={handleCancelEdit}>
-              {cancelling ? s.cancelEditing : s.btnCancelEdit}
+          {anyEditable && (
+            <button className="btn btn-primary" disabled={sending || entries.some((e) => e.cancelling)} onClick={handleSubmit}>
+              {sending ? s.btnSubmitting : s.btnSubmit}
             </button>
           )}
+          {/* 이미 제출한 기간을 다시 연 경우에만 — 되돌아갈 '원래 값'이 있어야 취소가 뜻을 갖는다. */}
+          {entries
+            .filter((e) => e.editable && e.submitted)
+            .map((e) => (
+              <button key={e.period} className="btn btn-secondary" disabled={sending || e.cancelling} onClick={() => handleCancelEdit(e)}>
+                {e.cancelling ? s.cancelEditing : multi ? `${prettyQuarterLabel(e.period)} ${s.btnCancelEdit}` : s.btnCancelEdit}
+              </button>
+            ))}
+          {/* 일부 기간만 잠겨 있으면 어느 기간인지 알려준다. */}
+          {multi &&
+            entries
+              .filter((e) => e.showLockedNotice)
+              .map((e) => (
+                <span key={e.period} className="field-hint" style={{ margin: 0 }}>
+                  {s.periodLocked(prettyQuarterLabel(e.period))}
+                </span>
+              ))}
         </>
       )}
-      {editable && (
+      {anyEditable && (
         <span className="field-hint" style={{ margin: 0, color: draftState === "error" ? "#dc2626" : undefined }}>
           {draftState === "saving"
             ? s.draftSaving
@@ -406,162 +538,206 @@ function OrgSubmitSection({
     </div>
   );
 
+  /** 표에 붙는 기간 하나의 입력 행 (입력 가능하면 입력칸, 아니면 제출된 값). */
+  function entryRow(e: OrgEntry) {
+    const label = e.usesPersonTable ? s.quarterAuto(e.period) : e.editable ? s.quarterEditing(e.period) : e.period;
+    return e.orgEditable ? (
+      <EditableRateRow
+        key={e.period}
+        label={label}
+        rates={e.orgRates}
+        onChange={e.updateOrgRate}
+        headcount={e.currentOrgHeadcount}
+        onClear={() => e.setOrgRates(emptyRates())}
+        headcountEditable
+        headcountValue={e.orgHeadcountInput}
+        onHeadcountChange={e.setOrgHeadcountInput}
+        withNote
+        noteValue={e.orgNoteInput}
+        onNoteChange={e.setOrgNoteInput}
+        lockedKeys={e.lockedKeys}
+        lang={lang}
+      />
+    ) : (
+      <ReadOnlyRateRow
+        key={e.period}
+        label={label}
+        period={e.period}
+        rec={toNumRec(e.computedOrgRates)}
+        headcount={e.currentOrgHeadcount}
+        showClearSlot={anyOrgEditable}
+        withNote
+        note={e.orgNoteInput || null}
+        lang={lang}
+      />
+    );
+  }
+
+  /** 기간 하나의 불러오기 버튼 — 첫 기간은 전분기 확정값, 다음 기간은 바로 앞 기간에 지금 넣은 값. */
+  function loadButton(e: OrgEntry, i: number) {
+    if (usesPersonTable ? !e.personsEditable : !e.orgEditable) return null;
+    if (i > 0) {
+      const prev = entries[i - 1];
+      return (
+        <button key={e.period} className="btn btn-secondary btn-sm" onClick={() => e.copyFrom(prev)}>
+          {s.copyFromPeriod(prettyQuarterLabel(prev.period), prettyQuarterLabel(e.period))}
+        </button>
+      );
+    }
+    const prefix = multi ? `${prettyQuarterLabel(e.period)}: ` : "";
+    if (usesPersonTable) {
+      return e.previousPersons.length > 0 ? (
+        <button key={e.period} className="btn btn-secondary btn-sm" onClick={e.loadPreviousPersons}>
+          {prefix}
+          {s.loadPrevPersons(e.previousPersons.length)}
+        </button>
+      ) : null;
+    }
+    return e.previousOrgRate ? (
+      <button key={e.period} className="btn btn-secondary btn-sm" onClick={e.loadPreviousOrgRate}>
+        {prefix}
+        {s.loadPrev}
+      </button>
+    ) : null;
+  }
+
   return (
-    <div className="panel">
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 10, marginBottom: 14 }}>
-        <div>
-          <div className="panel-title">
-            {data.orgBasis} {showPeriodTag && <span className="tag">{period} · {version}</span>}{" "}
-            {submitted ? (
-              <span className="status-badge status-confirmed">{s.badgeSubmitted(period)}</span>
-            ) : (
-              <span className="status-badge" style={{ background: "#f1f5f9", color: "#64748b" }}>
-                {s.badgeNotSubmitted}
-              </span>
-            )}
+    // 보일 열은 가장 나중 기간 기준 — 27년 BP가 있으면 없어진 홀딩스 열은 감춘다.
+    <TargetColumns periods={personOrder} current={periods[periods.length - 1]}>
+      <div className="panel">
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 10, marginBottom: 14 }}>
+          <div>
+            <div className="panel-title">
+              {data.orgBasis}{" "}
+              {showPeriodTag && (
+                <span className="tag">
+                  {periods.map(prettyQuarterLabel).join(" & ")} · {version}
+                </span>
+              )}{" "}
+              {entries.map((e) =>
+                e.submitted ? (
+                  <span key={e.period} className="status-badge status-confirmed" style={{ marginRight: 4 }}>
+                    {s.badgeSubmitted(e.period)}
+                  </span>
+                ) : (
+                  <span key={e.period} className="status-badge" style={{ background: "#f1f5f9", color: "#64748b", marginRight: 4 }}>
+                    {multi ? `${s.badgeNotSubmitted} (${e.period})` : s.badgeNotSubmitted}
+                  </span>
+                )
+              )}
+            </div>
+            <div className="panel-sub">
+              {s.divisionLabel(data.division)} · {usesPersonTable ? s.unitPersonDetail : s.unitOrgLevel}
+              {data.submittedBy ? ` · ${s.submitterPrefix}${data.submittedBy}` : ""}
+              {data.latestSubmittedAt ? ` · ${new Date(data.latestSubmittedAt).toLocaleString(s.locale)}` : ""}
+            </div>
           </div>
-          <div className="panel-sub">
-            {s.divisionLabel(data.division)} · {usesPersonTable ? s.unitPersonDetail : s.unitOrgLevel}
-            {data.submittedBy ? ` · ${s.submitterPrefix}${data.submittedBy}` : ""}
-            {data.latestSubmittedAt ? ` · ${new Date(data.latestSubmittedAt).toLocaleString(s.locale)}` : ""}
+          <div className="field" style={{ minWidth: 200 }}>
+            <label>{s.inputterLabel}</label>
+            <input
+              value={first.submittedBy}
+              onChange={(ev) => setSubmitter(ev.target.value)}
+              placeholder={s.namePlaceholder}
+              disabled={!anyEditable}
+            />
           </div>
         </div>
-        <div className="field" style={{ minWidth: 200 }}>
-          <label>{s.inputterLabel}</label>
-          <input
-            value={submittedBy}
-            onChange={(e) => setSubmittedBy(e.target.value)}
-            placeholder={s.namePlaceholder}
-            disabled={!editable}
-          />
-        </div>
-      </div>
 
-      {justSubmitted && (
-        <div className="callout success" style={{ marginBottom: 12 }}>
-          <b>{s.justSubmittedTitle}</b>
-          {s.justSubmittedBody}
-        </div>
-      )}
-
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8, marginBottom: 8 }}>
-        <div className="panel-sub" style={{ fontWeight: 700, color: "#1a202c", margin: 0 }}>
-          {s.sectionOrgRate}
-        </div>
-        {!usesPersonTable && orgEditable && previousOrgRate && (
-          <button className="btn btn-secondary btn-sm" onClick={loadPreviousOrgRate}>
-            {s.loadPrev}
-          </button>
+        {entries.some((e) => e.justSubmitted) && (
+          <div className="callout success" style={{ marginBottom: 12 }}>
+            <b>{s.justSubmittedTitle}</b>
+            {s.justSubmittedBody}
+          </div>
         )}
-      </div>
-      <div className="tbl-scroll" style={{ marginBottom: 12 }}>
-        <table className="rate-tbl">
-          <RateTableHead withClear={orgEditable} withNote lang={lang} />
-          <tbody>
-            {orderedQuarters(pastRateHistory.map((h) => h.quarter), period).map((q) => {
-              if (q !== period) {
+
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8, marginBottom: 8 }}>
+          <div className="panel-sub" style={{ fontWeight: 700, color: "#1a202c", margin: 0 }}>
+            {s.sectionOrgRate}
+          </div>
+          {!usesPersonTable && <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>{entries.map(loadButton)}</div>}
+        </div>
+        <div className="tbl-scroll" style={{ marginBottom: 12 }}>
+          <table className="rate-tbl">
+            <RateTableHead withClear={anyOrgEditable} withNote lang={lang} />
+            <tbody>
+              {quarterOrder.map((q) => {
+                const e = entries.find((x) => x.period === q);
+                if (e) return entryRow(e);
                 const h = pastRateHistory.find((x) => x.quarter === q)!;
                 return (
                   <ReadOnlyRateRow
                     key={q}
                     label={h.quarter}
-                  period={h.quarter}
+                    period={h.quarter}
                     rec={h.rates}
                     headcount={
                       usesPersonTable
                         ? personHeadcountForQuarter(data.personHistory, h.quarter, isExpatOnlyOrg ? "all" : "legal")
                         : h.headcount
                     }
-                    showClearSlot={orgEditable}
+                    showClearSlot={anyOrgEditable}
                     withNote
                     note={h.note}
                     lang={lang}
                   />
                 );
-              }
-              return orgEditable ? (
-                <EditableRateRow
-                  key={q}
-                  label={s.quarterEditing(period)}
-                  rates={orgRates}
-                  onChange={updateOrgRate}
-                  headcount={currentOrgHeadcount}
-                  onClear={() => setOrgRates(emptyRates())}
-                  headcountEditable
-                  headcountValue={orgHeadcountInput}
-                  onHeadcountChange={setOrgHeadcountInput}
-                  withNote
-                  noteValue={orgNoteInput}
-                  onNoteChange={setOrgNoteInput}
-                  lockedKeys={lockedKeys}
-                  lang={lang}
-                />
-              ) : (
-                <ReadOnlyRateRow
-                  key={q}
-                  label={usesPersonTable ? s.quarterAuto(period) : period}
-                  period={period}
-                  rec={toNumRec(computedOrgRates)}
-                  headcount={currentOrgHeadcount}
-                  withNote
-                  note={orgNoteInput || null}
-                  lang={lang}
-                />
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
-      {!totalOk && (
-        <div className="field-hint" style={{ color: "#dc2626", marginBottom: 12 }}>
-          {s.totalWarning(period)}
+              })}
+            </tbody>
+          </table>
         </div>
-      )}
-      {editable && lockedKeys.length > 0 && (
-        <div className="field-hint" style={{ marginBottom: 12 }}>
-          {s.inactiveTargetsNote(lockedLabels)}
-        </div>
-      )}
-
-      {usesPersonTable && (
-        <>
-          <div className="panel-sub" style={{ fontWeight: 700, color: "#1a202c", margin: "0 0 8px" }}>
-            {s.sectionPersonRate}
-          </div>
-          <div className="field-hint" style={{ marginBottom: 8 }}>
-            {s.personHint}
-          </div>
-
-          <PersonHistoryBlocks rows={beforePersonRows} quarterOrder={personQuarterOrder} hasExpat={false} lang={lang} />
-
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8, marginBottom: 8 }}>
-            <div className="field-hint" style={{ fontWeight: 700, color: personsEditable ? "#2563eb" : "#1a202c", margin: 0 }}>
-              {personsEditable ? s.quarterEditing(period) : s.quarterSubmitted(period)}
+        {entries
+          .filter((e) => !e.totalOk)
+          .map((e) => (
+            <div key={e.period} className="field-hint" style={{ color: "#dc2626", marginBottom: 12 }}>
+              {s.totalWarning(e.period)}
             </div>
-            {personsEditable && previousPersonsForOrg.length > 0 && (
-              <button className="btn btn-secondary btn-sm" onClick={loadPreviousPersons}>
-                {s.loadPrevPersons(previousPersonsForOrg.length)}
-              </button>
-            )}
+          ))}
+        {lockedNoteKeys.length > 0 && (
+          <div className="field-hint" style={{ marginBottom: 12 }}>
+            {s.inactiveTargetsNote(lockedNoteLabels)}
           </div>
-          {personsEditable ? (
-            <PersonEditTable persons={persons} setPersons={setPersons} hasExpat={false} lockedKeys={lockedKeys} lang={lang} />
-          ) : (
-            <PersonReadOnlyTable persons={persons} hasExpat={false} period={period} lang={lang} />
-          )}
-          {error && <div className="callout alert" style={{ marginTop: 12, marginBottom: 12 }}>{error}</div>}
-          {actionButton}
-          <PersonHistoryBlocks rows={afterPersonRows} quarterOrder={personQuarterOrder} hasExpat={false} lang={lang} />
-        </>
-      )}
+        )}
 
-      {!usesPersonTable && (
-        <>
-          {error && <div className="callout alert" style={{ marginTop: 12, marginBottom: 12 }}>{error}</div>}
-          {actionButton}
-        </>
-      )}
-    </div>
+        {usesPersonTable && (
+          <>
+            <div className="panel-sub" style={{ fontWeight: 700, color: "#1a202c", margin: "0 0 8px" }}>
+              {s.sectionPersonRate}
+            </div>
+            <div className="field-hint" style={{ marginBottom: 8 }}>
+              {s.personHint}
+            </div>
+
+            <PersonHistoryBlocks rows={beforePersonRows} quarterOrder={personOrder} hasExpat={false} lang={lang} />
+
+            {entries.map((e, i) => (
+              <div key={e.period}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8, marginBottom: 8 }}>
+                  <div className="field-hint" style={{ fontWeight: 700, color: e.personsEditable ? "#2563eb" : "#1a202c", margin: 0 }}>
+                    {e.personsEditable ? s.quarterEditing(e.period) : s.quarterSubmitted(e.period)}
+                  </div>
+                  {loadButton(e, i)}
+                </div>
+                {e.personsEditable ? (
+                  <PersonEditTable persons={e.persons} setPersons={e.setPersons} hasExpat={false} lockedKeys={e.lockedKeys} lang={lang} />
+                ) : (
+                  <PersonReadOnlyTable persons={e.persons} hasExpat={false} period={e.period} lang={lang} />
+                )}
+              </div>
+            ))}
+            {error && <div className="callout alert" style={{ marginTop: 12, marginBottom: 12 }}>{error}</div>}
+            {actionButton}
+            <PersonHistoryBlocks rows={afterPersonRows} quarterOrder={personOrder} hasExpat={false} lang={lang} />
+          </>
+        )}
+
+        {!usesPersonTable && (
+          <>
+            {error && <div className="callout alert" style={{ marginTop: 12, marginBottom: 12 }}>{error}</div>}
+            {actionButton}
+          </>
+        )}
+      </div>
+    </TargetColumns>
   );
 }
 
@@ -570,23 +746,14 @@ function OrgSubmitSection({
  *
  * 관리자 화면(ParentOrgDetail)과 같은 구성 — 위에 자동계산된 집계 값을 보여주고,
  * 그 아래에 하위 조직 입력란을 모두 펼친다. 조사 링크는 이 조직에 하나만 발급되므로
- * 이 한 화면에서 하위 조직을 모두 입력한다.
+ * 이 한 화면에서 하위 조직을 모두 입력한다. 두 기간을 함께 조사하면 자동계산 행이 기간마다 붙는다.
  */
-function ParentSummary({
-  data,
-  period,
-  version,
-  lang,
-}: {
-  data: SubmitPageData;
-  period: string;
-  version: string;
-  lang: SubmitLang;
-}) {
+function ParentSummary({ rounds, version, lang }: { rounds: SubmitRound[]; version: string; lang: SubmitLang }) {
   const s = submitStrings(lang);
-  const parent = data.parent!;
-  const pastRateHistory = parent.rateHistory.filter((h) => h.quarter !== period);
-  const currentRow = parent.rateHistory.find((h) => h.quarter === period) ?? null;
+  const periods = rounds.map((r) => r.period);
+  const parent = rounds[0].data.parent!;
+  const pastRateHistory = parent.rateHistory.filter((h) => !periods.includes(h.quarter));
+  const quarterOrder = sortQuarters(Array.from(new Set([...pastRateHistory.map((h) => h.quarter), ...periods])));
 
   // 하위 조직 인원수의 합 (관리자 화면의 가중치와 같은 기준: 값이 채워진 개인 행 수 또는 조직 인원수).
   function headcountOf(o: SubmitOrgData): number {
@@ -594,71 +761,90 @@ function ParentSummary({
     if (fromPersons > 0) return fromPersons;
     return Number(o.submittedHeadcount) || 0;
   }
-  const childHeadcount =
-    data.orgs.reduce((s, o) => s + headcountOf(o), 0) + data.mirrors.reduce((s, m) => s + m.headcount, 0);
-  const submittedChildren = data.orgs.filter((o) => o.submittedThisPeriod).length;
+  const childHeadcountOf = (d: SubmitPageData) =>
+    d.orgs.reduce((s, o) => s + headcountOf(o), 0) + d.mirrors.reduce((s, m) => s + m.headcount, 0);
+  const first = rounds[0].data;
 
   return (
-    <div className="panel">
-      <div style={{ marginBottom: 14 }}>
-        <div className="panel-title">
-          {parent.orgBasis} <span className="tag">{period} · {version}</span>{" "}
-          <span className="status-badge" style={{ background: "#eff6ff", color: "#2563eb" }}>
-            {s.badgeAggregate}
-          </span>{" "}
-          <span
-            className={`status-badge${submittedChildren === data.orgs.length ? " status-confirmed" : ""}`}
-            style={submittedChildren === data.orgs.length ? undefined : { background: "#f1f5f9", color: "#64748b" }}
-          >
-            {s.childProgress(submittedChildren, data.orgs.length)}
-          </span>
+    <TargetColumns periods={quarterOrder} current={periods[periods.length - 1]}>
+      <div className="panel">
+        <div style={{ marginBottom: 14 }}>
+          <div className="panel-title">
+            {parent.orgBasis}{" "}
+            <span className="tag">
+              {periods.map(prettyQuarterLabel).join(" & ")} · {version}
+            </span>{" "}
+            <span className="status-badge" style={{ background: "#eff6ff", color: "#2563eb" }}>
+              {s.badgeAggregate}
+            </span>{" "}
+            {rounds.map((r) => {
+              const done = r.data.orgs.filter((o) => o.submittedThisPeriod).length;
+              const all = done === r.data.orgs.length;
+              return (
+                <span
+                  key={r.period}
+                  className={`status-badge${all ? " status-confirmed" : ""}`}
+                  style={{ marginRight: 4, ...(all ? {} : { background: "#f1f5f9", color: "#64748b" }) }}
+                >
+                  {rounds.length > 1 ? `${prettyQuarterLabel(r.period)} ` : ""}
+                  {s.childProgress(done, r.data.orgs.length)}
+                </span>
+              );
+            })}
+          </div>
+          <div className="panel-sub">
+            {s.divisionLabel(parent.division)} · {s.parentSub(first.parentChildNames.join(" + "))}
+          </div>
         </div>
-        <div className="panel-sub">
-          {s.divisionLabel(parent.division)} · {s.parentSub(data.parentChildNames.join(" + "))}
+
+        <div className="tbl-scroll" style={{ marginBottom: 12 }}>
+          <table className="rate-tbl">
+            <RateTableHead withNote lang={lang} />
+            <tbody>
+              {quarterOrder.map((q) => {
+                const r = rounds.find((x) => x.period === q);
+                if (r) {
+                  const currentRow = r.data.parent!.rateHistory.find((h) => h.quarter === q) ?? null;
+                  return (
+                    <ReadOnlyRateRow
+                      key={q}
+                      label={s.quarterAuto(q)}
+                      period={q}
+                      rec={currentRow ? currentRow.rates : toNumRec(emptyRates())}
+                      headcount={childHeadcountOf(r.data) || null}
+                      withNote
+                      note={currentRow?.note ?? null}
+                      lang={lang}
+                    />
+                  );
+                }
+                const h = pastRateHistory.find((x) => x.quarter === q)!;
+                return (
+                  <ReadOnlyRateRow
+                    key={q}
+                    label={q}
+                    period={q}
+                    rec={h.rates}
+                    headcount={h.headcount ?? null}
+                    withNote
+                    note={h.note}
+                    lang={lang}
+                  />
+                );
+              })}
+            </tbody>
+          </table>
         </div>
+
+        {first.mirrors.map((m) => (
+          <div key={m.basis} className="field-hint" style={{ marginBottom: 6 }}>
+            {s.mirrorNote(m.basis, m.source, m.headcount)}
+          </div>
+        ))}
+
+        <div className="field-hint">{s.parentFooter}</div>
       </div>
-
-      <div className="tbl-scroll" style={{ marginBottom: 12 }}>
-        <table className="rate-tbl">
-          <RateTableHead withNote lang={lang} />
-          <tbody>
-            {orderedQuarters(pastRateHistory.map((h) => h.quarter), period).map((q) =>
-              q === period ? (
-                <ReadOnlyRateRow
-                  key={q}
-                  label={s.quarterAuto(period)}
-                  period={period}
-                  rec={currentRow ? currentRow.rates : toNumRec(emptyRates())}
-                  headcount={childHeadcount || null}
-                  withNote
-                  note={currentRow?.note ?? null}
-                  lang={lang}
-                />
-              ) : (
-                <ReadOnlyRateRow
-                  key={q}
-                  label={q}
-                  period={q}
-                  rec={pastRateHistory.find((h) => h.quarter === q)!.rates}
-                  headcount={pastRateHistory.find((h) => h.quarter === q)!.headcount ?? null}
-                  withNote
-                  note={pastRateHistory.find((h) => h.quarter === q)!.note}
-                  lang={lang}
-                />
-              )
-            )}
-          </tbody>
-        </table>
-      </div>
-
-      {data.mirrors.map((m) => (
-        <div key={m.basis} className="field-hint" style={{ marginBottom: 6 }}>
-          {s.mirrorNote(m.basis, m.source, m.headcount)}
-        </div>
-      ))}
-
-      <div className="field-hint">{s.parentFooter}</div>
-    </div>
+    </TargetColumns>
   );
 }
 
@@ -669,6 +855,7 @@ export default function SubmitForm({
   lang = "ko",
 }: {
   token: string;
+  /** 링크에 열린 기간들 (기간 순서대로). 26년 4Q & 27년 BP처럼 둘이면 조직마다 입력 행이 둘 붙는다. */
   rounds: SubmitRound[];
   version: string;
   /** 담당자가 현지인이라 영어로 나가는 조직이 있다 (판단은 서버에서 — lib/englishOrgs.ts). */
@@ -683,6 +870,8 @@ export default function SubmitForm({
   }, [lang]);
 
   const multi = rounds.length > 1;
+  const base = rounds[0].data;
+  const isParent = !!base.parent;
 
   return (
     // page-form: 배부대상 13~14개가 들어가도록 폭을 넓게, submit-tight: 표를 압축해 가로 스크롤을 없앤다.
@@ -692,72 +881,29 @@ export default function SubmitForm({
           {s.multiRoundHint(rounds.map((r) => prettyQuarterLabel(r.period)).join(", "))}
         </div>
       )}
-      {/* 기간을 탭으로 나누면 뒤 기간을 못 보고 지나친다 — 위아래로 펼쳐 둘 다 바로 보이게 한다. */}
-      {rounds.map((r, i) => (
-        <section key={r.period} style={{ marginTop: multi && i > 0 ? 36 : 0 }}>
-          {multi && (
-            <div className="round-heading">
-              {s.roundHeading(prettyQuarterLabel(r.period))}
-              {roundSubmitted(r) && <span className="tag" style={{ marginLeft: 8 }}>{s.roundDone}</span>}
-            </div>
-          )}
-          <RoundBody token={token} period={r.period} version={version} data={r.data} lang={lang} />
-        </section>
-      ))}
-    </div>
-  );
-}
 
-/** 이 기간에 링크의 모든 조직이 제출했는지 (탭의 ✓ 표시용 — 화면을 연 시점 기준). */
-function roundSubmitted(r: SubmitRound): boolean {
-  return r.data.orgs.length > 0 && r.data.orgs.every((o) => o.submittedThisPeriod);
-}
-
-/** 기간 하나의 입력 화면 — 집계 조직이면 위에 집계 값, 아래에 하위 조직 입력란. */
-function RoundBody({
-  token,
-  period,
-  version,
-  data,
-  lang,
-}: {
-  token: string;
-  period: string;
-  version: string;
-  data: SubmitPageData;
-  lang: SubmitLang;
-}) {
-  const isParent = !!data.parent;
-  const s = submitStrings(lang);
-
-  // 이 화면에 나오는 분기 — 그중 어디서도 배부 대상이 아닌 열(예: 3Q까지의 IT)은 그리지 않는다.
-  const shownPeriods = [period, ...[data.parent, ...data.orgs].flatMap((o) =>
-    o ? [...o.rateHistory.map((h) => h.quarter), ...o.personHistory.map((h) => h.period)] : []
-  )];
-
-  return (
-    <TargetColumns periods={shownPeriods} current={period}>
-      {isParent && <ParentSummary data={data} period={period} version={version} lang={lang} />}
+      {isParent && <ParentSummary rounds={rounds} version={version} lang={lang} />}
 
       {isParent && (
         <div className="panel-sub" style={{ fontWeight: 700, color: "#1a202c", margin: "20px 0 12px" }}>
-          {s.childSectionTitle(data.orgs.length)}
+          {s.childSectionTitle(base.orgs.length)}
         </div>
       )}
 
       <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-        {data.orgs.map((o) => (
+        {base.orgs.map((o) => (
           <OrgSubmitSection
             key={o.orgId}
             token={token}
-            period={period}
+            entries={rounds
+              .map((r) => ({ period: r.period, data: r.data.orgs.find((x) => x.orgId === o.orgId) }))
+              .filter((e): e is { period: string; data: SubmitOrgData } => !!e.data)}
             version={version}
-            data={o}
             showPeriodTag={!isParent}
             lang={lang}
           />
         ))}
       </div>
-    </TargetColumns>
+    </div>
   );
 }

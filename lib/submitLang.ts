@@ -35,9 +35,10 @@ const KO = {
   quarterConfirmed: (q: string) => `${q} (확정됨)`,
   targetInactive: "이번 분기에는 배부 대상이 아닙니다",
   multiRoundHint: (labels: string) =>
-    `이번 조사는 ${labels} 두 기간을 함께 받습니다. 아래로 내려가며 기간마다 따로 입력하고 각각 제출해 주세요.`,
-  roundHeading: (label: string) => `${label} 입력`,
-  roundDone: "제출 완료",
+    `이번 조사는 ${labels} 두 기간을 함께 받습니다. 조직마다 기간별 입력 행이 있으니 둘 다 입력한 뒤 제출해 주세요.`,
+  copyFromPeriod: (from: string, to: string) => `${from} 입력값을 ${to}에 복사`,
+  periodLocked: (label: string) => `${label}은(는) 이미 제출되었습니다`,
+  errNothingToSubmit: "제출할 값이 없습니다. 배부율을 입력한 뒤 제출해 주세요.",
   inactiveTargetsNote: (labels: string) =>
     `※ ${labels}은(는) 이번 분기부터 배부 대상에서 제외되어 입력하지 않습니다. 전분기 데이터를 끌고오면 ${labels} 비율이 빠지므로, 합계가 100%가 되도록 다른 항목에 나눠 입력해주세요.`,
 
@@ -114,9 +115,10 @@ const EN: SubmitStrings = {
   quarterConfirmed: (q: string) => `${q} (confirmed)`,
   targetInactive: "Not an allocation target from this quarter",
   multiRoundHint: (labels: string) =>
-    `This survey covers two periods: ${labels}. Scroll down and fill in and submit each period separately.`,
-  roundHeading: (label: string) => `${label}`,
-  roundDone: "Submitted",
+    `This survey covers two periods: ${labels}. Each organisation has one input row per period — fill in both, then submit.`,
+  copyFromPeriod: (from: string, to: string) => `Copy ${from} figures to ${to}`,
+  periodLocked: (label: string) => `${label} has already been submitted`,
+  errNothingToSubmit: "There is nothing to submit. Please enter the allocation rates first.",
   inactiveTargetsNote: (labels: string) =>
     `* ${labels} is no longer an allocation target from this quarter and cannot be entered. If you copy last quarter's figures, the ${labels} share is left out, so please spread it over the other columns so the total is 100%.`,
 
