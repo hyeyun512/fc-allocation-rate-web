@@ -290,10 +290,19 @@ export function toPersonPayload(list: PersonEditRow[]) {
  */
 const TargetColumnsContext = createContext<TargetDef[]>(TARGETS);
 
-export function TargetColumns({ periods, children }: { periods: string[]; children: React.ReactNode }) {
-  const key = periods.join("|");
+export function TargetColumns({
+  periods,
+  current,
+  children,
+}: {
+  periods: string[];
+  /** 지금 입력하는 기간 — 그보다 앞선 해에 없어진 대상(예: 2027-BP의 홀딩스)은 이력이 있어도 감춘다. */
+  current?: string;
+  children: React.ReactNode;
+}) {
+  const key = `${current ?? ""}#${periods.join("|")}`;
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  const cols = useMemo(() => visibleTargets(periods), [key]);
+  const cols = useMemo(() => visibleTargets(periods, current), [key]);
   return <TargetColumnsContext.Provider value={cols}>{children}</TargetColumnsContext.Provider>;
 }
 

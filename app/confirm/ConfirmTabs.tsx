@@ -170,17 +170,17 @@ export default function ConfirmTabs({
         />
       )}
       {subTab === "resource" && (
-        <TargetColumns periods={shownPeriods(period, resourceData, hkrHistory)}>
+        <TargetColumns periods={shownPeriods(period, resourceData, hkrHistory)} current={period}>
           <ConfirmReview period={period} version={version} data={resourceData} hkrHistory={hkrHistory} hkrConfirmedThisPeriod={hkrConfirmedThisPeriod} />
         </TargetColumns>
       )}
       {subTab === "selfuse" && (
-        <TargetColumns periods={[period, ...selfuseHistory.map((h) => h.quarter)]}>
+        <TargetColumns periods={[period, ...selfuseHistory.map((h) => h.quarter)]} current={period}>
           <SelfUsePanel key={period} period={period} initial={selfuse} history={selfuseHistory} />
         </TargetColumns>
       )}
       {subTab === "it" && (
-        <TargetColumns periods={[period, ...itHistory.map((h) => h.quarter)]}>
+        <TargetColumns periods={[period, ...itHistory.map((h) => h.quarter)]} current={period}>
           <ItPanel key={period} period={period} initialHeadcount={itHeadcount} initialSap={itSap} history={itHistory} />
         </TargetColumns>
       )}

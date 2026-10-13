@@ -75,10 +75,27 @@ export function isTargetActiveIn(key: TargetKey, period: string): boolean {
  * (예: 2026-Q1~Q3만 있으면 IT 열은 빠지고, 2026-Q4가 하나라도 있으면 들어간다.)
  * 기간이 비어 있으면 모든 열을 그린다.
  */
-export function visibleTargets(periods: string[]): TargetDef[] {
+export function visibleTargets(periods: string[], current?: string): TargetDef[] {
   const list = periods.filter(Boolean);
   if (list.length === 0) return TARGETS;
-  return TARGETS.filter((t) => list.some((p) => isTargetActiveIn(t.key, p)));
+  return TARGETS.filter((t) => {
+    if (current && endedBeforeYearOf(t.key, current)) return false;
+    return list.some((p) => isTargetActiveIn(t.key, p));
+  });
+}
+
+/**
+ * 지금 입력하는 기간이 그 대상이 없어진 해보다 뒤 해인지.
+ * 그런 화면(예: 2027-BP)에서는 지난 해 이력 행이 함께 보여도 그 열을 그리지 않는다 —
+ * 없어진 대상이 계속 보이면 헷갈린다. 같은 해(2026-Q4)에는 3Q 이력과 맞춰 보도록 남긴다.
+ */
+function endedBeforeYearOf(key: TargetKey, current: string): boolean {
+  const to = TARGET_LIFESPAN[key]?.to;
+  if (!to) return false;
+  const cur = quarterRank(current);
+  const end = quarterRank(to);
+  if (cur < 0 || end < 0) return false;
+  return Math.floor(cur / 10) > Math.floor(end / 10);
 }
 
 /** 이 기간에 배부하지 않는 대상. */

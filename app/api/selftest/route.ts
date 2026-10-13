@@ -498,6 +498,9 @@ function runCases(): Case[] {
   c.push(ok("cols: 1Q~3Q만 보이면 IT 열 없음", !visibleTargets(["2026-Q1", "2026-Q2", "2026-Q3"]).some((t) => t.key === "it")));
   c.push(ok("cols: 4Q가 끼면 IT 열 있음", visibleTargets(["2026-Q3", "2026-Q4"]).some((t) => t.key === "it")));
   c.push(ok("cols: 3Q 이력이 있으면 홀딩스 열은 남는다", visibleTargets(["2026-Q3", "2026-Q4"]).some((t) => t.key === "holdings")));
+  c.push(ok("cols: 27년 BP 입력 화면은 26년 이력이 있어도 홀딩스 열 없음", !visibleTargets(["2026-Q1", "2026-Q3", "2027-BP"], "2027-BP").some((t) => t.key === "holdings")));
+  c.push(ok("cols: 26년 4Q 입력 화면은 3Q 이력과 함께 홀딩스 열을 남긴다", visibleTargets(["2026-Q3", "2026-Q4"], "2026-Q4").some((t) => t.key === "holdings")));
+  c.push(ok("cols: 27년 BP 입력 화면에 IT 열은 있다", visibleTargets(["2026-Q3", "2027-BP"], "2027-BP").some((t) => t.key === "it")));
   c.push(ok("cols: 4Q만 보이면 홀딩스 열 없음", !visibleTargets(["2026-Q4"]).some((t) => t.key === "holdings")));
   // 대상이 아닌 기간의 열은 0이 아니라 빈칸(null)으로 저장한다 — 그 기간에는 없는 열이다.
   c.push(eq("db: 3Q의 IT는 null", toDbTargets({ stb: 1 }, "2026-Q3").it, null));

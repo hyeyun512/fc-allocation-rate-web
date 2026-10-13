@@ -684,7 +684,7 @@ export default function SubmitForm({
 
   return (
     // page-form: 배부대상 13~14개가 들어가도록 폭을 넓게, submit-tight: 표를 압축해 가로 스크롤을 없앤다.
-    <TargetColumns periods={shownPeriods}>
+    <TargetColumns periods={shownPeriods} current={period}>
     <div className="page page-form submit-tight">
       {isParent && <ParentSummary data={data} period={period} version={version} lang={lang} />}
 
