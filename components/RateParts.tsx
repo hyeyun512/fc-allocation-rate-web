@@ -943,8 +943,8 @@ export function PersonHistoryBlocks({
 }
 
 /**
- * 기준정보 표(자가사용·건물)의 묶음 색. 머리글 두 줄과 입력칸에 같은 색·구분선을 입혀
- * 분당 / 용인 / 인원수 묶음이 한눈에 갈리게 한다 (globals.css의 .fg-*).
+ * 기준정보 표(자가사용·건물)의 묶음 구분 클래스(fg-a/b/c). 지금은 색을 입히지 않고 회색 머리글과
+ * 묶음 경계 세로선으로만 가른다(globals.css의 .fg-*) — 묶음별로 다르게 꾸밀 일이 생기면 이 클래스를 쓴다.
  */
 export function fieldGroupTone(group: string): "a" | "b" | "c" {
   if (group.includes("용인")) return "b";
