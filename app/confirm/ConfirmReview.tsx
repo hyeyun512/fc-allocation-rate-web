@@ -693,7 +693,8 @@ function useOrgReviewEntry({ item, period, version }: { item: OrgReviewData; per
         key: `prev-${i}-${Date.now()}`,
         name: p.name,
         headcount: p.headcount != null ? String(p.headcount) : "0",
-        note: p.note ?? "",
+        // 코멘트는 그 분기 사정을 적은 것이라 끌고 오지 않는다.
+        note: "",
         role: p.role,
         // 이번 분기에 배부하지 않는 대상(예: 2026-Q4부터 홀딩스)은 불러오지 않는다.
         rates: forPeriod(toRateMap(p.rates)),
@@ -705,8 +706,7 @@ function useOrgReviewEntry({ item, period, version }: { item: OrgReviewData; per
     if (!previousOrgRate) return;
     setOrgRates(forPeriod(toRateMap(previousOrgRate.rates)));
     setOrgHeadcountInput(previousOrgRate.headcount != null ? String(previousOrgRate.headcount) : "");
-    setOrgNoteInput(previousOrgRate.note ?? "");
-    setOrgNoteEnInput(previousOrgRate.noteEn ?? "");
+    // 코멘트는 그 분기 사정을 적은 것이라 끌고 오지 않는다(사용자 지시) — 지금 적어 둔 코멘트도 그대로 둔다.
   }
 
   /** 같은 조직의 다른 기간에 지금 들어 있는 값을 그대로 가져온다 (예: 4Q 값을 27년 BP에). */

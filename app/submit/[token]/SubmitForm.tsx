@@ -188,7 +188,7 @@ function useOrgEntry({
     setActedOn(true);
     setOrgRates(forPeriod(toRateMap(previousOrgRate.rates)));
     setOrgHeadcountInput(previousOrgRate.headcount != null ? String(previousOrgRate.headcount) : "");
-    setOrgNoteInput(previousOrgRate.note ?? "");
+    // 코멘트는 그 분기 사정을 적은 것이라 끌고 오지 않는다(사용자 지시) — 지금 적어 둔 코멘트도 그대로 둔다.
   }
 
   function loadPreviousPersons() {
@@ -198,7 +198,8 @@ function useOrgEntry({
         key: `prev-${i}-${Date.now()}`,
         name: p.name,
         headcount: p.headcount != null ? String(p.headcount) : "0",
-        note: p.note ?? "",
+        // 코멘트는 그 분기 사정을 적은 것이라 끌고 오지 않는다.
+        note: "",
         role: p.role,
         rates: forPeriod(toRateMap(p.rates)),
       }))
