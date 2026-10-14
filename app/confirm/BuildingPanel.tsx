@@ -29,14 +29,21 @@ export interface BuildingBasisRow {
 type FieldKey = keyof BuildingBasisInput;
 type FormState = Record<FieldKey, string>;
 
-const FIELDS: { key: FieldKey; label: string; pct?: boolean }[] = [
-  { key: "bundangAreaEvcsDomestic", label: "분당 면적 EVCS(국내)" },
-  { key: "bundangAreaEvcsOverseas", label: "분당 면적 EVCS(해외)" },
-  { key: "bundangAreaIt", label: "분당 면적 IT" },
-  { key: "bundangAreaHumaxCommon", label: "분당 면적 Humax(공통)" },
-  { key: "materialEvcsDomesticRatio", label: "용인 재료비 비중(EVCS국내)", pct: true },
-  { key: "materialEvcsOverseasRatio", label: "용인 재료비 비중(EVCS해외)", pct: true },
+// 머리글은 두 줄이다 — 윗줄에 묶음(group), 아랫줄에 배부 대상(label). 같은 group이 이어지면 윗줄 칸을 합친다.
+const FIELDS: { key: FieldKey; group: string; label: string; pct?: boolean }[] = [
+  { key: "bundangAreaEvcsDomestic", group: "분당 면적 비율(%)", label: "EVCS(국내)" },
+  { key: "bundangAreaEvcsOverseas", group: "분당 면적 비율(%)", label: "EVCS(해외)" },
+  { key: "bundangAreaIt", group: "분당 면적 비율(%)", label: "IT" },
+  { key: "bundangAreaHumaxCommon", group: "분당 면적 비율(%)", label: "Humax(공통)" },
+  { key: "materialEvcsDomesticRatio", group: "용인 재료비 비율(%)", label: "EVCS(국내)", pct: true },
+  { key: "materialEvcsOverseasRatio", group: "용인 재료비 비율(%)", label: "EVCS(해외)", pct: true },
 ];
+const FIELD_GROUPS = FIELDS.reduce<{ group: string; span: number }[]>((acc, f) => {
+  const last = acc[acc.length - 1];
+  if (last && last.group === f.group) last.span += 1;
+  else acc.push({ group: f.group, span: 1 });
+  return acc;
+}, []);
 
 const EMPTY_FORM: FormState = {
   bundangAreaEvcsDomestic: "",
@@ -341,11 +348,18 @@ export default function BuildingPanel({
         <table className="rate-tbl">
           <thead>
             <tr>
-              <th></th>
+              <th rowSpan={2}></th>
+              {FIELD_GROUPS.map((g) => (
+                <th key={g.group} colSpan={g.span} className="grp-humax">
+                  {g.group}
+                </th>
+              ))}
+              <th rowSpan={2}>코멘트</th>
+            </tr>
+            <tr>
               {FIELDS.map((f) => (
                 <th key={f.key}>{f.label}</th>
               ))}
-              <th>코멘트</th>
             </tr>
           </thead>
           <tbody>
