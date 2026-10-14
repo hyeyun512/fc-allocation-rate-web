@@ -35,6 +35,8 @@ type FormState = Record<FieldKey, string>;
 
 interface FieldDef {
   key: FieldKey;
+  /** 머리글 윗줄 묶음 — 같은 묶음이 이어지면 윗줄 칸을 합친다. 아랫줄에는 label만 적는다. */
+  group: string;
   label: string;
   /** 직접 입력받지 않고 다른 값에서 계산해 채우는 칸. */
   derived?: boolean;
@@ -43,15 +45,15 @@ interface FieldDef {
 }
 
 const FIELDS: FieldDef[] = [
-  { key: "bundangSelfuseRatio", label: "분당 자가사용비율" },
-  { key: "bundangSelfuseRatio2", label: "분당 자가사용비율2", bundang2: true },
-  { key: "yonginSelfuseRatio", label: "용인 자가사용비율" },
+  { key: "bundangSelfuseRatio", group: "자가사용비율(%)", label: "분당" },
+  { key: "bundangSelfuseRatio2", group: "자가사용비율(%)", label: "분당2", bundang2: true },
+  { key: "yonginSelfuseRatio", group: "자가사용비율(%)", label: "용인" },
   // 본사 총 인원수에서 Staff부문을 뺀 나머지 — 직접 입력받지 않고 계산해서 채운다.
-  { key: "bizDevMediaHeadcount", label: "사업+개발+Media그룹 인원수", derived: true },
-  { key: "staffHeadcount", label: "Staff부문 인원수" },
-  { key: "hqTotalHeadcount", label: "본사 총 인원수" },
-  { key: "materialEvcsDomesticRatio", label: "재료비 비중(EVCS국내)" },
-  { key: "materialEvcsOverseasRatio", label: "재료비 비중(EVCS해외)" },
+  { key: "bizDevMediaHeadcount", group: "본사 인원수(명)", label: "사업+개발+Media그룹", derived: true },
+  { key: "staffHeadcount", group: "본사 인원수(명)", label: "Staff부문" },
+  { key: "hqTotalHeadcount", group: "본사 인원수(명)", label: "본사 총" },
+  { key: "materialEvcsDomesticRatio", group: "용인 재료비 비율(%)", label: "EVCS(국내)" },
+  { key: "materialEvcsOverseasRatio", group: "용인 재료비 비율(%)", label: "EVCS(해외)" },
 ];
 
 const EMPTY_FORM: FormState = {
@@ -414,11 +416,25 @@ export default function SelfUsePanel({
         <table className="rate-tbl">
           <thead>
             <tr>
-              <th></th>
+              <th rowSpan={2}></th>
+              {visibleFields
+                .reduce<{ group: string; span: number }[]>((acc, f) => {
+                  const last = acc[acc.length - 1];
+                  if (last && last.group === f.group) last.span += 1;
+                  else acc.push({ group: f.group, span: 1 });
+                  return acc;
+                }, [])
+                .map((g) => (
+                  <th key={g.group} colSpan={g.span} className="grp-humax">
+                    {g.group}
+                  </th>
+                ))}
+              <th rowSpan={2}>코멘트</th>
+            </tr>
+            <tr>
               {visibleFields.map((f) => (
                 <th key={f.key}>{f.label}</th>
               ))}
-              <th>코멘트</th>
             </tr>
           </thead>
           <tbody>
