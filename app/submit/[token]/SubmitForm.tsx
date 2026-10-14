@@ -627,8 +627,8 @@ function OrgSubmitSection({
   }
 
   return (
-    // 보일 열은 가장 나중 기간 기준 — 27년 BP가 있으면 없어진 홀딩스 열은 감춘다.
-    <TargetColumns periods={personOrder} current={periods[periods.length - 1]}>
+    // 보일 열은 입력하는 기간 모두를 기준으로 — 4Q·BP 둘 다 없는 홀딩스는 감추고, 4Q에 남은 건물은 그린다.
+    <TargetColumns periods={personOrder} current={periods}>
       <div className="panel">
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 10, marginBottom: 14 }}>
           <div>
@@ -791,7 +791,7 @@ function ParentSummary({ rounds, version, lang }: { rounds: SubmitRound[]; versi
   const first = rounds[0].data;
 
   return (
-    <TargetColumns periods={quarterOrder} current={periods[periods.length - 1]}>
+    <TargetColumns periods={quarterOrder} current={periods}>
       <div className="panel">
         <div style={{ marginBottom: 14 }}>
           <div className="panel-title">

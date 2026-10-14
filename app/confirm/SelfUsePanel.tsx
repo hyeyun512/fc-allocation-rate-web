@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { TARGETS, TargetKey, getPreviousPeriod } from "@/lib/targets";
 import { prettyQuarterLabel, sortQuarters } from "@/lib/quarter";
@@ -208,16 +208,32 @@ type SelfuseEntry = ReturnType<typeof useSelfuseEntry>;
 export default function SelfUsePanel({
   periods,
   history,
+  onUntouchedChange,
+  partnerUntouched,
 }: {
   /** 이번 라운드의 기간들 (기간 순서대로). 묶음 라운드(26년 4Q & 27년 BP)면 기간마다 입력 행이 붙는다. */
   periods: string[];
   history: SelfuseBasisRow[];
+  /** 아직 고치지 않은 열린 기간(표기)을 알린다 — 같은 라운드의 건물 표(BuildingPanel)가 저장 전에 본다. */
+  onUntouchedChange?: (labels: string[]) => void;
+  /**
+   * 같은 라운드의 다른 표(27년 BP 건물)에서 아직 고치지 않은 열린 기간. 넘어오면 두 표가 한 라운드라는 뜻이고,
+   * 한 표 안의 여러 기간과 같은 규칙(열린 기간을 모두 고쳐야 저장)을 표를 건너 적용한다.
+   */
+  partnerUntouched?: string[];
 }) {
   const initialOf = (p: string) => history.find((h) => h.quarter === p) ?? null;
   // 기간 수는 라운드가 정하고 화면을 여는 동안 바뀌지 않으므로, 훅을 기간마다 한 번씩 불러도 순서가 고정된다.
   // eslint-disable-next-line react-hooks/rules-of-hooks
   const entries: SelfuseEntry[] = periods.map((p) => useSelfuseEntry(p, initialOf(p)));
-  const multi = entries.length > 1;
+  // 다른 표와 함께 저장 규칙을 지켜야 하면(4Q 자가사용 + BP 건물) 기간이 하나여도 여러 기간 라운드로 본다.
+  const multi = entries.length > 1 || partnerUntouched !== undefined;
+  const untouchedLabels = entries.filter((e) => e.editable && !e.dirty).map((e) => prettyQuarterLabel(e.period));
+  const untouchedKey = untouchedLabels.join(",");
+  useEffect(() => {
+    onUntouchedChange?.(untouchedLabels);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [untouchedKey]);
   // 입력자는 한 사람이 라운드의 기간을 함께 입력하므로 하나만 받고, 이번에 저장하는 기간에만 실어 보낸다.
   // 기간마다 저장된 입력자가 서로 다르면 어느 쪽인지 알 수 없으므로 비워 두고 새로 적게 한다.
   const [submittedBy, setSubmittedBy] = useState(() => {
@@ -250,9 +266,9 @@ export default function SelfUsePanel({
     // 두 기간을 함께 조사할 때는 열린 기간을 모두 고쳐야 저장된다(사용자 지시) — 미리 채워진 지난 분기
     // 값이 그대로 확정되거나, 한 기간만 고치고 다른 기간을 빠뜨리는 일을 막는다.
     if (multi) {
-      const untouched = entries.filter((e) => e.editable && !e.dirty);
+      const untouched = [...untouchedLabels, ...(partnerUntouched ?? [])];
       if (untouched.length > 0) {
-        setError(`${untouched.map((e) => prettyQuarterLabel(e.period)).join(", ")}은(는) 아직 수정하지 않았습니다. 두 기간을 모두 수정한 뒤 저장해 주세요.`);
+        setError(`${untouched.join(", ")}은(는) 아직 수정하지 않았습니다. 두 기간을 모두 수정한 뒤 저장해 주세요.`);
         return;
       }
     }

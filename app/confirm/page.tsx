@@ -10,6 +10,8 @@ import { templateFor, previousTemplate, MailTemplateRow } from "@/lib/mailTempla
 import { OrgReviewData, ReviewRound } from "./ConfirmReview";
 import { SurveyOrgData, SurveyPeriodStatus } from "../SurveyOverview";
 import ConfirmTabs from "./ConfirmTabs";
+import type { BuildingBasisRow } from "./BuildingPanel";
+import { usesBuildingBasis } from "@/lib/selfuseBasis";
 import { roundPeriods, mailPeriodOf, prefillsFromEarlier } from "@/lib/surveyPeriods";
 import { quarterRank } from "@/lib/quarter";
 
@@ -309,8 +311,10 @@ export default async function AdminConfirmPage() {
       };
     });
 
+  // 같은 category("selfuse")에 담기지만 27년 BP부터는 건물(분당)/건물(용인) 기준정보라 필드가 다르다 —
+  // 기간으로 갈라 각자의 표(SelfUsePanel / BuildingPanel)에 넘긴다.
   const selfuseHistory = basisInputs
-    .filter((r) => r.category === "selfuse")
+    .filter((r) => r.category === "selfuse" && !usesBuildingBasis(r.quarter as string))
     .map((r) => {
       const p = r.payload as SelfuseBasisPayload;
       return {
@@ -323,6 +327,23 @@ export default async function AdminConfirmPage() {
         hq_total_headcount: p.hq_total_headcount,
         material_evcs_domestic_ratio: p.material_evcs_domestic_ratio,
         material_evcs_overseas_ratio: p.material_evcs_overseas_ratio,
+        submitted_by: r.submitted_by ?? null,
+        confirmed_at: r.confirmed_at ?? null,
+        note: p.note ?? null,
+      };
+    });
+  const buildingHistory: BuildingBasisRow[] = basisInputs
+    .filter((r) => r.category === "selfuse" && usesBuildingBasis(r.quarter as string))
+    .map((r) => {
+      const p = r.payload as Record<string, any>;
+      return {
+        quarter: r.quarter as string,
+        bundang_area_evcs_domestic: Number(p.bundang_area_evcs_domestic) || 0,
+        bundang_area_evcs_overseas: Number(p.bundang_area_evcs_overseas) || 0,
+        bundang_area_it: Number(p.bundang_area_it) || 0,
+        bundang_area_humax_common: Number(p.bundang_area_humax_common) || 0,
+        material_evcs_domestic_ratio: Number(p.material_evcs_domestic_ratio) || 0,
+        material_evcs_overseas_ratio: Number(p.material_evcs_overseas_ratio) || 0,
         submitted_by: r.submitted_by ?? null,
         confirmed_at: r.confirmed_at ?? null,
         note: p.note ?? null,
@@ -405,6 +426,7 @@ export default async function AdminConfirmPage() {
       hkrHistory={hkrHistory}
       itHistory={itHistory}
       selfuseHistory={selfuseHistory}
+      buildingHistory={buildingHistory}
     />
   );
 }

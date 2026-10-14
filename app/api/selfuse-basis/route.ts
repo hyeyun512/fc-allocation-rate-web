@@ -1,6 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
-import { computeSelfuseRates, hasBundangSelfuse2 } from "@/lib/selfuseBasis";
+import {
+  computeSelfuseRates,
+  hasBundangSelfuse2,
+  usesBuildingBasis,
+  computeBuildingRates,
+  BUILDING_TYPE,
+  SELFUSE_TYPE,
+} from "@/lib/selfuseBasis";
 import { TARGETS, TargetKey, sumTargets, normalizeTargets, RATE_TOTAL_TOLERANCE, toDbTargets } from "@/lib/targets";
 
 export async function POST(req: NextRequest) {
@@ -10,6 +17,11 @@ export async function POST(req: NextRequest) {
   }
 
   const supabase = getSupabaseAdmin();
+
+  // 27년 BP부터는 자가사용(건물) 대신 건물(분당)/건물(용인)을 만든다 — 입력값도 저장할 배부기준도 다르다.
+  if (usesBuildingBasis(quarter)) {
+    return saveBuildingBasis(supabase, quarter, input, submittedBy, note);
+  }
 
   const parsedInput = {
     bundangSelfuseRatio: Number(input.bundangSelfuseRatio) || 0,
@@ -84,7 +96,7 @@ export async function POST(req: NextRequest) {
     const { error } = await supabase.from("allocation_rate").upsert(
       {
         quarter,
-        type: "자가사용(건물)",
+        type: SELFUSE_TYPE,
         division: row.division,
         basis: row.basis,
         ...toDbTargets(normalized, quarter),
@@ -97,6 +109,101 @@ export async function POST(req: NextRequest) {
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
+  }
+
+  return NextResponse.json({ ok: true, computed });
+}
+
+/**
+ * 27년 BP~ 건물 기준정보 저장: 분당 면적(사업별 4개) + 용인 재료비 비중 → 건물(분당)/건물(용인).
+ *
+ * 기준정보는 예전과 같은 자리(allocation_basis_inputs, category "selfuse")에 다른 필드로 담는다 —
+ * 기간마다 한 벌이고, 화면은 usesBuildingBasis로 어느 필드를 읽을지 가른다.
+ */
+async function saveBuildingBasis(supabase: any, quarter: string, input: any, submittedBy: any, note: any) {
+  const parsed = {
+    bundangAreaEvcsDomestic: Number(input.bundangAreaEvcsDomestic) || 0,
+    bundangAreaEvcsOverseas: Number(input.bundangAreaEvcsOverseas) || 0,
+    bundangAreaIt: Number(input.bundangAreaIt) || 0,
+    bundangAreaHumaxCommon: Number(input.bundangAreaHumaxCommon) || 0,
+    materialEvcsDomesticRatio: Number(input.materialEvcsDomesticRatio) || 0,
+    materialEvcsOverseasRatio: Number(input.materialEvcsOverseasRatio) || 0,
+  };
+  // 음수 면적·비중은 비중 계산을 뒤집는다(합계는 100%여도 한 사업이 마이너스 배부를 받는다) — 받지 않는다.
+  if (Object.values(parsed).some((v) => v < 0)) {
+    return NextResponse.json({ error: "면적과 재료비 비중은 0 이상이어야 합니다." }, { status: 400 });
+  }
+  // 예전처럼 '건물 100%'로 떨어질 자리가 없다 — 면적이나 재료비 비중이 비어 있으면 합계 0인 배부기준이
+  // 확정된 것처럼 남으므로 둘 다 있어야 저장한다.
+  const areaSum =
+    parsed.bundangAreaEvcsDomestic + parsed.bundangAreaEvcsOverseas + parsed.bundangAreaIt + parsed.bundangAreaHumaxCommon;
+  if (areaSum <= 0) {
+    return NextResponse.json({ error: "분당 면적을 입력해 주세요." }, { status: 400 });
+  }
+  if (parsed.materialEvcsDomesticRatio + parsed.materialEvcsOverseasRatio <= 0) {
+    return NextResponse.json({ error: "용인 재료비 비중을 입력해 주세요." }, { status: 400 });
+  }
+
+  const { error: basisError } = await supabase.from("allocation_basis_inputs").upsert(
+    {
+      quarter,
+      category: "selfuse",
+      payload: {
+        bundang_area_evcs_domestic: parsed.bundangAreaEvcsDomestic,
+        bundang_area_evcs_overseas: parsed.bundangAreaEvcsOverseas,
+        bundang_area_it: parsed.bundangAreaIt,
+        bundang_area_humax_common: parsed.bundangAreaHumaxCommon,
+        material_evcs_domestic_ratio: parsed.materialEvcsDomesticRatio,
+        material_evcs_overseas_ratio: parsed.materialEvcsOverseasRatio,
+        note: typeof note === "string" && note.trim() ? note.trim() : null,
+      },
+      submitted_by: submittedBy ?? null,
+      confirmed_at: new Date().toISOString(),
+    },
+    { onConflict: "quarter,category" }
+  );
+  if (basisError) {
+    return NextResponse.json({ error: basisError.message }, { status: 500 });
+  }
+
+  const computed = computeBuildingRates(parsed);
+  for (const row of computed) {
+    const rates = {} as Record<TargetKey, number>;
+    TARGETS.forEach((t) => {
+      rates[t.key] = row.rates[t.key] ?? 0;
+    });
+    // 리소스배부율·IT와 같은 규칙으로 저장 직전에 100%로 맞춘다.
+    // 분당은 면적 비중이라 항상 100%고, 용인은 재료비 국내+해외가 100%가 아니면 어긋난다 — 보정하고 로그를 남긴다.
+    const computedTotal = sumTargets(rates);
+    const normalized = normalizeTargets(rates);
+    if (Math.abs(computedTotal - 1) > RATE_TOTAL_TOLERANCE) {
+      console.warn(
+        `[allocation] 건물 합계 이상: ${quarter} ${row.basis} 계산 ${(computedTotal * 100).toFixed(4)}% -> 100%로 보정해 저장`
+      );
+    }
+    const { error } = await supabase.from("allocation_rate").upsert(
+      {
+        quarter,
+        type: BUILDING_TYPE,
+        division: row.division,
+        basis: row.basis,
+        ...toDbTargets(normalized, quarter),
+        total: sumTargets(normalized),
+        update_flag: true,
+        note: `웹 확정 (건물 기준정보) - ${new Date().toISOString()}`,
+      },
+      { onConflict: "quarter,type,division,basis" }
+    );
+    if (error) {
+      return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+  }
+
+  // 이 기간에는 자가사용(건물)이 없다 — 예전 방식으로 저장된 분당/용인(자가사용) 행이 남아 있으면 지운다
+  // (남겨 두면 View와 배부 파일에 두 방식이 함께 잡힌다).
+  const { error: delError } = await supabase.from("allocation_rate").delete().eq("quarter", quarter).eq("type", SELFUSE_TYPE);
+  if (delError) {
+    return NextResponse.json({ error: delError.message }, { status: 500 });
   }
 
   return NextResponse.json({ ok: true, computed });

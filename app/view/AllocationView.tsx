@@ -31,7 +31,8 @@ const DIVISION_LABEL: Record<string, string> = {
   본사: "리소스배부율-본사",
   주재원: "리소스배부율-주재원",
   법인: "리소스배부율-법인",
-  건물: "자가사용(건물)",
+  // 26년 4Q까지는 자가사용(건물), 27년 BP부터는 건물(분당)/건물(용인)이 같은 '건물' 구분에 들어간다.
+  건물: "자가사용·건물",
   인원수: "IT-인원수",
   ID수: "IT-ID",
   기타: "고정비율-기타",
@@ -43,10 +44,12 @@ function divisionLabel(division: string): string {
 const TYPE_COLOR: Record<string, string> = {
   리소스배부율: "var(--cat-green)",
   "자가사용(건물)": "var(--cat-orange)",
+  건물: "var(--cat-yellow)",
   IT: "var(--cat-aqua)",
   고정비율: "var(--cat-violet)",
 };
-const TYPE_ORDER = ["리소스배부율", "자가사용(건물)", "IT", "고정비율"];
+// '건물'은 27년 BP부터 자가사용(건물)을 대신하는 유형이다 (lib/selfuseBasis.ts의 usesBuildingBasis).
+const TYPE_ORDER = ["리소스배부율", "자가사용(건물)", "건물", "IT", "고정비율"];
 const STATUS_LABEL: Record<string, string> = { new: "신규", removed: "삭제", changed: "변경", same: "동일" };
 
 /**
@@ -64,6 +67,8 @@ const BASIS_ORDER = [
   "HUS", "HMX", "HUK", "HDG", "HUG", "HTR", "HBR", "HJP", "HTH", "HAU", "HID", "HSZ",
   // 자가사용(건물)
   "분당(자가사용)", "분당(자가사용)2", "용인(자가사용)",
+  // 건물 (27년 BP부터)
+  "건물(분당)", "건물(용인)",
   // IT
   "인원수비율(Mobility 포함)", "인원수비율(MS)", "인원수비율(SAP)", "인원수비율(그룹사인원)",
   "인원수비율(그룹사인원_입주사)", "인원수비율(M/W/H)", "인원수비율(M/E/W/H)",
@@ -363,7 +368,7 @@ export default function AllocationView({
       { label: "배부기준", value: `${total}건`, sub: `${DIVISION_ORDER.length}개 구분 · ${TYPE_ORDER.length}개 유형` },
       // 배부 대상이 빠진 분기(예: 2026-Q4부터 홀딩스)에는 그만큼 줄여 센다.
       { label: "적용 법인", value: `${TARGETS.filter((t) => isTargetActiveIn(t.key, view)).length}개`, sub: "STB ~ H.Networks" },
-      { label: "배부 유형", value: `${TYPE_ORDER.length}종`, sub: "리소스 · 건물 · IT · 고정비율" },
+      { label: "배부 유형", value: `${TYPE_ORDER.length}종`, sub: "리소스 · 자가사용 · 건물 · IT · 고정비율" },
       { label: "합계 검증", value: `${validated}/${total}`, sub: excluded ? `${excluded}건 실적 제외 (설계상 total=0)` : "전건 100% 일치", ok: true },
     ];
   }

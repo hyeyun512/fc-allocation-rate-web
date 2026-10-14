@@ -296,11 +296,14 @@ export function TargetColumns({
   children,
 }: {
   periods: string[];
-  /** 지금 입력하는 기간 — 그보다 앞선 해에 없어진 대상(예: 2027-BP의 홀딩스)은 이력이 있어도 감춘다. */
-  current?: string;
+  /**
+   * 지금 입력하는 기간(들) — 입력하는 기간 모두에서 대상이 아니고 그보다 앞선 해에 없어진 대상
+   * (예: 2027-BP의 홀딩스)은 이력이 있어도 감춘다. 4Q와 BP를 함께 입력하면 둘 다 넘긴다.
+   */
+  current?: string | string[];
   children: React.ReactNode;
 }) {
-  const key = `${current ?? ""}#${periods.join("|")}`;
+  const key = `${Array.isArray(current) ? current.join("+") : current ?? ""}#${periods.join("|")}`;
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const cols = useMemo(() => visibleTargets(periods, current), [key]);
   return <TargetColumnsContext.Provider value={cols}>{children}</TargetColumnsContext.Provider>;

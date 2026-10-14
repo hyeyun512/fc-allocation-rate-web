@@ -57,6 +57,9 @@ export const TARGET_LIFESPAN: Partial<Record<TargetKey, { from?: string; to?: st
   it: { from: "2026-Q4" },
   // 홀딩스가 회사에 합병되어 2026-Q4부터 배부하지 않는다.
   holdings: { to: "2026-Q3" },
+  // 27년 BP부터 자가사용(건물) 배부를 없애고 건물(분당)/건물(용인) 배부기준에서 사업으로 바로 나누므로
+  // 비용을 '건물'로 모아 두는 대상 자체가 사라진다 (lib/selfuseBasis.ts의 usesBuildingBasis와 짝).
+  building: { to: "2026-Q4" },
 };
 
 /** 이 기간에 배부 대상인지. 기간 표기를 못 읽으면 대상으로 본다(직접 입력한 기간에서 값이 사라지지 않게). */
@@ -74,12 +77,23 @@ export function isTargetActiveIn(key: TargetKey, period: string): boolean {
  * 이 기간들을 함께 보여주는 화면에 그릴 배부 대상 열 — 어느 한 기간에라도 대상이면 그린다.
  * (예: 2026-Q1~Q3만 있으면 IT 열은 빠지고, 2026-Q4가 하나라도 있으면 들어간다.)
  * 기간이 비어 있으면 모든 열을 그린다.
+ *
+ * current는 지금 입력하는 기간(들)이다. 26년 4Q와 27년 BP를 한 표에서 함께 입력하면 둘 다 넘긴다 —
+ * 마지막 기간(BP)만 보고 감추면 4Q에는 아직 있는 '건물' 열까지 사라진다. 그래서 입력하는 기간
+ * **모두에서** 대상이 아니고, 그중 가장 나중 기간의 해보다 앞선 해에 없어진 대상만 감춘다.
  */
-export function visibleTargets(periods: string[], current?: string): TargetDef[] {
+export function visibleTargets(periods: string[], current?: string | string[]): TargetDef[] {
   const list = periods.filter(Boolean);
   if (list.length === 0) return TARGETS;
+  const currents = (Array.isArray(current) ? current : current ? [current] : []).filter(Boolean);
+  const latest = currents.reduce<string | null>(
+    (best, p) => (best == null || quarterRank(p) > quarterRank(best) ? p : best),
+    null
+  );
   return TARGETS.filter((t) => {
-    if (current && endedBeforeYearOf(t.key, current)) return false;
+    if (latest && currents.every((p) => !isTargetActiveIn(t.key, p)) && endedBeforeYearOf(t.key, latest)) {
+      return false;
+    }
     return list.some((p) => isTargetActiveIn(t.key, p));
   });
 }

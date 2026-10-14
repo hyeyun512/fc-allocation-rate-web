@@ -9,7 +9,7 @@ import { fixedRatesFor } from "@/lib/fixedRates";
 import { roundPeriods, roundLabel, resolveSurveyPeriod, mailPeriodOf, prefillsFromEarlier } from "@/lib/surveyPeriods";
 import { computeItRates } from "@/lib/itBasis";
 import { submitLockState } from "@/lib/submitLock";
-import { computeSelfuseRates, hasBundangSelfuse2 } from "@/lib/selfuseBasis";
+import { computeSelfuseRates, hasBundangSelfuse2, usesBuildingBasis, selfuseTypeFor, computeBuildingRates } from "@/lib/selfuseBasis";
 import {
   normalizeEmail,
   isValidEmail,
@@ -481,7 +481,43 @@ function runCases(): Case[] {
   c.push(ok("holdings: 3Q까지 대상", isTargetActiveIn("holdings", "2026-Q3") && isTargetActiveIn("holdings", "2026-Q3(청구)")));
   c.push(ok("holdings: 4Q·BP부터 제외", !isTargetActiveIn("holdings", "2026-Q4") && !isTargetActiveIn("holdings", "2027-BP")));
   c.push(eq("holdings: 4Q에 막히는 대상은 홀딩스뿐", inactiveTargetKeys("2026-Q4"), ["holdings"]));
-  c.push(eq("holdings: BP에 막히는 대상도 홀딩스뿐", inactiveTargetKeys("2027-BP"), ["holdings"]));
+  // 27년 BP부터는 '건물'도 빠진다 (건물(분당)/건물(용인)으로 바로 나눈다).
+  c.push(eq("building: BP에 막히는 대상은 건물·홀딩스", inactiveTargetKeys("2027-BP"), ["building", "holdings"]));
+  c.push(ok("building: 4Q까지 대상, BP부터 제외", isTargetActiveIn("building", "2026-Q4") && !isTargetActiveIn("building", "2027-BP")));
+  c.push(eq("building: BP 저장값은 null", toDbTargets({ stb: 1, building: 0 }, "2027-BP").building, null));
+  c.push(
+    ok(
+      "building: '건물 100%'는 BP부터 만들지 않는다",
+      fixedRatesFor("2026-Q4").some((d) => d.basis === "건물 100%") && !fixedRatesFor("2027-BP").some((d) => d.basis === "건물 100%")
+    )
+  );
+  {
+    // 4Q·BP를 한 표에서 입력하면 4Q에 남은 건물 열은 그리고, 둘 다 없는 홀딩스는 감춘다.
+    const both = visibleTargets(["2026-Q3", "2026-Q4", "2027-BP"], ["2026-Q4", "2027-BP"]).map((t) => t.key);
+    c.push(ok("cols: 4Q+BP 표에 건물 열 있음", both.includes("building")));
+    c.push(ok("cols: 4Q+BP 표에 홀딩스 열 없음", !both.includes("holdings")));
+    const bpOnly = visibleTargets(["2026-Q3", "2026-Q4", "2027-BP"], "2027-BP").map((t) => t.key);
+    c.push(ok("cols: BP만 입력하면 건물·홀딩스 열 없음", !bpOnly.includes("building") && !bpOnly.includes("holdings")));
+    c.push(ok("cols: 4Q만 입력하면 건물 열 있음", visibleTargets(["2026-Q3", "2026-Q4"], ["2026-Q4"]).some((t) => t.key === "building")));
+  }
+  // ── 건물(분당)/건물(용인): 27년 BP부터 자가사용(건물)을 대신한다 ──
+  c.push(ok("buildingBasis: 4Q는 자가사용, BP부터 건물", !usesBuildingBasis("2026-Q4") && usesBuildingBasis("2027-BP") && usesBuildingBasis("2027-Q1")));
+  c.push(ok("buildingBasis: 못 읽는 기간은 예전 방식", !usesBuildingBasis("2026-Q1(청구)x")));
+  c.push(eq("buildingBasis: type", [selfuseTypeFor("2026-Q4"), selfuseTypeFor("2027-BP")], ["자가사용(건물)", "건물"]));
+  {
+    const rows = computeBuildingRates({
+      bundangAreaEvcsDomestic: 10,
+      bundangAreaEvcsOverseas: 30,
+      bundangAreaIt: 20,
+      bundangAreaHumaxCommon: 40,
+      materialEvcsDomesticRatio: 0.25,
+      materialEvcsOverseasRatio: 0.75,
+    });
+    c.push(eq("buildingBasis: 행 이름", rows.map((r) => r.basis), ["건물(분당)", "건물(용인)"]));
+    c.push(eq("buildingBasis: 분당 = 면적 비중", rows[0].rates, { evcs_domestic: 0.1, evcs_overseas: 0.3, it: 0.2, humax_common: 0.4 }));
+    c.push(eq("buildingBasis: 용인 = 재료비 비중", rows[1].rates, { evcs_domestic: 0.25, evcs_overseas: 0.75 }));
+    c.push(ok("buildingBasis: 건물 몫은 없다", rows.every((r) => r.rates.building == null)));
+  }
 
   // ── IT: 2026-Q4부터 배부 대상 (EVCS(해외)와 Humax(공통) 사이) ──
   c.push(eq("it: 3Q까지는 막힌다", inactiveTargetKeys("2026-Q3"), ["it"]));

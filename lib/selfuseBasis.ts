@@ -1,5 +1,65 @@
 import { TargetKey } from "./targets";
 import { ComputedBasisRow } from "./itBasis";
+import { quarterRank } from "./quarter";
+
+/* ─────────────────── 27년 BP부터: 건물(분당)/건물(용인) ───────────────────
+   27년 BP부터 자가사용(건물) 배부를 없앤다. 건물 비용을 '건물' 대상으로 모았다가 다시 나누지 않고,
+   새 배부기준 둘로 사업에 바로 나눈다.
+     · 건물(분당) — 인원수가 아니라 **면적** 기준. EVCS(국내)/EVCS(해외)/IT/Humax(공통)이 쓰는 면적을
+       각각 받아 그 비중으로 나눈다.
+     · 건물(용인) — 지금처럼 재료비 비중(EVCS 국내/해외) 그대로.
+   그래서 자가사용비율 입력은 사라지고, 배부 대상 '건물'도 27년 BP부터 없어진다 (lib/targets.ts의 TARGET_LIFESPAN). */
+
+/** 건물(분당)/건물(용인) 배부기준을 쓰기 시작하는 기간. */
+export const BUILDING_BASIS_FROM = "2027-BP";
+/** 새 배부기준의 allocation_rate.type — 예전 것은 SELFUSE_TYPE. View에서 유형으로 갈라 보인다. */
+export const BUILDING_TYPE = "건물";
+export const SELFUSE_TYPE = "자가사용(건물)";
+
+/**
+ * 이 기간에 건물(분당)/건물(용인)을 쓰는지 (아니면 예전 자가사용(건물)).
+ * 화면·저장·계산이 모두 이 함수 하나로 가른다. 표기를 못 읽는 기간(직접 입력)은 예전 방식으로 둔다.
+ */
+export function usesBuildingBasis(period: string): boolean {
+  const r = quarterRank(period);
+  return r >= 0 && r >= quarterRank(BUILDING_BASIS_FROM);
+}
+
+/** 그 기간 자가사용·건물 배부율이 저장되는 allocation_rate.type. */
+export function selfuseTypeFor(period: string): string {
+  return usesBuildingBasis(period) ? BUILDING_TYPE : SELFUSE_TYPE;
+}
+
+export interface BuildingBasisInput {
+  /** 분당 건물에서 각 사업이 쓰는 면적 (단위는 무엇이든 같기만 하면 된다 — 비중만 쓴다). */
+  bundangAreaEvcsDomestic: number;
+  bundangAreaEvcsOverseas: number;
+  bundangAreaIt: number;
+  bundangAreaHumaxCommon: number;
+  materialEvcsDomesticRatio: number;
+  materialEvcsOverseasRatio: number;
+}
+
+/** 건물(분당)·건물(용인) 두 행. 면적이 모두 0이면 분당 행은 전부 0이다(합계 0 → 저장 전에 막는다). */
+export function computeBuildingRates(input: BuildingBasisInput): ComputedBasisRow[] {
+  const areas: [TargetKey, number][] = [
+    ["evcs_domestic", input.bundangAreaEvcsDomestic],
+    ["evcs_overseas", input.bundangAreaEvcsOverseas],
+    ["it", input.bundangAreaIt],
+    ["humax_common", input.bundangAreaHumaxCommon],
+  ];
+  const areaSum = areas.reduce((s, [, v]) => s + (v || 0), 0);
+  const bundang: Partial<Record<TargetKey, number>> = {};
+  areas.forEach(([k, v]) => (bundang[k] = areaSum > 0 ? (v || 0) / areaSum : 0));
+  return [
+    { division: "건물", basis: "건물(분당)", rates: bundang },
+    {
+      division: "건물",
+      basis: "건물(용인)",
+      rates: { evcs_domestic: input.materialEvcsDomesticRatio, evcs_overseas: input.materialEvcsOverseasRatio },
+    },
+  ];
+}
 
 export interface SelfuseBasisInput {
   bundangSelfuseRatio: number;
