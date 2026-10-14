@@ -455,3 +455,7 @@ footer{text-align:center;padding:22px;color:#94a3b8;font-size:11.5px}
 .rate-tbl th.fg-head{font-weight:700;font-size:12.5px;background:#e2e8f0;color:#334155;border-bottom:0.5px solid #fff}
 .rate-tbl th.fg-sub{font-weight:600;background:#f1f5f9;color:#475569}
 .rate-tbl th.fg-start,.rate-tbl td.fg-start{border-left:2px solid #cbd5e1}
+
+/* 배부율 표에서 코멘트 열(TOTAL 바로 오른쪽)을 숫자 칸과 회색 세로선으로 가른다. */
+.rate-tbl th.col-total + th,
+.rate-tbl td.total-col + td{border-left:1px solid #e2e8f0}

@@ -74,42 +74,19 @@ export function isTargetActiveIn(key: TargetKey, period: string): boolean {
 }
 
 /**
- * 이 기간들을 함께 보여주는 화면에 그릴 배부 대상 열 — 어느 한 기간에라도 대상이면 그린다.
- * (예: 2026-Q1~Q3만 있으면 IT 열은 빠지고, 2026-Q4가 하나라도 있으면 들어간다.)
+ * 이 기간들을 함께 보여주는 화면에 그릴 배부 대상 열 — 화면에 나오는 기간 중 어느 하나에라도 대상이면 그린다.
+ * (예: 2026-Q1~Q3만 있으면 IT 열은 빠지고, 2026-Q4가 하나라도 있으면 들어간다.
+ *  27년 BP 화면이라도 26년 1Q~3Q 이력이 함께 보이면 홀딩스 열은 남는다 — 지난 분기에 실제로 배부한 값이
+ *  가려지면 그 행의 합계가 100%인데 칸 합은 모자라 보인다(사용자 지적). 4Q·BP 칸은 잠긴 빈칸이다.)
  * 기간이 비어 있으면 모든 열을 그린다.
  *
- * current는 지금 입력하는 기간(들)이다. 26년 4Q와 27년 BP를 한 표에서 함께 입력하면 둘 다 넘긴다 —
- * 마지막 기간(BP)만 보고 감추면 4Q에는 아직 있는 '건물' 열까지 사라진다. 그래서 입력하는 기간
- * **모두에서** 대상이 아니고, 그중 가장 나중 기간의 해보다 앞선 해에 없어진 대상만 감춘다.
+ * current(지금 입력하는 기간)는 예전 규칙(뒤 해 화면에서는 없어진 대상 열을 감춘다)의 흔적으로 받기만 한다.
  */
 export function visibleTargets(periods: string[], current?: string | string[]): TargetDef[] {
+  void current;
   const list = periods.filter(Boolean);
   if (list.length === 0) return TARGETS;
-  const currents = (Array.isArray(current) ? current : current ? [current] : []).filter(Boolean);
-  const latest = currents.reduce<string | null>(
-    (best, p) => (best == null || quarterRank(p) > quarterRank(best) ? p : best),
-    null
-  );
-  return TARGETS.filter((t) => {
-    if (latest && currents.every((p) => !isTargetActiveIn(t.key, p)) && endedBeforeYearOf(t.key, latest)) {
-      return false;
-    }
-    return list.some((p) => isTargetActiveIn(t.key, p));
-  });
-}
-
-/**
- * 지금 입력하는 기간이 그 대상이 없어진 해보다 뒤 해인지.
- * 그런 화면(예: 2027-BP)에서는 지난 해 이력 행이 함께 보여도 그 열을 그리지 않는다 —
- * 없어진 대상이 계속 보이면 헷갈린다. 같은 해(2026-Q4)에는 3Q 이력과 맞춰 보도록 남긴다.
- */
-function endedBeforeYearOf(key: TargetKey, current: string): boolean {
-  const to = TARGET_LIFESPAN[key]?.to;
-  if (!to) return false;
-  const cur = quarterRank(current);
-  const end = quarterRank(to);
-  if (cur < 0 || end < 0) return false;
-  return Math.floor(cur / 10) > Math.floor(end / 10);
+  return TARGETS.filter((t) => list.some((p) => isTargetActiveIn(t.key, p)));
 }
 
 /** 이 기간에 배부하지 않는 대상. */

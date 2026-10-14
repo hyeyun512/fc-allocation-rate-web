@@ -495,9 +495,9 @@ function runCases(): Case[] {
     // 4Q·BP를 한 표에서 입력하면 4Q에 남은 건물 열은 그리고, 둘 다 없는 홀딩스는 감춘다.
     const both = visibleTargets(["2026-Q3", "2026-Q4", "2027-BP"], ["2026-Q4", "2027-BP"]).map((t) => t.key);
     c.push(ok("cols: 4Q+BP 표에 건물 열 있음", both.includes("building")));
-    c.push(ok("cols: 4Q+BP 표에 홀딩스 열 없음", !both.includes("holdings")));
-    const bpOnly = visibleTargets(["2026-Q3", "2026-Q4", "2027-BP"], "2027-BP").map((t) => t.key);
-    c.push(ok("cols: BP만 입력하면 건물·홀딩스 열 없음", !bpOnly.includes("building") && !bpOnly.includes("holdings")));
+    c.push(ok("cols: 4Q+BP 표라도 3Q 이력이 있으면 홀딩스 열 있음", both.includes("holdings")));
+    const bpOnly = visibleTargets(["2027-BP"], "2027-BP").map((t) => t.key);
+    c.push(ok("cols: BP만 보이면 건물·홀딩스 열 없음", !bpOnly.includes("building") && !bpOnly.includes("holdings")));
     c.push(ok("cols: 4Q만 입력하면 건물 열 있음", visibleTargets(["2026-Q3", "2026-Q4"], ["2026-Q4"]).some((t) => t.key === "building")));
   }
   // ── 건물(분당)/건물(용인): 27년 BP부터 자가사용(건물)을 대신한다 ──
@@ -535,7 +535,7 @@ function runCases(): Case[] {
   c.push(ok("cols: 1Q~3Q만 보이면 IT 열 없음", !visibleTargets(["2026-Q1", "2026-Q2", "2026-Q3"]).some((t) => t.key === "it")));
   c.push(ok("cols: 4Q가 끼면 IT 열 있음", visibleTargets(["2026-Q3", "2026-Q4"]).some((t) => t.key === "it")));
   c.push(ok("cols: 3Q 이력이 있으면 홀딩스 열은 남는다", visibleTargets(["2026-Q3", "2026-Q4"]).some((t) => t.key === "holdings")));
-  c.push(ok("cols: 27년 BP 입력 화면은 26년 이력이 있어도 홀딩스 열 없음", !visibleTargets(["2026-Q1", "2026-Q3", "2027-BP"], "2027-BP").some((t) => t.key === "holdings")));
+  c.push(ok("cols: 27년 BP 화면이라도 26년 이력이 있으면 홀딩스 열이 남는다", visibleTargets(["2026-Q1", "2026-Q3", "2027-BP"], "2027-BP").some((t) => t.key === "holdings")));
   c.push(ok("cols: 26년 4Q 입력 화면은 3Q 이력과 함께 홀딩스 열을 남긴다", visibleTargets(["2026-Q3", "2026-Q4"], "2026-Q4").some((t) => t.key === "holdings")));
   c.push(ok("cols: 27년 BP 입력 화면에 IT 열은 있다", visibleTargets(["2026-Q3", "2027-BP"], "2027-BP").some((t) => t.key === "it")));
   c.push(ok("cols: 4Q만 보이면 홀딩스 열 없음", !visibleTargets(["2026-Q4"]).some((t) => t.key === "holdings")));
