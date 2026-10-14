@@ -941,3 +941,18 @@ export function PersonHistoryBlocks({
     </>
   );
 }
+
+/**
+ * 기준정보 표(자가사용·건물)의 묶음 색. 머리글 두 줄과 입력칸에 같은 색·구분선을 입혀
+ * 분당 / 용인 / 인원수 묶음이 한눈에 갈리게 한다 (globals.css의 .fg-*).
+ */
+export function fieldGroupTone(group: string): "a" | "b" | "c" {
+  if (group.includes("용인")) return "b";
+  if (group.includes("인원수")) return "c";
+  return "a";
+}
+
+/** 칸이 묶음의 첫 칸인지 — 첫 칸 왼쪽에 구분선을 긋는다. */
+export function isGroupStart<T extends { group: string }>(fields: T[], i: number): boolean {
+  return i === 0 || fields[i - 1].group !== fields[i].group;
+}

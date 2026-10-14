@@ -10,7 +10,7 @@ import {
   hasBundangSelfuse2,
   SelfuseBasisInput,
 } from "@/lib/selfuseBasis";
-import { RateTableHead, ReadOnlyRateRow, NoteTip } from "@/components/RateParts";
+import { RateTableHead, ReadOnlyRateRow, NoteTip, fieldGroupTone, isGroupStart } from "@/components/RateParts";
 import { readPasteGrid, shouldHandlePaste } from "@/lib/paste";
 
 export interface SelfuseBasisRow {
@@ -304,8 +304,8 @@ export default function SelfUsePanel({
     return (
       <tr key={row.quarter} className="ro-row">
         <td style={{ textAlign: "left" }}>{label}</td>
-        {visibleFields.map((f) => (
-          <td key={f.key}>{cellText(f, row)}</td>
+        {visibleFields.map((f, i) => (
+          <td key={f.key} className={isGroupStart(visibleFields, i) ? "fg-start" : undefined}>{cellText(f, row)}</td>
         ))}
         <td>{row.note ? <NoteTip text={row.note} /> : null}</td>
       </tr>
@@ -319,7 +319,7 @@ export default function SelfUsePanel({
       <tr key={e.period}>
         <td style={{ textAlign: "left", fontWeight: 700, color: "#2563eb" }}>{e.period} (입력중)</td>
         {visibleFields.map((f, i) => (
-          <td key={f.key}>
+          <td key={f.key} className={isGroupStart(visibleFields, i) ? "fg-start" : undefined}>
             {f.derived ? (
               // 본사 총 - Staff 로 계산되는 값이라 직접 고치지 않는다.
               <span title="본사 총 인원수 - Staff부문 인원수" style={{ color: "#475569", fontWeight: 600 }}>
@@ -425,15 +425,17 @@ export default function SelfUsePanel({
                   return acc;
                 }, [])
                 .map((g) => (
-                  <th key={g.group} colSpan={g.span} className="grp-humax">
+                  <th key={g.group} colSpan={g.span} className={`fg-head fg-start fg-${fieldGroupTone(g.group)}`}>
                     {g.group}
                   </th>
                 ))}
               <th rowSpan={2}>코멘트</th>
             </tr>
             <tr>
-              {visibleFields.map((f) => (
-                <th key={f.key}>{f.label}</th>
+              {visibleFields.map((f, i) => (
+                <th key={f.key} className={`fg-sub fg-${fieldGroupTone(f.group)}${isGroupStart(visibleFields, i) ? " fg-start" : ""}`}>
+                  {f.label}
+                </th>
               ))}
             </tr>
           </thead>

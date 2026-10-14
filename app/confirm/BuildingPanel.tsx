@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { TARGETS, TargetKey } from "@/lib/targets";
 import { prettyQuarterLabel, sortQuarters } from "@/lib/quarter";
 import { computeBuildingRates, BuildingBasisInput } from "@/lib/selfuseBasis";
-import { RateTableHead, ReadOnlyRateRow, NoteTip } from "@/components/RateParts";
+import { RateTableHead, ReadOnlyRateRow, NoteTip, fieldGroupTone, isGroupStart } from "@/components/RateParts";
 import { readPasteGrid, shouldHandlePaste } from "@/lib/paste";
 
 /**
@@ -251,8 +251,8 @@ export default function BuildingPanel({
     return (
       <tr key={row.quarter} className="ro-row">
         <td style={{ textAlign: "left" }}>{label}</td>
-        {FIELDS.map((f) => (
-          <td key={f.key}>{cellText(f.key, f.pct, input)}</td>
+        {FIELDS.map((f, i) => (
+          <td key={f.key} className={isGroupStart(FIELDS, i) ? "fg-start" : undefined}>{cellText(f.key, f.pct, input)}</td>
         ))}
         <td>{row.note ? <NoteTip text={row.note} /> : null}</td>
       </tr>
@@ -265,7 +265,7 @@ export default function BuildingPanel({
       <tr key={e.period}>
         <td style={{ textAlign: "left", fontWeight: 700, color: "#2563eb" }}>{e.period} (입력중)</td>
         {FIELDS.map((f, i) => (
-          <td key={f.key}>
+          <td key={f.key} className={isGroupStart(FIELDS, i) ? "fg-start" : undefined}>
             <input
               type="number"
               min="0"
@@ -350,15 +350,17 @@ export default function BuildingPanel({
             <tr>
               <th rowSpan={2}></th>
               {FIELD_GROUPS.map((g) => (
-                <th key={g.group} colSpan={g.span} className="grp-humax">
+                <th key={g.group} colSpan={g.span} className={`fg-head fg-start fg-${fieldGroupTone(g.group)}`}>
                   {g.group}
                 </th>
               ))}
               <th rowSpan={2}>코멘트</th>
             </tr>
             <tr>
-              {FIELDS.map((f) => (
-                <th key={f.key}>{f.label}</th>
+              {FIELDS.map((f, i) => (
+                <th key={f.key} className={`fg-sub fg-${fieldGroupTone(f.group)}${isGroupStart(FIELDS, i) ? " fg-start" : ""}`}>
+                  {f.label}
+                </th>
               ))}
             </tr>
           </thead>

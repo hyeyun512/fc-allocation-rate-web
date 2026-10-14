@@ -449,3 +449,15 @@ footer{text-align:center;padding:22px;color:#94a3b8;font-size:11.5px}
 
 /* 조사 링크에서 두 기간(예: 26년 4Q·27년 BP)을 위아래로 펼칠 때 기간마다 붙는 제목 */
 .round-heading{font-size:18px;font-weight:800;color:#1e3a8a;padding:10px 14px;margin-bottom:12px;background:#eff6ff;border-left:4px solid #2563eb;border-radius:6px}
+
+/* 기준정보 표(자가사용·건물)의 묶음 — 분당(파랑) / 용인(주황) / 인원수(초록).
+   머리글 윗줄은 진하게, 아랫줄은 옅게 칠하고, 묶음이 바뀌는 곳에 세로선을 그어 입력칸까지 이어지게 한다. */
+.rate-tbl th.fg-head{font-weight:700;font-size:12.5px;border-bottom:0.5px solid #fff}
+.rate-tbl th.fg-sub{font-weight:600}
+.rate-tbl th.fg-head.fg-a{background:#dbeafe;color:#1e40af}
+.rate-tbl th.fg-sub.fg-a{background:#eff6ff;color:#1e40af}
+.rate-tbl th.fg-head.fg-b{background:#ffedd5;color:#9a3412}
+.rate-tbl th.fg-sub.fg-b{background:#fff7ed;color:#9a3412}
+.rate-tbl th.fg-head.fg-c{background:#dcfce7;color:#166534}
+.rate-tbl th.fg-sub.fg-c{background:#f0fdf4;color:#166534}
+.rate-tbl th.fg-start,.rate-tbl td.fg-start{border-left:2px solid #cbd5e1}
