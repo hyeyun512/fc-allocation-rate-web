@@ -10,7 +10,7 @@ import { quarterRank } from "./quarter";
  * 값이 실제로 바뀌는 경우에만 이 표를 고치면 된다.
  */
 export interface FixedRateDef {
-  /** 생략하면 '고정비율'. 조사 없이 정해진 비율인 리소스배부율 행(예: IT사업부)도 여기서 채운다. */
+  /** 생략하면 '고정비율'. 조사 없이 정해진 비율인 리소스배부율 행(예: 비즈니스솔루션·ITO)도 여기서 채운다. */
   type?: string;
   division: string;
   basis: string;
@@ -41,12 +41,10 @@ export const FIXED_RATES: FixedRateDef[] = [
   { division: "직접비", basis: "H.EV 100%", rates: { h_ev: 1 } },
   // 어디에도 배부하지 않는 기준 (설계상 합계 0)
   { division: "직접비", basis: "실적 제외", rates: {} },
-  // 리소스배부율 · 본사 — IT사업부는 조사하지 않고 IT에 100% 배부한다 (IT가 대상이 된 2026-Q4부터).
-  { type: "리소스배부율", division: "본사", basis: "IT사업부", rates: { it: 1 }, from: "2026-Q4" },
-  // 27년 BP부터 IT가 비즈니스솔루션·ITO로 갈라지므로 IT사업부 한 행 대신 두 행을 둔다
-  // (IT사업부 행은 IT가 대상이 아닌 BP에서는 만들어지지 않는다 — fixedRatesFor).
-  { type: "리소스배부율", division: "본사", basis: "비즈니스솔루션", rates: { business_solution: 1 }, from: "2027-BP" },
-  { type: "리소스배부율", division: "본사", basis: "ITO", rates: { ito: 1 }, from: "2027-BP" },
+  // 리소스배부율 · 본사 — IT 사업은 조사하지 않고 비즈니스솔루션·ITO에 각각 100% 배부한다(2026-Q4부터).
+  // 예전에 있던 'IT사업부 = IT 100%' 한 행을 대신한다.
+  { type: "리소스배부율", division: "본사", basis: "비즈니스솔루션", rates: { business_solution: 1 }, from: "2026-Q4" },
+  { type: "리소스배부율", division: "본사", basis: "ITO", rates: { ito: 1 }, from: "2026-Q4" },
 ];
 
 /**

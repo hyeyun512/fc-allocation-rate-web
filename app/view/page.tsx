@@ -26,7 +26,7 @@ export default async function AdminViewPage() {
   );
   // HKR은 조직 마스터에 없는 자동계산 항목이지만 선택 목록에는 들어 있다.
   selectableBases.add("HKR(관계사제외)");
-  // 조사하지 않고 정해진 비율로 채우는 리소스배부율 행(예: IT사업부)도 싣는다.
+  // 조사하지 않고 정해진 비율로 채우는 리소스배부율 행(예: 비즈니스솔루션·ITO)도 싣는다.
   FIXED_RATES.filter((d) => d.type === "리소스배부율").forEach((d) => selectableBases.add(d.basis));
 
   const allRows = ((rows ?? []) as AllocRateRow[]).filter(
