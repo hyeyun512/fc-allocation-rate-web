@@ -480,9 +480,9 @@ function runCases(): Case[] {
   // ── 홀딩스: 2026-Q4부터 배부 대상 아님 ──
   c.push(ok("holdings: 3Q까지 대상", isTargetActiveIn("holdings", "2026-Q3") && isTargetActiveIn("holdings", "2026-Q3(청구)")));
   c.push(ok("holdings: 4Q·BP부터 제외", !isTargetActiveIn("holdings", "2026-Q4") && !isTargetActiveIn("holdings", "2027-BP")));
-  c.push(eq("holdings: 4Q에 막히는 대상은 홀딩스뿐", inactiveTargetKeys("2026-Q4"), ["holdings"]));
+  c.push(eq("holdings: 4Q에 막히는 대상은 비즈니스솔루션·ITO(BP부터)와 홀딩스", inactiveTargetKeys("2026-Q4"), ["business_solution", "ito", "holdings"]));
   // 27년 BP부터는 '건물'도 빠진다 (건물(분당)/건물(용인)으로 바로 나눈다).
-  c.push(eq("building: BP에 막히는 대상은 건물·홀딩스", inactiveTargetKeys("2027-BP"), ["building", "holdings"]));
+  c.push(eq("bp: BP에 막히는 대상은 Mobility·IT·건물·홀딩스", inactiveTargetKeys("2027-BP"), ["mobility", "it", "building", "holdings"]));
   c.push(ok("building: 4Q까지 대상, BP부터 제외", isTargetActiveIn("building", "2026-Q4") && !isTargetActiveIn("building", "2027-BP")));
   c.push(eq("building: BP 저장값은 null", toDbTargets({ stb: 1, building: 0 }, "2027-BP").building, null));
   c.push(
@@ -508,25 +508,33 @@ function runCases(): Case[] {
     const rows = computeBuildingRates({
       bundangAreaEvcsDomestic: 10,
       bundangAreaEvcsOverseas: 30,
-      bundangAreaIt: 20,
+      bundangAreaBusinessSolution: 15,
+      bundangAreaIto: 5,
       bundangAreaHumaxCommon: 40,
       materialEvcsDomesticRatio: 0.25,
       materialEvcsOverseasRatio: 0.75,
     });
     c.push(eq("buildingBasis: 행 이름", rows.map((r) => r.basis), ["건물(분당)", "건물(용인)"]));
-    c.push(eq("buildingBasis: 분당 = 면적 비중", rows[0].rates, { evcs_domestic: 0.1, evcs_overseas: 0.3, it: 0.2, humax_common: 0.4 }));
+    c.push(eq("buildingBasis: 분당 = 면적 비중", rows[0].rates, { evcs_domestic: 0.1, evcs_overseas: 0.3, business_solution: 0.15, ito: 0.05, humax_common: 0.4 }));
     c.push(eq("buildingBasis: 용인 = 재료비 비중", rows[1].rates, { evcs_domestic: 0.25, evcs_overseas: 0.75 }));
     c.push(ok("buildingBasis: 건물 몫은 없다", rows.every((r) => r.rates.building == null)));
   }
 
   // ── IT: 2026-Q4부터 배부 대상 (EVCS(해외)와 Humax(공통) 사이) ──
-  c.push(eq("it: 3Q까지는 막힌다", inactiveTargetKeys("2026-Q3"), ["it"]));
-  c.push(ok("it: 4Q·BP부터 대상", isTargetActiveIn("it", "2026-Q4") && isTargetActiveIn("it", "2027-BP")));
+  c.push(eq("it: 3Q까지는 IT·비즈니스솔루션·ITO가 막힌다", inactiveTargetKeys("2026-Q3"), ["it", "business_solution", "ito"]));
+  c.push(ok("it: 4Q에만 대상, BP부터는 비즈니스솔루션·ITO", isTargetActiveIn("it", "2026-Q4") && !isTargetActiveIn("it", "2027-BP")));
+  c.push(
+    ok(
+      "bs/ito: BP부터 대상",
+      !isTargetActiveIn("business_solution", "2026-Q4") && isTargetActiveIn("business_solution", "2027-BP") && isTargetActiveIn("ito", "2027-BP")
+    )
+  );
+  c.push(ok("mobility: 4Q까지 대상, BP부터 제외", isTargetActiveIn("mobility", "2026-Q4") && !isTargetActiveIn("mobility", "2027-BP")));
   c.push(
     eq(
       "it: 열 순서",
-      TARGETS.slice(0, 7).map((t) => t.label),
-      ["STB", "Mobility", "EVCS(국내)", "EVCS(해외)", "IT", "Humax(공통)", "건물"]
+      TARGETS.slice(0, 9).map((t) => t.label),
+      ["STB", "Mobility", "EVCS(국내)", "EVCS(해외)", "IT", "비즈니스솔루션", "ITO", "Humax(공통)", "건물"]
     )
   );
   c.push(eq("it: 3Q 저장값은 0", parseTargetRates({ stb: "0.9", it: "0.1" }, "2026-Q3").it, 0));
@@ -537,7 +545,8 @@ function runCases(): Case[] {
   c.push(ok("cols: 3Q 이력이 있으면 홀딩스 열은 남는다", visibleTargets(["2026-Q3", "2026-Q4"]).some((t) => t.key === "holdings")));
   c.push(ok("cols: 27년 BP 화면이라도 26년 이력이 있으면 홀딩스 열이 남는다", visibleTargets(["2026-Q1", "2026-Q3", "2027-BP"], "2027-BP").some((t) => t.key === "holdings")));
   c.push(ok("cols: 26년 4Q 입력 화면은 3Q 이력과 함께 홀딩스 열을 남긴다", visibleTargets(["2026-Q3", "2026-Q4"], "2026-Q4").some((t) => t.key === "holdings")));
-  c.push(ok("cols: 27년 BP 입력 화면에 IT 열은 있다", visibleTargets(["2026-Q3", "2027-BP"], "2027-BP").some((t) => t.key === "it")));
+  c.push(ok("cols: 27년 BP 화면에는 비즈니스솔루션·ITO 열이 있다", ["business_solution", "ito"].every((k) => visibleTargets(["2026-Q3", "2027-BP"], "2027-BP").some((t) => t.key === k))));
+  c.push(ok("cols: BP만 보이면 Mobility·IT 열 없음", !visibleTargets(["2027-BP"]).some((t) => t.key === "mobility" || t.key === "it")));
   c.push(ok("cols: 4Q만 보이면 홀딩스 열 없음", !visibleTargets(["2026-Q4"]).some((t) => t.key === "holdings")));
   // 대상이 아닌 기간의 열은 0이 아니라 빈칸(null)으로 저장한다 — 그 기간에는 없는 열이다.
   c.push(eq("db: 3Q의 IT는 null", toDbTargets({ stb: 1 }, "2026-Q3").it, null));
@@ -568,12 +577,20 @@ function runCases(): Case[] {
   c.push(ok("it사업부: 3Q에는 없다", !fixedRatesFor("2026-Q3").some((d) => d.basis === "IT사업부")));
   c.push(
     ok(
-      "it사업부: 4Q·BP부터 리소스배부율/본사로 IT 100%",
-      ["2026-Q4", "2027-BP"].every((q) =>
-        fixedRatesFor(q).some((d) => d.basis === "IT사업부" && d.type === "리소스배부율" && d.division === "본사" && d.rates.it === 1)
-      )
+      "it사업부: 4Q는 리소스배부율/본사로 IT 100%, BP에는 없다",
+      fixedRatesFor("2026-Q4").some((d) => d.basis === "IT사업부" && d.type === "리소스배부율" && d.division === "본사" && d.rates.it === 1) &&
+        !fixedRatesFor("2027-BP").some((d) => d.basis === "IT사업부")
     )
   );
+  c.push(
+    ok(
+      "bs/ito: BP부터 비즈니스솔루션·ITO 각 100% 행",
+      fixedRatesFor("2027-BP").some((d) => d.basis === "비즈니스솔루션" && d.rates.business_solution === 1) &&
+        fixedRatesFor("2027-BP").some((d) => d.basis === "ITO" && d.rates.ito === 1) &&
+        !fixedRatesFor("2026-Q4").some((d) => d.basis === "비즈니스솔루션" || d.basis === "ITO")
+    )
+  );
+  c.push(ok("mobility: 'Mobility 100%'는 BP에 없다", !fixedRatesFor("2027-BP").some((d) => d.basis === "Mobility 100%")));
   {
     const IT = { headquarters: 70, overseasCorp: 0, hMobility: 10, hEv: 10, hiparking: 0, peoplecar: 0, winercom: 0, holdings: 10, hiparkingResident: null };
     const q3 = computeItRates(IT, null, "2026-Q3")[0];

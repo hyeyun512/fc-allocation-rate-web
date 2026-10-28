@@ -43,6 +43,10 @@ export const FIXED_RATES: FixedRateDef[] = [
   { division: "직접비", basis: "실적 제외", rates: {} },
   // 리소스배부율 · 본사 — IT사업부는 조사하지 않고 IT에 100% 배부한다 (IT가 대상이 된 2026-Q4부터).
   { type: "리소스배부율", division: "본사", basis: "IT사업부", rates: { it: 1 }, from: "2026-Q4" },
+  // 27년 BP부터 IT가 비즈니스솔루션·ITO로 갈라지므로 IT사업부 한 행 대신 두 행을 둔다
+  // (IT사업부 행은 IT가 대상이 아닌 BP에서는 만들어지지 않는다 — fixedRatesFor).
+  { type: "리소스배부율", division: "본사", basis: "비즈니스솔루션", rates: { business_solution: 1 }, from: "2027-BP" },
+  { type: "리소스배부율", division: "본사", basis: "ITO", rates: { ito: 1 }, from: "2027-BP" },
 ];
 
 /**

@@ -34,7 +34,8 @@ export interface BuildingBasisInput {
   /** 분당 건물에서 각 사업이 쓰는 면적 (단위는 무엇이든 같기만 하면 된다 — 비중만 쓴다). */
   bundangAreaEvcsDomestic: number;
   bundangAreaEvcsOverseas: number;
-  bundangAreaIt: number;
+  bundangAreaBusinessSolution: number;
+  bundangAreaIto: number;
   bundangAreaHumaxCommon: number;
   materialEvcsDomesticRatio: number;
   materialEvcsOverseasRatio: number;
@@ -45,7 +46,8 @@ export function computeBuildingRates(input: BuildingBasisInput): ComputedBasisRo
   const areas: [TargetKey, number][] = [
     ["evcs_domestic", input.bundangAreaEvcsDomestic],
     ["evcs_overseas", input.bundangAreaEvcsOverseas],
-    ["it", input.bundangAreaIt],
+    ["business_solution", input.bundangAreaBusinessSolution],
+    ["ito", input.bundangAreaIto],
     ["humax_common", input.bundangAreaHumaxCommon],
   ];
   const areaSum = areas.reduce((s, [, v]) => s + (v || 0), 0);

@@ -124,7 +124,8 @@ async function saveBuildingBasis(supabase: any, quarter: string, input: any, sub
   const parsed = {
     bundangAreaEvcsDomestic: Number(input.bundangAreaEvcsDomestic) || 0,
     bundangAreaEvcsOverseas: Number(input.bundangAreaEvcsOverseas) || 0,
-    bundangAreaIt: Number(input.bundangAreaIt) || 0,
+    bundangAreaBusinessSolution: Number(input.bundangAreaBusinessSolution) || 0,
+    bundangAreaIto: Number(input.bundangAreaIto) || 0,
     bundangAreaHumaxCommon: Number(input.bundangAreaHumaxCommon) || 0,
     materialEvcsDomesticRatio: Number(input.materialEvcsDomesticRatio) || 0,
     materialEvcsOverseasRatio: Number(input.materialEvcsOverseasRatio) || 0,
@@ -136,7 +137,11 @@ async function saveBuildingBasis(supabase: any, quarter: string, input: any, sub
   // 예전처럼 '건물 100%'로 떨어질 자리가 없다 — 면적이나 재료비 비중이 비어 있으면 합계 0인 배부기준이
   // 확정된 것처럼 남으므로 둘 다 있어야 저장한다.
   const areaSum =
-    parsed.bundangAreaEvcsDomestic + parsed.bundangAreaEvcsOverseas + parsed.bundangAreaIt + parsed.bundangAreaHumaxCommon;
+    parsed.bundangAreaEvcsDomestic +
+    parsed.bundangAreaEvcsOverseas +
+    parsed.bundangAreaBusinessSolution +
+    parsed.bundangAreaIto +
+    parsed.bundangAreaHumaxCommon;
   if (areaSum <= 0) {
     return NextResponse.json({ error: "분당 면적을 입력해 주세요." }, { status: 400 });
   }
@@ -151,7 +156,8 @@ async function saveBuildingBasis(supabase: any, quarter: string, input: any, sub
       payload: {
         bundang_area_evcs_domestic: parsed.bundangAreaEvcsDomestic,
         bundang_area_evcs_overseas: parsed.bundangAreaEvcsOverseas,
-        bundang_area_it: parsed.bundangAreaIt,
+        bundang_area_business_solution: parsed.bundangAreaBusinessSolution,
+        bundang_area_ito: parsed.bundangAreaIto,
         bundang_area_humax_common: parsed.bundangAreaHumaxCommon,
         material_evcs_domestic_ratio: parsed.materialEvcsDomesticRatio,
         material_evcs_overseas_ratio: parsed.materialEvcsOverseasRatio,
