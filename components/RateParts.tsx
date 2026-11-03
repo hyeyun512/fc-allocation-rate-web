@@ -31,9 +31,12 @@ import { SubmitLang, submitStrings, targetLabel } from "@/lib/submitLang";
 /**
  * 배부대상 열 머리글. 링크 화면은 열 폭이 좁아 "Humax(공통)"이 "Humax(공 / 통)"으로 잘렸다 —
  * 괄호 앞에서만 줄을 바꾸게 해 "Humax / (공통)"으로 접는다 (CSS의 word-break:keep-all과 짝).
+ * "비즈니스솔루션"은 괄호가 없어 "비즈니스 / 솔루션"으로 접을 자리를 따로 정한다.
  */
+const HEAD_BREAK_AFTER = ["비즈니스"];
 function TargetHead({ label }: { label: string }) {
-  const i = label.indexOf("(");
+  const word = HEAD_BREAK_AFTER.find((w) => label.startsWith(w) && label.length > w.length);
+  const i = word ? word.length : label.indexOf("(");
   if (i <= 0) return <>{label}</>;
   return (
     <>
