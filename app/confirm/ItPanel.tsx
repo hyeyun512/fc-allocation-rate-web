@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { TARGETS, TargetKey, getPreviousPeriod, isTargetActiveIn } from "@/lib/targets";
 import { prettyQuarterLabel, sortQuarters } from "@/lib/quarter";
 import { computeItRates, sumItBasisInput, ItBasisInput } from "@/lib/itBasis";
-import { RateTableHead, ReadOnlyRateRow, NoteTip, useTargetColumns } from "@/components/RateParts";
+import { RateTableHead, ReadOnlyRateRow, NoteTip, useTargetColumns, TargetGroupLabelRow } from "@/components/RateParts";
 import { readPasteGrid, shouldHandlePaste } from "@/lib/paste";
 
 export interface ItBasisRow {
@@ -771,6 +771,7 @@ export default function ItPanel({
           <div className="tbl-scroll" style={{ marginBottom: 8 }}>
             <table className="rate-tbl">
               <thead>
+                <TargetGroupLabelRow lead={4} tail={1} />
                 <tr>
                   <th>청구기준</th>
                   <th>분기</th>

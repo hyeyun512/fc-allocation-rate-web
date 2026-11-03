@@ -368,6 +368,54 @@ function lockedInputProps(locked: boolean, lang: SubmitLang) {
   return { disabled: true, placeholder: "-", title: submitStrings(lang).targetInactive };
 }
 
+/**
+ * 배부 대상 열 위에 묶음 이름(Humax / Shared)만 작게 적는 머리글 줄 (사용자 지시).
+ * 묶음마다 칸을 합쳐(colSpan) 그 가운데에 놓는다. 앞뒤 열(기간·인원수·TOTAL·코멘트 등)은 빈칸.
+ * 배부 대상 열은 항상 Humax 내부 → 계열사·관계사 순서로 이어져 있다(lib/targets.ts의 TARGETS 순서).
+ */
+export function TargetGroupLabelRow({ lead, tail }: { lead: number; tail: number }) {
+  const cols = useTargetColumns();
+  const humax = cols.filter((t) => t.group === "humax").length;
+  const shared = cols.length - humax;
+  return (
+    <tr className="grp-label-row">
+      {lead > 0 && <th colSpan={lead}></th>}
+      {humax > 0 && (
+        <th colSpan={humax} className="grp-label grp-label-humax">
+          Humax
+        </th>
+      )}
+      {shared > 0 && (
+        <th colSpan={shared} className="grp-label grp-label-shared">
+          Shared
+        </th>
+      )}
+      {tail > 0 && <th colSpan={tail}></th>}
+    </tr>
+  );
+}
+
+/**
+ * 열 너비를 정하는 colgroup. 링크 표(.submit-tight)는 table-layout:fixed라 '첫 줄'로 열 너비를 정하는데,
+ * 첫 줄이 묶음 이름 줄(칸 합침)이 되면서 기간·인원수 같은 열의 너비가 사라진다 — col로 너비를 따로 준다.
+ */
+function TargetColGroup({ lead, tail }: { lead: string[]; tail: string[] }) {
+  const cols = useTargetColumns();
+  return (
+    <colgroup>
+      {lead.map((c, i) => (
+        <col key={`l${i}`} className={c} />
+      ))}
+      {cols.map((t) => (
+        <col key={t.key} />
+      ))}
+      {tail.map((c, i) => (
+        <col key={`t${i}`} className={c} />
+      ))}
+    </colgroup>
+  );
+}
+
 export function RateTableHead({
   withClear,
   withNote,
@@ -376,8 +424,13 @@ export function RateTableHead({
 }: { withClear?: boolean; withNote?: boolean; withNoteEn?: boolean; lang?: SubmitLang } = {}) {
   const s = submitStrings(lang);
   const cols = useTargetColumns();
+  const lead = [...(withClear ? ["col-clear"] : []), "col-label", "col-hc"];
+  const tail = ["col-total", ...(withNote ? ["col-note"] : []), ...(withNoteEn ? ["col-note"] : [])];
   return (
+    <>
+    <TargetColGroup lead={lead} tail={tail} />
     <thead>
+      <TargetGroupLabelRow lead={lead.length} tail={tail.length} />
       {/* 열 이름(col-*)은 좁은 화면용 압축 표기가 열 너비를 잡는 데 쓴다 (globals.css의 .submit-tight). */}
       <tr>
         {withClear && <th className="col-clear"></th>}
@@ -394,6 +447,7 @@ export function RateTableHead({
         {withNoteEn && <th className="col-note">코멘트(영문)</th>}
       </tr>
     </thead>
+    </>
   );
 }
 
@@ -747,7 +801,12 @@ export function PersonEditTable({
     <>
       <div className="tbl-scroll" style={{ marginBottom: 12 }}>
         <table className="rate-tbl">
+          <TargetColGroup
+            lead={["col-clear", "col-name", ...(hasExpat ? ["col-role"] : [])]}
+            tail={["col-total", "col-note", ...(withNoteEn ? ["col-note"] : [])]}
+          />
           <thead>
+            <TargetGroupLabelRow lead={2 + (hasExpat ? 1 : 0)} tail={2 + (withNoteEn ? 1 : 0)} />
             <tr>
               <th className="col-clear"></th>
               {/* 개인별 입력은 한 행 = 한 명이라 인원수 열을 두지 않는다 (이름+배부율이 있으면 1명으로 센다). */}
@@ -875,7 +934,9 @@ export function PersonReadOnlyTable({
   return (
     <div className="tbl-scroll" style={{ marginBottom: 12 }}>
       <table className="rate-tbl">
+        <TargetColGroup lead={["col-name", ...(hasExpat ? ["col-role"] : [])]} tail={["col-total", "col-note"]} />
         <thead>
+          <TargetGroupLabelRow lead={1 + (hasExpat ? 1 : 0)} tail={2} />
           <tr>
             <th className="col-name">{s.colName}</th>
             {hasExpat && <th className="col-role">{s.colRole}</th>}
@@ -944,7 +1005,9 @@ export function PersonHistoryBlocks({
           </div>
           <div className="tbl-scroll" style={{ marginBottom: 12 }}>
             <table className="rate-tbl">
+              <TargetColGroup lead={["col-name", ...(hasExpat ? ["col-role"] : [])]} tail={["col-total", "col-note"]} />
               <thead>
+                <TargetGroupLabelRow lead={1 + (hasExpat ? 1 : 0)} tail={2} />
                 <tr>
                   <th className="col-name">{s.colName}</th>
                   {hasExpat && <th className="col-role">{s.colRole}</th>}

@@ -389,28 +389,20 @@ footer{text-align:center;padding:22px;color:#94a3b8;font-size:11.5px}
 .survey-tbl td{border-bottom:1px solid var(--tbl-line-soft)}
 .rate-tbl th,.av-table thead th{background:#f8fafc;color:var(--tbl-head);font-weight:600;letter-spacing:.01em;border-bottom:1px solid var(--tbl-line)}
 /* 머리글 윗선 — 배부 대상 열은 파랑(Humax 내부)·주황(계열사·관계사 = Shared) 띠, 나머지(기간·인원수·TOTAL·코멘트 등)는
-   같은 높이의 회색 띠로 이어 한 줄로 보이게 한다. 띠는 칸 맨 위가 아니라 조금 내려 그리고(위 14px),
-   각 묶음의 첫 칸 띠 위에만 아주 작게 'Humax' / 'Shared'를 적는다(사용자 지시) — 묶음의 첫 칸은
-   바로 앞 칸이 같은 묶음이 아닌 칸이라 마크업을 고치지 않고 선택자로 잡는다. */
-.rate-tbl thead tr:first-child th:not(.fg-head):not(.fg-sub),
-.av-table thead th{
-  position:relative;padding-top:22px;
-  background:#f8fafc linear-gradient(#cbd5e1,#cbd5e1) no-repeat 0 14px/100% 2px;
-}
-.av-table thead th{position:sticky}
-.rate-tbl thead tr:first-child th.grp-humax:not(.fg-head):not(.fg-sub),.av-table thead th.grp-humax{
-  color:#334155;background:#f8fafc linear-gradient(var(--tbl-humax),var(--tbl-humax)) no-repeat 0 14px/100% 2px}
-.rate-tbl thead tr:first-child th.grp-affiliate:not(.fg-head):not(.fg-sub),.av-table thead th.grp-affiliate{
-  color:#334155;background:#f8fafc linear-gradient(var(--tbl-aff),var(--tbl-aff)) no-repeat 0 14px/100% 2px}
-.rate-tbl th.grp-humax:not(.grp-humax + .grp-humax)::before,
-.av-table thead th.grp-humax:not(.grp-humax + .grp-humax)::before,
-.rate-tbl th.grp-affiliate:not(.grp-affiliate + .grp-affiliate)::before,
-.av-table thead th.grp-affiliate:not(.grp-affiliate + .grp-affiliate)::before{
-  position:absolute;top:2px;left:4px;font-size:9px;font-weight:700;letter-spacing:.06em;line-height:1;white-space:nowrap}
-.rate-tbl th.grp-humax:not(.grp-humax + .grp-humax)::before,
-.av-table thead th.grp-humax:not(.grp-humax + .grp-humax)::before{content:"Humax";color:var(--tbl-humax)}
-.rate-tbl th.grp-affiliate:not(.grp-affiliate + .grp-affiliate)::before,
-.av-table thead th.grp-affiliate:not(.grp-affiliate + .grp-affiliate)::before{content:"Shared";color:#d97706}
+   회색 띠로 이어 한 줄로 보이게 한다. */
+.rate-tbl thead tr:not(.grp-label-row) th:not(.fg-head):not(.fg-sub),
+.av-table thead tr:not(.grp-label-row) th{box-shadow:inset 0 2px 0 #cbd5e1}
+.rate-tbl thead tr:not(.grp-label-row) th.grp-humax:not(.fg-head):not(.fg-sub),
+.av-table thead tr:not(.grp-label-row) th.grp-humax{color:#334155;background:#f8fafc;box-shadow:inset 0 2px 0 var(--tbl-humax)}
+.rate-tbl thead tr:not(.grp-label-row) th.grp-affiliate:not(.fg-head):not(.fg-sub),
+.av-table thead tr:not(.grp-label-row) th.grp-affiliate{color:#334155;background:#f8fafc;box-shadow:inset 0 2px 0 var(--tbl-aff)}
+/* 묶음 이름 줄 — 바탕·선 없이 글씨만, 묶음 가운데에 아주 작게 (사용자 지시). */
+.rate-tbl thead tr.grp-label-row th,
+.av-table thead tr.grp-label-row th{background:#fff;border-bottom:none;box-shadow:none;padding:7px 4px 3px;font-size:9.5px;font-weight:700;letter-spacing:.08em;line-height:1;text-align:center}
+.rate-tbl thead tr.grp-label-row th.grp-label-humax,.av-table thead tr.grp-label-row th.grp-label-humax{color:var(--tbl-humax)}
+.rate-tbl thead tr.grp-label-row th.grp-label-shared,.av-table thead tr.grp-label-row th.grp-label-shared{color:#d97706}
+/* View는 열 이름 줄만 위에 고정한다 — 묶음 이름 줄은 스크롤과 함께 올라간다(둘 다 top:0이면 겹친다). */
+.av-table thead tr.grp-label-row th{top:auto}
 .rate-tbl td{border-bottom:1px solid var(--tbl-line-soft);color:var(--tbl-text);font-variant-numeric:tabular-nums}
 .rate-tbl td:first-child{white-space:nowrap;color:#475569;font-weight:500}
 .rate-tbl tr.ro-row,.rate-tbl tr.ro-row td{background:transparent;color:#334155}
@@ -447,13 +439,13 @@ footer{text-align:center;padding:22px;color:#94a3b8;font-size:11.5px}
 /* 분기 이름 칸은 "2026-Q3 (제출됨)"처럼 길어 한 줄로 두면 열을 밀어낸다 — 꼬리표 앞에서만 두 줄로 접는다(기간 안 하이픈은 RateParts의 periodLabel이 묶는다). */
 .submit-tight .rate-tbl td:first-child{font-size:11.5px;padding-right:6px;white-space:normal;word-break:keep-all;line-height:1.3}
 /* 폭을 정해두는 열은 이것뿐 — 배부대상 열은 남은 폭을 똑같이 나눠 갖는다. */
-.submit-tight .rate-tbl th.col-clear{width:22px}
-.submit-tight .rate-tbl th.col-label{width:104px}
-.submit-tight .rate-tbl th.col-hc{width:42px}
-.submit-tight .rate-tbl th.col-name{width:76px}
-.submit-tight .rate-tbl th.col-role{width:58px}
-.submit-tight .rate-tbl th.col-total{width:46px}
-.submit-tight .rate-tbl th.col-note{width:92px}
+.submit-tight .rate-tbl th.col-clear,.submit-tight .rate-tbl col.col-clear{width:22px}
+.submit-tight .rate-tbl th.col-label,.submit-tight .rate-tbl col.col-label{width:104px}
+.submit-tight .rate-tbl th.col-hc,.submit-tight .rate-tbl col.col-hc{width:42px}
+.submit-tight .rate-tbl th.col-name,.submit-tight .rate-tbl col.col-name{width:76px}
+.submit-tight .rate-tbl th.col-role,.submit-tight .rate-tbl col.col-role{width:58px}
+.submit-tight .rate-tbl th.col-total,.submit-tight .rate-tbl col.col-total{width:46px}
+.submit-tight .rate-tbl th.col-note,.submit-tight .rate-tbl col.col-note{width:92px}
 /* 칸 너비가 고정이므로 입력칸은 남은 자리를 채우게 둔다 (고정 px면 칸 밖으로 삐져나온다). */
 .submit-tight .rate-tbl input,
 .submit-tight .rate-tbl input.hc-field,
@@ -551,3 +543,11 @@ footer{text-align:center;padding:22px;color:#94a3b8;font-size:11.5px}
    표는 흰 바탕 그대로라 값은 잘 읽힌다. */
 .child-orgs > .panel{background:#f5f8fd;border:1px solid #dbe5f3;box-shadow:inset 3px 0 0 #93b4e0;margin-bottom:0}
 .child-orgs > .panel .panel-title{font-size:15px}
+
+/* 가로 스크롤바 — 눈에 띄지 않게 아주 연하게 (사용자 지시). 마우스를 올리면 조금 진해진다. */
+*{scrollbar-width:thin;scrollbar-color:#e5e9f0 transparent}
+::-webkit-scrollbar{width:8px;height:8px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:#e5e9f0;border-radius:8px}
+::-webkit-scrollbar-thumb:hover{background:#cbd5e1}
+::-webkit-scrollbar-button{display:none}

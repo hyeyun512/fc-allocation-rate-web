@@ -521,6 +521,21 @@ export default function AllocationView({
       <div className="av-table-scroll">
         <table className="av-table">
           <thead>
+            {/* 배부 대상 묶음 이름만 작게 — 입력 표(RateParts의 TargetGroupLabelRow)와 같은 모양. */}
+            <tr className="grp-label-row">
+              <th className="col-basis"></th>
+              {cols.some((t) => t.group === "humax") && (
+                <th colSpan={cols.filter((t) => t.group === "humax").length} className="grp-label grp-label-humax">
+                  Humax
+                </th>
+              )}
+              {cols.some((t) => t.group !== "humax") && (
+                <th colSpan={cols.filter((t) => t.group !== "humax").length} className="grp-label grp-label-shared">
+                  Shared
+                </th>
+              )}
+              <th colSpan={2}></th>
+            </tr>
             <tr>
               <th className="col-basis">배부기준</th>
               {cols.map((t) => (
