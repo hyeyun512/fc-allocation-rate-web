@@ -388,11 +388,29 @@ footer{text-align:center;padding:22px;color:#94a3b8;font-size:11.5px}
 .survey-tbl th{background:#f8fafc;color:var(--tbl-head);font-weight:600;border-bottom:1px solid var(--tbl-line);box-shadow:inset 0 2px 0 #cbd5e1}
 .survey-tbl td{border-bottom:1px solid var(--tbl-line-soft)}
 .rate-tbl th,.av-table thead th{background:#f8fafc;color:var(--tbl-head);font-weight:600;letter-spacing:.01em;border-bottom:1px solid var(--tbl-line)}
-/* 색 띠가 없는 머리글(기간·인원수·TOTAL·코멘트 등)에도 같은 높이의 회색 띠를 둬 머리글 줄 윗선이 끊기지 않게 한다. */
-.rate-tbl thead tr:first-child th:not(.grp-humax):not(.grp-affiliate):not(.fg-head):not(.fg-sub),
-.av-table thead th:not(.grp-humax):not(.grp-affiliate){box-shadow:inset 0 2px 0 #cbd5e1}
-.rate-tbl th.grp-humax,.av-table thead th.grp-humax{background:#f8fafc;color:#334155;box-shadow:inset 0 2px 0 var(--tbl-humax)}
-.rate-tbl th.grp-affiliate,.av-table thead th.grp-affiliate{background:#f8fafc;color:#334155;box-shadow:inset 0 2px 0 var(--tbl-aff)}
+/* 머리글 윗선 — 배부 대상 열은 파랑(Humax 내부)·주황(계열사·관계사 = Shared) 띠, 나머지(기간·인원수·TOTAL·코멘트 등)는
+   같은 높이의 회색 띠로 이어 한 줄로 보이게 한다. 띠는 칸 맨 위가 아니라 조금 내려 그리고(위 14px),
+   각 묶음의 첫 칸 띠 위에만 아주 작게 'Humax' / 'Shared'를 적는다(사용자 지시) — 묶음의 첫 칸은
+   바로 앞 칸이 같은 묶음이 아닌 칸이라 마크업을 고치지 않고 선택자로 잡는다. */
+.rate-tbl thead tr:first-child th:not(.fg-head):not(.fg-sub),
+.av-table thead th{
+  position:relative;padding-top:22px;
+  background:#f8fafc linear-gradient(#cbd5e1,#cbd5e1) no-repeat 0 14px/100% 2px;
+}
+.av-table thead th{position:sticky}
+.rate-tbl thead tr:first-child th.grp-humax:not(.fg-head):not(.fg-sub),.av-table thead th.grp-humax{
+  color:#334155;background:#f8fafc linear-gradient(var(--tbl-humax),var(--tbl-humax)) no-repeat 0 14px/100% 2px}
+.rate-tbl thead tr:first-child th.grp-affiliate:not(.fg-head):not(.fg-sub),.av-table thead th.grp-affiliate{
+  color:#334155;background:#f8fafc linear-gradient(var(--tbl-aff),var(--tbl-aff)) no-repeat 0 14px/100% 2px}
+.rate-tbl th.grp-humax:not(.grp-humax + .grp-humax)::before,
+.av-table thead th.grp-humax:not(.grp-humax + .grp-humax)::before,
+.rate-tbl th.grp-affiliate:not(.grp-affiliate + .grp-affiliate)::before,
+.av-table thead th.grp-affiliate:not(.grp-affiliate + .grp-affiliate)::before{
+  position:absolute;top:2px;left:4px;font-size:9px;font-weight:700;letter-spacing:.06em;line-height:1;white-space:nowrap}
+.rate-tbl th.grp-humax:not(.grp-humax + .grp-humax)::before,
+.av-table thead th.grp-humax:not(.grp-humax + .grp-humax)::before{content:"Humax";color:var(--tbl-humax)}
+.rate-tbl th.grp-affiliate:not(.grp-affiliate + .grp-affiliate)::before,
+.av-table thead th.grp-affiliate:not(.grp-affiliate + .grp-affiliate)::before{content:"Shared";color:#d97706}
 .rate-tbl td{border-bottom:1px solid var(--tbl-line-soft);color:var(--tbl-text);font-variant-numeric:tabular-nums}
 .rate-tbl td:first-child{white-space:nowrap;color:#475569;font-weight:500}
 .rate-tbl tr.ro-row,.rate-tbl tr.ro-row td{background:transparent;color:#334155}
