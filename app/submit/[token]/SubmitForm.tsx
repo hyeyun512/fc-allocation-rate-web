@@ -605,13 +605,13 @@ function OrgSubmitSection({
     const prefix = multi ? `${prettyQuarterLabel(e.period)}: ` : "";
     const loadBtn = usesPersonTable
       ? e.previousPersons.length > 0 && (
-          <button className="btn btn-secondary btn-sm" onClick={e.loadPreviousPersons}>
+          <button className="copy-link" onClick={e.loadPreviousPersons}>
             {prefix}
             {s.loadPrevPersons(e.previousPersons.length)}
           </button>
         )
       : e.previousOrgRate && (
-          <button className="btn btn-secondary btn-sm" onClick={e.loadPreviousOrgRate}>
+          <button className="copy-link" onClick={e.loadPreviousOrgRate}>
             {prefix}
             {s.loadPrev}
           </button>

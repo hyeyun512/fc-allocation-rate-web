@@ -371,12 +371,12 @@ export default function SelfUsePanel({
     return (
       <span key={e.period} style={{ display: "inline-flex", gap: 6, flexWrap: "wrap" }}>
         {!prev && prevRow && (
-          <button className="btn btn-secondary btn-sm" onClick={() => e.setForm(fromRow(prevRow))}>
+          <button className="copy-link" onClick={() => e.setForm(fromRow(prevRow))}>
             {multi ? `${prettyQuarterLabel(e.period)}: ` : ""}전분기 데이터 끌고오기
           </button>
         )}
         {prev && (
-          <button className="btn btn-secondary btn-sm" onClick={() => e.setForm({ ...prev.form })}>
+          <button className="copy-link" onClick={() => e.setForm({ ...prev.form })}>
             {prettyQuarterLabel(prev.period)} 입력값을 {prettyQuarterLabel(e.period)}에 복사
           </button>
         )}

@@ -632,13 +632,13 @@ export default function ItPanel({
       return (
         <span key={e.quarter} style={{ display: "inline-flex", gap: 6, flexWrap: "wrap" }}>
           {!prev && prevRow && (
-            <button className="btn btn-secondary btn-sm" onClick={() => setForm(fromRow(prevRow, e.quarter))}>
+            <button className="copy-link" onClick={() => setForm(fromRow(prevRow, e.quarter))}>
               {multi ? `${prettyQuarterLabel(e.quarter)}: ` : ""}전분기 데이터 끌고오기
             </button>
           )}
           {prev && (
             <button
-              className="btn btn-secondary btn-sm"
+              className="copy-link"
               onClick={() => setForm({ ...(kind === "headcount" ? prev.headcountForm : prev.sapForm) })}
             >
               {prettyQuarterLabel(prev.quarter)} 입력값을 {prettyQuarterLabel(e.quarter)}에 복사

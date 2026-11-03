@@ -313,7 +313,7 @@ export default function BuildingPanel({
     return (
       <button
         key={e.period}
-        className="btn btn-secondary btn-sm"
+        className="copy-link"
         onClick={() =>
           e.setForm((s) => ({
             ...s,

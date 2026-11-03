@@ -1058,12 +1058,12 @@ function OrgDetail({ entries: entryData, version }: { entries: ReviewEntryData[]
     const prefix = multi ? `${prettyQuarterLabel(e.period)}: ` : "";
     const loadBtn = usesPersonTable
       ? e.previousPersons.length > 0 && (
-          <button className="btn btn-secondary btn-sm" onClick={e.loadPreviousPersons}>
+          <button className="copy-link" onClick={e.loadPreviousPersons}>
             {prefix}전분기 데이터 끌고오기 ({e.previousPersons.length}명)
           </button>
         )
       : e.previousOrgRate && (
-          <button className="btn btn-secondary btn-sm" onClick={e.loadPreviousOrgRate}>
+          <button className="copy-link" onClick={e.loadPreviousOrgRate}>
             {prefix}전분기 데이터 끌고오기
           </button>
         );
@@ -1071,7 +1071,7 @@ function OrgDetail({ entries: entryData, version }: { entries: ReviewEntryData[]
       <span key={e.period} style={{ display: "inline-flex", gap: 6, flexWrap: "wrap" }}>
         {!prev && loadBtn}
         {prev && (
-          <button className="btn btn-secondary btn-sm" onClick={() => e.copyFrom(prev)}>
+          <button className="copy-link" onClick={() => e.copyFrom(prev)}>
             {prettyQuarterLabel(prev.period)} 입력값을 {prettyQuarterLabel(e.period)}에 복사
           </button>
         )}
