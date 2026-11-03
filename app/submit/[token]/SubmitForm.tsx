@@ -635,7 +635,7 @@ function OrgSubmitSection({
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 10, marginBottom: 14 }}>
           <div>
             <div className="panel-title">
-              {data.orgBasis}{" "}
+              <span className="org-name">{data.orgBasis}</span>{" "}
               {showPeriodTag && (
                 <span className="tag">
                   {periods.map(prettyQuarterLabel).join(" & ")} · {version}
@@ -798,7 +798,7 @@ function ParentSummary({ rounds, version, lang }: { rounds: SubmitRound[]; versi
       <div className="panel">
         <div style={{ marginBottom: 14 }}>
           <div className="panel-title">
-            {parent.orgBasis}{" "}
+            <span className="org-name">{parent.orgBasis}</span>{" "}
             <span className="tag">
               {periods.map(prettyQuarterLabel).join(" & ")} · {version}
             </span>{" "}

@@ -609,3 +609,8 @@ footer{text-align:center;padding:22px;color:#94a3b8;font-size:11.5px}
 .rate-tbl:has(th.col-clear) tbody td:nth-child(2),
 .rate-tbl:has(th.col-clear) thead tr:not(.grp-label-row) th:nth-child(2){text-align:left;padding-left:4px}
 .rate-tbl th.col-clear,.rate-tbl td:has(> .row-clear-btn){padding-right:0}
+
+/* 조직(팀) 이름 — 상자마다 무슨 조직인지 바로 보이게 크고 진하게, 앞에 짧은 색 막대를 둔다 (사용자 지시). */
+.panel-title .org-name{display:inline-block;font-size:18px;font-weight:800;color:#0f172a;letter-spacing:-.01em;
+  padding-left:9px;border-left:4px solid #2563eb;line-height:1.15;margin-right:4px;vertical-align:middle}
+.child-orgs > .panel .panel-title .org-name{border-left-color:#93b4e0}

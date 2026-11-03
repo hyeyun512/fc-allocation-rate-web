@@ -388,7 +388,7 @@ function ParentOrgDetail({ entries: entryData, version }: { entries: ReviewEntry
     <div className="panel">
       <div style={{ marginBottom: 14 }}>
         <div className="panel-title">
-          {item.org.basis}{" "}
+          <span className="org-name">{item.org.basis}</span>{" "}
           <span className="status-badge" style={{ background: "#eff6ff", color: "#2563eb" }}>
             집계 조직
           </span>{" "}
@@ -532,7 +532,7 @@ function HkrAutoPanel({
     <div className="panel">
       <div style={{ marginBottom: 14 }}>
         <div className="panel-title">
-          HKR(관계사제외){" "}
+          <span className="org-name">HKR(관계사제외)</span>{" "}
           <span className="status-badge" style={{ background: "#eff6ff", color: "#2563eb" }}>
             자동계산
           </span>{" "}
@@ -1094,7 +1094,7 @@ function OrgDetail({ entries: entryData, version }: { entries: ReviewEntryData[]
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 10, marginBottom: 14 }}>
         <div>
           <div className="panel-title">
-            {item.org.basis}
+            <span className="org-name">{item.org.basis}</span>
             {hasExpat && <span className="status-badge" style={{ background: "#fef3c7", color: "#92400e", marginLeft: 6 }}>법인+주재원</span>}{" "}
             <ConfirmBadges items={entries} multi={multi} />
           </div>
