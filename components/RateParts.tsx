@@ -28,6 +28,22 @@ import { sortQuarters } from "@/lib/quarter";
 import { readPasteGrid, shouldHandlePaste } from "@/lib/paste";
 import { SubmitLang, submitStrings, targetLabel } from "@/lib/submitLang";
 
+/**
+ * 배부대상 열 머리글. 링크 화면은 열 폭이 좁아 "Humax(공통)"이 "Humax(공 / 통)"으로 잘렸다 —
+ * 괄호 앞에서만 줄을 바꾸게 해 "Humax / (공통)"으로 접는다 (CSS의 word-break:keep-all과 짝).
+ */
+function TargetHead({ label }: { label: string }) {
+  const i = label.indexOf("(");
+  if (i <= 0) return <>{label}</>;
+  return (
+    <>
+      {label.slice(0, i)}
+      <wbr />
+      {label.slice(i)}
+    </>
+  );
+}
+
 export type PersonRole = "법인" | "주재원";
 
 export type RateMap = Record<TargetKey, string>;
@@ -345,7 +361,7 @@ export function RateTableHead({
         <th className="col-hc">{s.colHeadcount}</th>
         {cols.map((t) => (
           <th key={t.key} className={t.group === "humax" ? "grp-humax" : "grp-affiliate"}>
-            {targetLabel(t, lang)}
+            <TargetHead label={targetLabel(t, lang)} />
           </th>
         ))}
         <th className="col-total">TOTAL</th>
@@ -715,7 +731,7 @@ export function PersonEditTable({
               {hasExpat && <th className="col-role">{s.colRole}</th>}
               {cols.map((t) => (
                 <th key={t.key} className={t.group === "humax" ? "grp-humax" : "grp-affiliate"}>
-                  {targetLabel(t, lang)}
+                  <TargetHead label={targetLabel(t, lang)} />
                 </th>
               ))}
               <th className="col-total">TOTAL</th>
@@ -841,7 +857,7 @@ export function PersonReadOnlyTable({
             {hasExpat && <th className="col-role">{s.colRole}</th>}
             {cols.map((t) => (
               <th key={t.key} className={t.group === "humax" ? "grp-humax" : "grp-affiliate"}>
-                {targetLabel(t, lang)}
+                <TargetHead label={targetLabel(t, lang)} />
               </th>
             ))}
             <th className="col-total">TOTAL</th>
@@ -910,7 +926,7 @@ export function PersonHistoryBlocks({
                   {hasExpat && <th className="col-role">{s.colRole}</th>}
                   {cols.map((t) => (
                     <th key={t.key} className={t.group === "humax" ? "grp-humax" : "grp-affiliate"}>
-                      {targetLabel(t, lang)}
+                      <TargetHead label={targetLabel(t, lang)} />
                     </th>
                   ))}
                   <th className="col-total">TOTAL</th>
