@@ -54,8 +54,8 @@ const KO = {
   namePlaceholder: "이름",
   justSubmittedTitle: "제출이 완료되었습니다.",
   justSubmittedBody: " 담당자 검토 후 최종 반영됩니다. 수정이 필요하면 아래 '수정하기'를 눌러 다시 제출하실 수 있습니다.",
-  sectionOrgRate: "■ 조직별 리소스 배부율",
-  sectionPersonRate: "■ 개인별 리소스 배부율",
+  sectionOrgRate: "▸ 조직별 리소스 배부율",
+  sectionPersonRate: "▸ 개인별 리소스 배부율",
   personHint:
     "관계사·계열사(H.Mobility~H.Networks)에 청구되는 조직이라 개인별 확인이 필요합니다. 팀원별로 행을 추가해 입력해주세요. 위 조직 단위 값은 아래 행들의 평균으로 자동 계산됩니다.",
   loadPrev: "전분기 데이터 끌고오기",
@@ -136,8 +136,8 @@ const EN: SubmitStrings = {
   justSubmittedTitle: "Your submission has been received.",
   justSubmittedBody:
     " It will be finalised once the allocation team has reviewed it. If you need to change anything, click 'Edit' below and submit again.",
-  sectionOrgRate: "■ Resource allocation rate — organisation",
-  sectionPersonRate: "■ Resource allocation rate — by person",
+  sectionOrgRate: "▸ Resource allocation rate — organisation",
+  sectionPersonRate: "▸ Resource allocation rate — by person",
   personHint:
     "This organisation is charged to the affiliates (H.Mobility–H.Networks), so a person-by-person breakdown is required. Add one row per team member. The organisation-level figures above are calculated automatically as the average of the rows below.",
   loadPrev: "Copy last quarter's figures",

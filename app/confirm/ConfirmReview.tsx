@@ -583,7 +583,7 @@ function HkrAutoPanel({
         return (
           <div key={q}>
             <div className="panel-sub" style={{ fontWeight: 700, color: "#1a202c", margin: "0 0 4px" }}>
-              ■ {q} 본사 조직 현황 (가중치 산정 대상)
+              ▸ {q} 본사 조직 현황 (가중치 산정 대상)
             </div>
             {/* 계산 근거만 한 줄로 남긴다 — 과거 분기 표는 제목만으로 충분하다. */}
             {isRound && (
@@ -1108,7 +1108,7 @@ function OrgDetail({ entries: entryData, version }: { entries: ReviewEntryData[]
 
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8, marginBottom: 8 }}>
         <div className="panel-sub" style={{ fontWeight: 700, color: "#1a202c", margin: 0 }}>
-          ■ 조직별 리소스 배부율{hasExpat ? " (법인분)" : ""}
+          ▸ 조직별 리소스 배부율{hasExpat ? " (법인분)" : ""}
         </div>
         {!usesPersonTable && <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>{entries.map(loadButton)}</div>}
       </div>
@@ -1153,7 +1153,7 @@ function OrgDetail({ entries: entryData, version }: { entries: ReviewEntryData[]
       {hasExpat && (
         <>
           <div className="panel-sub" style={{ fontWeight: 700, color: "#1a202c", margin: "0 0 8px" }}>
-            ■ 주재원분 ({item.expat!.org.basis})
+            ▸ 주재원분 ({item.expat!.org.basis})
           </div>
           <div className="tbl-scroll" style={{ marginBottom: 12 }}>
             <table className="rate-tbl">
@@ -1195,7 +1195,7 @@ function OrgDetail({ entries: entryData, version }: { entries: ReviewEntryData[]
       {usesPersonTable && (
         <>
           <div className="panel-sub" style={{ fontWeight: 700, color: "#1a202c", margin: "0 0 8px" }}>
-            ■ 개인별 리소스 배부율{hasExpat ? " (법인/주재원 함께)" : ""}
+            ▸ 개인별 리소스 배부율{hasExpat ? " (법인/주재원 함께)" : ""}
           </div>
 
           <PersonHistoryBlocks rows={beforePersonRows} quarterOrder={personQuarterOrder} hasExpat={hasExpat} />
