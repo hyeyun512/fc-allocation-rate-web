@@ -620,7 +620,7 @@ function OrgSubmitSection({
       <span key={e.period} style={{ display: "inline-flex", gap: 6, flexWrap: "wrap" }}>
         {!prev && loadBtn}
         {prev && (
-          <button className="btn btn-secondary btn-sm" onClick={() => e.copyFrom(prev)}>
+          <button className="copy-link" onClick={() => e.copyFrom(prev)}>
             {s.copyFromPeriod(prettyQuarterLabel(prev.period), prettyQuarterLabel(e.period))}
           </button>
         )}
@@ -653,14 +653,20 @@ function OrgSubmitSection({
                 )
               )}
             </div>
-            <div className="panel-sub">
-              {s.divisionLabel(data.division)} · {usesPersonTable ? s.unitPersonDetail : s.unitOrgLevel}
-              {data.submittedBy ? ` · ${s.submitterPrefix}${data.submittedBy}` : ""}
-              {data.latestSubmittedAt ? ` · ${new Date(data.latestSubmittedAt).toLocaleString(s.locale)}` : ""}
-            </div>
+            {/* '본사 · 조직 단위' 같은 구분 표기는 입력하는 사람에게 필요 없어 뺐다(사용자 지시) — 제출 이력만 남긴다. */}
+            {(data.submittedBy || data.latestSubmittedAt) && (
+              <div className="panel-sub">
+                {[
+                  data.submittedBy ? `${s.submitterPrefix}${data.submittedBy}` : "",
+                  data.latestSubmittedAt ? new Date(data.latestSubmittedAt).toLocaleString(s.locale) : "",
+                ]
+                  .filter(Boolean)
+                  .join(" · ")}
+              </div>
+            )}
           </div>
           <div className="field" style={{ minWidth: 200 }}>
-            <label>{s.inputterLabel}</label>
+            <label>{s.inputterLabel(data.division)}</label>
             <input
               value={first.submittedBy}
               onChange={(ev) => setSubmitter(ev.target.value)}

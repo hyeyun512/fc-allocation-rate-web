@@ -49,7 +49,8 @@ const KO = {
   unitPersonDetail: "개인별 확인 필요",
   unitOrgLevel: "조직 단위",
   submitterPrefix: "제출자: ",
-  inputterLabel: "입력자 (책임자/담당자 이름) *",
+  // 해외법인은 법인장이, 본사·주재원은 팀장/그룹장이 입력한다.
+  inputterLabel: (division: string): string => (division === "법인" ? "입력자 (법인장) *" : "입력자 (팀장/그룹장) *"),
   namePlaceholder: "이름",
   justSubmittedTitle: "제출이 완료되었습니다.",
   justSubmittedBody: " 담당자 검토 후 최종 반영됩니다. 수정이 필요하면 아래 '수정하기'를 눌러 다시 제출하실 수 있습니다.",
@@ -129,7 +130,8 @@ const EN: SubmitStrings = {
   unitPersonDetail: "Person-by-person entry required",
   unitOrgLevel: "Organisation level",
   submitterPrefix: "Submitted by: ",
-  inputterLabel: "Completed by (name of the person in charge) *",
+  inputterLabel: (division: string) =>
+    division === "법인" ? "Completed by (head of subsidiary) *" : "Completed by (team/group leader) *",
   namePlaceholder: "Name",
   justSubmittedTitle: "Your submission has been received.",
   justSubmittedBody:
