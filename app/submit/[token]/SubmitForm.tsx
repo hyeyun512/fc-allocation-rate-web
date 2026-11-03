@@ -684,9 +684,14 @@ function OrgSubmitSection({
         )}
 
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8, marginBottom: 8 }}>
-          <div className="panel-sub" style={{ fontWeight: 700, color: "#1a202c", margin: 0 }}>
-            {s.sectionOrgRate}
-          </div>
+          {/* 표가 하나뿐인 조직은 '조직별 리소스 배부율' 제목을 두지 않는다(사용자 지시) — 개인별 표가 함께 있을 때만 두 표를 구분하려고 적는다. */}
+          {usesPersonTable ? (
+            <div className="panel-sub" style={{ fontWeight: 700, color: "#1a202c", margin: 0 }}>
+              {s.sectionOrgRate}
+            </div>
+          ) : (
+            <div />
+          )}
           {!usesPersonTable && <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>{entries.map(loadButton)}</div>}
         </div>
         <div className="tbl-scroll" style={{ marginBottom: 12 }}>

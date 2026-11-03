@@ -1107,9 +1107,14 @@ function OrgDetail({ entries: entryData, version }: { entries: ReviewEntryData[]
       </div>
 
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8, marginBottom: 8 }}>
-        <div className="panel-sub" style={{ fontWeight: 700, color: "#1a202c", margin: 0 }}>
-          ▸ 조직별 리소스 배부율{hasExpat ? " (법인분)" : ""}
-        </div>
+        {/* 표가 하나뿐인 조직은 제목을 두지 않는다(사용자 지시) — 개인별·주재원 표가 함께 있을 때만 구분용으로 적는다. */}
+        {usesPersonTable || hasExpat ? (
+          <div className="panel-sub" style={{ fontWeight: 700, color: "#1a202c", margin: 0 }}>
+            ▸ 조직별 리소스 배부율{hasExpat ? " (법인분)" : ""}
+          </div>
+        ) : (
+          <div />
+        )}
         {!usesPersonTable && <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>{entries.map(loadButton)}</div>}
       </div>
       <div className="tbl-scroll" style={{ marginBottom: 12 }}>
