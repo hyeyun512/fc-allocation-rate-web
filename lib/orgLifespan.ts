@@ -14,8 +14,9 @@ import { quarterRank } from "./quarter";
 export const ORG_LIFESPAN: Record<string, { from?: string; to?: string }> = {
   // 1Q에만 있던 조직 (2Q부터 없음)
   "Staff(CEO) 직속": { to: "2026-Q1" },
-  // 2Q부터 인원이 없어 조사하지 않는다 (2Q·3Q에 인원 0으로 저장된 값은 DB에 남아 있지만 화면에는 싣지 않는다).
+  // 2Q부터 인원이 없어 조사하지 않는 조직 (2Q·3Q에 인원 0으로 저장된 값은 DB에 남아 있지만 화면에는 싣지 않는다).
   HDG_주재원: { to: "2026-Q1" },
+  HAU: { to: "2026-Q1" },
   // 2Q에만 있던 조직 (1Q에는 없었고 3Q부터 없음)
   사업협력팀: { from: "2026-Q2", to: "2026-Q2" },
   // 3Q까지 있던 조직 (4Q에 폐쇄 — 개발 그룹 하위)
