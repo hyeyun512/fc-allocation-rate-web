@@ -4,10 +4,10 @@ a{color:inherit}
 
 .page{max-width:960px;margin:0 auto;padding:28px 20px 60px}
 .page-narrow{max-width:640px}
-.page-wide{max-width:1680px}
+.page-wide{max-width:1480px}
 /* 조사 링크 — 배부대상이 13~14개라 960px 안에서는 표가 화면 밖으로 밀린다. 폭을 넓게 잡는다.
    1280px에서도 입력칸이 좁아 숫자가 잘려 더 넓힌다(사용자 지시). */
-.page-form{max-width:1680px}
+.page-form{max-width:1480px}
 
 .topbar{background:#fff;border-bottom:0.5px solid #e2e8f0;padding:14px 20px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px}
 .topbar-title{font-size:16px;font-weight:700;color:#1a202c}
@@ -604,3 +604,8 @@ footer{text-align:center;padding:22px;color:#94a3b8;font-size:11.5px}
 /* View 표는 회색 페이지 바탕 위에 바로 놓이므로 값 칸 바탕을 희게 칠하고, 묶음 이름 줄의 배부기준 칸 세로선은 지운다. */
 .av-table tbody tr td{background:#fff}
 .av-table thead tr.grp-label-row th.col-basis{border-right:none;border-bottom:none}
+
+/* 행 삭제(X) 칸 바로 옆의 기간 칸은 가운데가 아니라 왼쪽에 붙여 X와 기간 사이 빈틈을 줄인다 (사용자 지시). */
+.rate-tbl:has(th.col-clear) tbody td:nth-child(2),
+.rate-tbl:has(th.col-clear) thead tr:not(.grp-label-row) th:nth-child(2){text-align:left;padding-left:4px}
+.rate-tbl th.col-clear,.rate-tbl td:has(> .row-clear-btn){padding-right:0}
