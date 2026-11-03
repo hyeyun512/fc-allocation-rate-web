@@ -285,7 +285,10 @@ footer{text-align:center;padding:22px;color:#94a3b8;font-size:11.5px}
 .av-type-legend .item{display:inline-flex;align-items:center;gap:5px}
 .av-type-legend .dot{width:8px;height:8px;border-radius:50%;flex:none}
 
-.av-table-scroll{overflow-x:auto;overflow-y:visible;border:0.5px solid #e2e8f0;border-radius:10px;background:#fff}
+/* 가로로 넘치는 표를 감싸는 칸. overflow-x만 주면 이 칸이 스크롤 기준이 되어 머리글의 sticky가 먹지 않았다
+   (페이지를 내려도 칸 자체는 세로로 스크롤되지 않으므로). 칸에 높이 상한을 두고 세로 스크롤도 여기서 하게 해
+   배부기준 머리글 행(위)과 배부기준 열(왼쪽)이 함께 틀고정되게 한다(사용자 지시). */
+.av-table-scroll{overflow:auto;max-height:calc(100vh - 140px);border:0.5px solid #e2e8f0;border-radius:10px;background:#fff}
 .av-table{border-collapse:separate;border-spacing:0;width:100%;min-width:1180px}
 .av-table thead th{position:sticky;top:0;z-index:3;background:#f8fafc;color:#64748b;font-size:11.5px;font-weight:700;text-align:center;white-space:nowrap;padding:10px 8px;border-bottom:0.5px solid #cbd5e1}
 .av-table thead th.col-basis{text-align:left}
