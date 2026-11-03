@@ -466,6 +466,12 @@ function runCases(): Case[] {
   // 없어진 조직이 BP에서 되살아나면 안 된다 (예전 quarterKey는 'YYYY-Qn'만 읽어 BP를 '항상 존재'로 봤다).
   c.push(ok("bp: 1Q에만 있던 조직은 BP에 없다", !isOrgActiveIn("Staff(CEO) 직속", "2027-BP")));
   c.push(
+    ok(
+      "orgs: IT사업부 팀은 4Q부터 (3Q 이력 화면에는 없다)",
+      !isOrgActiveIn("ERP PI팀", "2026-Q3") && isOrgActiveIn("ERP PI팀", "2026-Q4") && isOrgActiveIn("IT사업대표", "2027-BP")
+    )
+  );
+  c.push(
     eq(
       "bp: 담당자는 직전 4Q에서 이어받는다",
       resolveManagerPair(

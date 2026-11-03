@@ -13,6 +13,8 @@ export const ORG_ORDER = [
   "HUS", "HMX", "HUK", "HDG", "HUG", "HTR", "HBR", "HJP", "HTH", "HAU", "HID", "HSZ",
   "HBR_주재원", "HDG_주재원", "HSZ_주재원", "HUK_주재원",
   "Staff(휴맥스이브이)", "국내영업팀", "Platform개발팀", "사업협력팀", "사업 그룹", "개발 그룹", "SCM실", "Media그룹", "CEO", "지식재산팀", "Staff(CEO)", "경영지원실", "HR실",
+  // IT사업부(26년 4Q~) — 팀마다 따로 조사한다.
+  "IT사업대표", "Staff(IT)", "ERP PI팀", "Infra팀", "개발팀", "MES팀", "준솔팀", "사업팀", "AI팀", "PM팀",
 ];
 
 export function orgOrderIndex(basis: string): number {
