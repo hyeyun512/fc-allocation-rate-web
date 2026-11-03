@@ -420,7 +420,7 @@ footer{text-align:center;padding:22px;color:#94a3b8;font-size:11.5px}
 .rate-tbl input:disabled{background:#f8fafc;border-color:var(--tbl-line-soft)}
 /* View — 히트맵 색 대신 입력 표와 같은 글자 표현 (값 진하게, 0 흐리게). 변화 보기(delta-*)의 색은 그대로 둔다. */
 .av-table td{border-bottom:1px solid var(--tbl-line-soft);color:var(--tbl-text)}
-.av-table td.heat-cell.has-value{background:transparent;color:var(--tbl-text);font-weight:600}
+.av-table td.heat-cell.has-value{background:#fff;color:var(--tbl-text);font-weight:600}
 .av-table td.heat-cell.hi{color:var(--tbl-text)}
 .av-table td.heat-cell.zero{color:var(--tbl-zero)}
 .av-table td.col-total{border-left:1px solid var(--tbl-line)}
@@ -571,3 +571,36 @@ footer{text-align:center;padding:22px;color:#94a3b8;font-size:11.5px}
 .rate-tbl input[type="number"]{-moz-appearance:textfield;appearance:textfield}
 .rate-tbl input[type="number"]::-webkit-inner-spin-button,
 .rate-tbl input[type="number"]::-webkit-outer-spin-button{-webkit-appearance:none;margin:0}
+
+/* 표의 테두리 상자는 열 이름 줄(STB·Mobility…)에서 시작한다 — 그 위 묶음 이름 줄(Humax/Shared)은 상자 밖,
+   주변 바탕색 그대로 둔다(사용자 지시). 표 전체에 테두리를 두르면 묶음 이름 줄까지 상자에 들어가므로,
+   테두리를 표가 아니라 바깥쪽 칸들에 나눠 그린다.
+   묶음 이름 줄이 있는 표만 해당한다: 배부율 표(colgroup을 같이 그리는 표)와 View 표.
+   (IT 이력 표는 첫 열을 아래로 합쳐 행마다 첫 칸이 달라 칸 단위 테두리가 어긋난다 — 기존 상자 그대로.) */
+.rate-tbl:has(> colgroup){border:none;background:transparent;border-radius:0;overflow:visible}
+.av-table-scroll{border:none;background:transparent;border-radius:0}
+.rate-tbl:has(> colgroup) thead tr.grp-label-row th,
+.av-table thead tr.grp-label-row th{background:transparent}
+.rate-tbl:has(> colgroup) thead tr.grp-label-row + tr > th,
+.av-table thead tr.grp-label-row + tr > th{border-top:1px solid var(--tbl-line)}
+.rate-tbl:has(> colgroup) thead tr.grp-label-row + tr > th:first-child,
+.av-table thead tr.grp-label-row + tr > th:first-child{border-left:1px solid var(--tbl-line);border-top-left-radius:10px}
+.rate-tbl:has(> colgroup) thead tr.grp-label-row + tr > th:last-child,
+.av-table thead tr.grp-label-row + tr > th:last-child{border-right:1px solid var(--tbl-line);border-top-right-radius:10px}
+.rate-tbl:has(> colgroup) tbody tr > td:first-child,
+.av-table tbody tr > td:first-child{border-left:1px solid var(--tbl-line)}
+.rate-tbl:has(> colgroup) tbody tr > td:last-child,
+.av-table tbody tr > td:last-child{border-right:1px solid var(--tbl-line)}
+.rate-tbl:has(> colgroup) tbody tr:last-child > td,
+.av-table tbody tr:last-child > td{border-bottom:1px solid var(--tbl-line)}
+.rate-tbl:has(> colgroup) tbody tr:last-child > td:first-child,
+.av-table tbody tr:last-child > td:first-child{border-bottom-left-radius:10px}
+.rate-tbl:has(> colgroup) tbody tr:last-child > td:last-child,
+.av-table tbody tr:last-child > td:last-child{border-bottom-right-radius:10px}
+/* 상자 안은 흰 바탕 — 표가 연한 바탕 패널(하위 조직 상자) 안에 있어도 값 칸은 희게 둔다. */
+.rate-tbl:has(> colgroup) tbody tr td,
+.rate-tbl:has(> colgroup) tbody tr.ro-row td{background:#fff}
+.rate-tbl:has(> colgroup) tbody tr:hover td{background:#f8fafc}
+/* View 표는 회색 페이지 바탕 위에 바로 놓이므로 값 칸 바탕을 희게 칠하고, 묶음 이름 줄의 배부기준 칸 세로선은 지운다. */
+.av-table tbody tr td{background:#fff}
+.av-table thead tr.grp-label-row th.col-basis{border-right:none;border-bottom:none}
