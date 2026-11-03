@@ -613,6 +613,7 @@ function runCases(): Case[] {
     )
   );
   c.push(eq("order: 순서표에 없는 팀끼리는 원래 순서", leaderFirst(["SW팀", "HW팀", "개발그룹장"].map((basis) => ({ org: { basis } }))).map((x) => x.org.basis), ["개발그룹장", "SW팀", "HW팀"]));
+  c.push(ok("orgs: Staff(개발)은 3Q까지 (4Q에 폐쇄)", isOrgActiveIn("Staff(개발)", "2026-Q3") && !isOrgActiveIn("Staff(개발)", "2026-Q4") && !isOrgActiveIn("Staff(개발)", "2027-BP")));
   c.push(ok("it그룹: IT사업부는 4Q부터", !isOrgActiveIn("IT사업부", "2026-Q3") && isOrgActiveIn("IT사업부", "2026-Q4")));
   c.push(ok("mobility: 'Mobility 100%'는 BP에 없다", !fixedRatesFor("2027-BP").some((d) => d.basis === "Mobility 100%")));
   {

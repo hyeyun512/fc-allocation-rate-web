@@ -16,6 +16,7 @@ import type { CurrentPerson, PersonHistoryEntry, RateHistoryEntry, PersonRole } 
 import SubmitForm, { SubmitOrgData, SubmitPageData, SubmitRound } from "./SubmitForm";
 import { surveyPeriodsOf, prefillsFromEarlier } from "@/lib/surveyPeriods";
 import { quarterRank } from "@/lib/quarter";
+import { isOrgActiveIn } from "@/lib/orgLifespan";
 
 export const dynamic = "force-dynamic";
 
@@ -62,7 +63,11 @@ async function getData(token: string) {
     .eq("active", true);
 
   // 하위 조직 안내 문구·입력란 모두 같은 순서로 보이도록 처음부터 정렬해 둔다 (IT사업부 팀 순서 고정).
-  const children = leaderFirst((childOrgs ?? []).map((o) => ({ org: o }))).map((x) => x.org);
+  // 이번 라운드 기간 어디에도 없는 하위 조직(예: 4Q에 폐쇄된 Staff(개발))은 링크에 싣지 않는다.
+  // 기간마다 따로 거르지 않는 건, 입력 화면이 라운드의 기간들에 같은 조직 목록을 쓰기 때문이다.
+  const children = leaderFirst(
+    (childOrgs ?? []).filter((o) => periods.some((p) => isOrgActiveIn(o.basis, p))).map((o) => ({ org: o }))
+  ).map((x) => x.org);
   const isParent = children.length > 0;
   // 다른 조직 값을 그대로 따라가는 자리(사업총괄대표)는 입력란을 두지 않고 각주로만 알린다 — 관리자 화면과 같다.
   const editableOrgs = isParent ? children.filter((c) => !mirrorSourceOf(c.basis)) : [org];
