@@ -409,7 +409,7 @@ function ParentOrgDetail({ entries: entryData, version }: { entries: ReviewEntry
                 return (
                   <ReadOnlyRateRow
                     key={q}
-                    label={`${q} (자동계산)`}
+                    label={q}
                     period={q}
                     rec={toNumRec(e.computed)}
                     headcount={e.computedHeadcount}
@@ -554,7 +554,7 @@ function HkrAutoPanel({
             {quarterOrder.map((q) => {
               const e = entries.find((x) => x.period === q);
               return e ? (
-                <ReadOnlyRateRow key={q} label={`${q} (자동계산)`} period={q} rec={toNumRec(e.computed)} headcount={e.computedHeadcount} />
+                <ReadOnlyRateRow key={q} label={q} period={q} rec={toNumRec(e.computed)} headcount={e.computedHeadcount} />
               ) : (
                 <ReadOnlyRateRow
                   key={q}
@@ -588,7 +588,7 @@ function HkrAutoPanel({
             {/* 계산 근거만 한 줄로 남긴다 — 과거 분기 표는 제목만으로 충분하다. */}
             {isRound && (
               <div className="field-hint" style={{ marginBottom: 8 }}>
-                위 {q} (자동계산) 값은 이 표의 행들만으로 계산됩니다. 값이 없는 조직은 계산에서 빠집니다.
+                위 {q} 값은 이 표의 행들만으로 계산됩니다. 값이 없는 조직은 계산에서 빠집니다.
               </div>
             )}
             <div className="tbl-scroll" style={{ marginBottom: 12 }}>
@@ -1028,7 +1028,7 @@ function OrgDetail({ entries: entryData, version }: { entries: ReviewEntryData[]
     return (
       <ReadOnlyRateRow
         key={e.period}
-        label={`${e.period}${usesPersonTable ? " (자동계산)" : ""}`}
+        label={e.period}
         period={e.period}
         rec={toNumRec(e.computedOrgRates)}
         headcount={e.currentOrgHeadcount}
@@ -1164,7 +1164,7 @@ function OrgDetail({ entries: entryData, version }: { entries: ReviewEntryData[]
                   return e ? (
                     <ReadOnlyRateRow
                       key={q}
-                      label={`${q} (자동계산)`}
+                      label={q}
                       period={q}
                       rec={toNumRec(e.computedExpatRates ?? emptyRates())}
                       headcount={e.currentExpatHeadcount}
