@@ -625,3 +625,31 @@ footer{text-align:center;padding:22px;color:#94a3b8;font-size:11.5px}
 .rate-tbl tbody tr:hover td:has(.pct-input input:not(:disabled)),
 .rate-tbl tbody tr:hover td:has(> input.hc-field:not(:disabled)),
 .rate-tbl tbody tr:hover td:has(> input.name-field:not(:disabled)){background:#fef3c7}
+
+/* 자가사용·건물·IT 기준정보 표 — 입력이 필요한 칸(숫자·청구기준 선택·입력자)도 연한 노란색 (배부율 표와 같은 규칙).
+   막힌 칸과 코멘트는 칠하지 않는다. */
+.rate-tbl tbody tr td:has(> input[type="number"]:not(:disabled)),
+.rate-tbl tbody tr td:has(> select:not(:disabled)),
+.rate-tbl tbody tr td:has(> input[placeholder="이름"]:not(:disabled)){background:#fffbeb}
+
+/* IT 확정 이력 표 — 묶음 이름 줄(Humax/Shared)을 상자 밖에 두는 건 다른 표와 같다.
+   이 표는 청구기준·분기 칸을 아래로 합쳐 행마다 첫 칸이 달라서, 왼쪽 테두리는 맨 왼쪽 열(청구기준) 칸에만 긋는다. */
+.rate-tbl.it-hist{border:none;background:transparent;border-radius:0;overflow:visible}
+.rate-tbl.it-hist thead tr.grp-label-row th{background:transparent}
+.rate-tbl.it-hist thead tr.grp-label-row + tr > th{border-top:1px solid var(--tbl-line)}
+.rate-tbl.it-hist thead tr.grp-label-row + tr > th:first-child{border-left:1px solid var(--tbl-line);border-top-left-radius:10px}
+.rate-tbl.it-hist thead tr.grp-label-row + tr > th:last-child{border-right:1px solid var(--tbl-line);border-top-right-radius:10px}
+.rate-tbl.it-hist tbody td.basis-cell:not(.quarter-cell){border-left:1px solid var(--tbl-line)}
+.rate-tbl.it-hist tbody tr > td:last-child{border-right:1px solid var(--tbl-line)}
+.rate-tbl.it-hist tbody tr:last-child > td,
+.rate-tbl.it-hist tbody td.basis-cell{border-bottom:1px solid var(--tbl-line)}
+.rate-tbl.it-hist tbody td{background:#fff}
+
+/* 입력자 칸도 꼭 적어야 하는 칸이라 같은 연한 노란색으로 칠한다 (사용자 지시). */
+input.required-input:not(:disabled){background:#fffbeb;border-color:#fde68a}
+input.required-input:not(:disabled):focus{background:#fff}
+
+/* 조사 링크 위쪽 '입력자' 칸 — 아래 표 글씨(12.5px)와 크기를 맞춰 작게 둔다(사용자 지시). */
+.inputter-field{gap:3px;min-width:150px}
+.inputter-field label{font-size:11.5px}
+.field.inputter-field input{font-size:12.5px;padding:5px 8px;border-radius:6px;width:150px}

@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { TARGETS, TargetKey, getPreviousPeriod, isTargetActiveIn } from "@/lib/targets";
 import { prettyQuarterLabel, sortQuarters } from "@/lib/quarter";
 import { computeItRates, sumItBasisInput, ItBasisInput } from "@/lib/itBasis";
-import { RateTableHead, ReadOnlyRateRow, NoteTip, useTargetColumns, TargetGroupLabelRow } from "@/components/RateParts";
+import { RateTableHead, ReadOnlyRateRow, NoteTip, useTargetColumns, TargetGroupLabelRow, RateTd } from "@/components/RateParts";
 import { readPasteGrid, shouldHandlePaste } from "@/lib/paste";
 
 export interface ItBasisRow {
@@ -165,7 +165,7 @@ function CurrentBasisRow({
     </tr>
   ) : (
     <tr key={quarter}>
-      <td style={{ textAlign: "left", fontWeight: 700, color: "#2563eb" }}>{quarter}</td>
+      <td style={{ textAlign: "left" }}>{quarter}</td>
       <td>
         <select
           value={isCustomBasis ? BILLING_CUSTOM : billingBasis}
@@ -769,7 +769,7 @@ export default function ItPanel({
             ■ 확정 이력
           </div>
           <div className="tbl-scroll" style={{ marginBottom: 8 }}>
-            <table className="rate-tbl">
+            <table className="rate-tbl it-hist">
               <thead>
                 <TargetGroupLabelRow lead={4} tail={1} />
                 <tr>
@@ -807,7 +807,7 @@ export default function ItPanel({
                     <td style={{ textAlign: "left" }}>{r.basisName}</td>
                     <td>{r.headcount != null ? `${r.headcount}명` : "-"}</td>
                     {cols.map((t) => (
-                      <td key={t.key}>{isTargetActiveIn(t.key, r.quarter) ? `${((r.rates[t.key] || 0) * 100).toFixed(1)}%` : ""}</td>
+                      <RateTd key={t.key} value={r.rates[t.key]} k={t.key} period={r.quarter} />
                     ))}
                     <td className="total-col">{(r.total * 100).toFixed(1)}%</td>
                   </tr>

@@ -317,7 +317,7 @@ export default function SelfUsePanel({
     if (!e.editable) return renderReadOnlyRow(e.asRow(submittedBy), e.period);
     return (
       <tr key={e.period}>
-        <td style={{ textAlign: "left", fontWeight: 700, color: "#2563eb" }}>{e.period}</td>
+        <td style={{ textAlign: "left" }}>{e.period}</td>
         {visibleFields.map((f, i) => (
           <td key={f.key} className={isGroupStart(visibleFields, i) ? "fg-start" : undefined}>
             {f.derived ? (
@@ -402,7 +402,7 @@ export default function SelfUsePanel({
           <label className="field-hint" style={{ marginRight: 8 }}>
             입력자
           </label>
-          <input value={submittedBy} onChange={(e) => setSubmittedBy(e.target.value)} placeholder="이름" style={{ width: 120 }} />
+          <input className="required-input" value={submittedBy} onChange={(e) => setSubmittedBy(e.target.value)} placeholder="이름" style={{ width: 120 }} />
         </div>
       </div>
 

@@ -177,6 +177,15 @@ export function NoteTip({ text }: { text: string }) {
   );
 }
 
+/**
+ * 개인별 입력 표는 비어 있어도 빈 행 하나를 기본으로 둔다 — 행 추가 버튼을 찾지 않고 바로 적게(사용자 지시).
+ * 이름이 빈 행은 저장·제출·검증에서 모두 건너뛰므로(서버도 같다) 값으로 남지 않는다.
+ */
+export function withBlankPersonRow(list: PersonEditRow[]): PersonEditRow[] {
+  if (list.length > 0) return list;
+  return [{ key: `blank-${Date.now()}`, name: "", headcount: "1", note: "", role: "법인", rates: emptyRates() }];
+}
+
 export function emptyRates(): RateMap {
   const r = {} as RateMap;
   TARGETS.forEach((t) => (r[t.key] = "0"));
@@ -356,7 +365,7 @@ function periodLabel(label: string): string {
 }
 
 /** 읽기 전용 배부율 칸. 0%는 흐리게 두어 값이 있는 칸만 눈에 들어오게 한다 (표 공통 디자인 — globals.css의 td.z). */
-function RateTd({ value, k, period }: { value: number | string | null | undefined; k: TargetKey; period?: string }) {
+export function RateTd({ value, k, period }: { value: number | string | null | undefined; k: TargetKey; period?: string }) {
   const text = rateCell(value, k, period);
   if (text === "") return <td></td>;
   return <td className={Number(value) > 0 ? "nz" : "z"}>{text}</td>;
@@ -775,7 +784,8 @@ export function PersonEditTable({
     ]);
   }
   function removePerson(key: string) {
-    setPersons((list) => list.filter((p) => p.key !== key));
+    // 마지막 행을 지워도 빈 행 하나는 남긴다.
+    setPersons((list) => withBlankPersonRow(list.filter((p) => p.key !== key)));
   }
   // 여러 행(사람)에 걸쳐 붙여넣으면 아래 행이 부족한 경우 자동으로 행을 추가한다.
   function handlePersonCellPaste(personIdx: number, startColIdx: number, clipboard: DataTransfer) {

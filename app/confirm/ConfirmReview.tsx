@@ -26,6 +26,7 @@ import {
   PersonReadOnlyTable,
   PersonHistoryBlocks,
   emptyRates,
+  withBlankPersonRow,
   toRateMap,
   totalOf,
   totalIsValid,
@@ -637,7 +638,7 @@ function useOrgReviewEntry({ item, period, version }: { item: OrgReviewData; per
   const [orgNoteEnInput, setOrgNoteEnInput] = useState(() => item.submittedNoteEn ?? "");
   const [persons, setPersons] = useState<PersonEditRow[]>(() =>
     // 잠긴 칸(이번 분기에 배부하지 않는 대상)에 지울 수 없는 값이 남지 않게 한다.
-    initialPersons(item).map((p) => ({ ...p, rates: forPeriod(p.rates) }))
+    withBlankPersonRow(initialPersons(item).map((p) => ({ ...p, rates: forPeriod(p.rates) })))
   );
   const [confirmed, setConfirmed] = useState(item.confirmedThisPeriod && (!item.expat || item.expat.confirmedThisPeriod));
 

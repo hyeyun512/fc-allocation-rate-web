@@ -274,7 +274,7 @@ export default function BuildingPanel({
     if (!e.editable) return readOnlyRow(e.asRow(submittedBy), e.period);
     return (
       <tr key={e.period}>
-        <td style={{ textAlign: "left", fontWeight: 700, color: "#2563eb" }}>{e.period}</td>
+        <td style={{ textAlign: "left" }}>{e.period}</td>
         {FIELDS.map((f, i) => (
           <td key={f.key} className={isGroupStart(FIELDS, i) ? "fg-start" : undefined}>
             <input
@@ -345,7 +345,7 @@ export default function BuildingPanel({
           <label className="field-hint" style={{ marginRight: 8 }}>
             입력자
           </label>
-          <input value={submittedBy} onChange={(e) => setSubmittedBy(e.target.value)} placeholder="이름" style={{ width: 120 }} />
+          <input className="required-input" value={submittedBy} onChange={(e) => setSubmittedBy(e.target.value)} placeholder="이름" style={{ width: 120 }} />
         </div>
       </div>
 

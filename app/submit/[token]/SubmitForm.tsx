@@ -11,6 +11,7 @@ import {
   PersonReadOnlyTable,
   PersonHistoryBlocks,
   emptyRates,
+  withBlankPersonRow,
   toRateMap,
   totalOf,
   totalIsValid,
@@ -133,7 +134,7 @@ function useOrgEntry({
   );
   const [orgNoteInput, setOrgNoteInput] = useState(() => draft?.orgNote ?? data.submittedNote ?? "");
   const [persons, setPersons] = useState<PersonEditRow[]>(
-    () => (draft?.persons ?? data.currentPersons.map(personRowFromCurrent)).map((p) => ({ ...p, rates: forPeriod(p.rates) }))
+    () => withBlankPersonRow((draft?.persons ?? data.currentPersons.map(personRowFromCurrent)).map((p) => ({ ...p, rates: forPeriod(p.rates) })))
   );
 
   const [submitted, setSubmitted] = useState(data.submittedThisPeriod);
@@ -347,7 +348,7 @@ function useOrgEntry({
       setOrgRates(forPeriod(toRateMap(data.currentOrgSubmission ?? data.currentRate)));
       setOrgHeadcountInput(String(data.submittedHeadcount ?? 0));
       setOrgNoteInput(data.submittedNote ?? "");
-      setPersons(data.currentPersons.map(personRowFromCurrent).map((p) => ({ ...p, rates: forPeriod(p.rates) })));
+      setPersons(withBlankPersonRow(data.currentPersons.map(personRowFromCurrent).map((p) => ({ ...p, rates: forPeriod(p.rates) }))));
       setJustSubmitted(false);
       setDraftSavedAt(null);
       setSubmitted(true);
@@ -669,12 +670,13 @@ function OrgSubmitSection({
               </div>
             )}
           </div>
-          <div className="field" style={{ minWidth: 200 }}>
+          <div className="field inputter-field">
             <label>{s.inputterLabel(data.division)}</label>
             <input
               value={first.submittedBy}
               onChange={(ev) => setSubmitter(ev.target.value)}
               placeholder={s.namePlaceholder}
+              className="required-input"
               disabled={!anyEditable}
             />
           </div>
