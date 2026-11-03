@@ -8,7 +8,7 @@ import { isOrgActiveIn } from "@/lib/orgLifespan";
 import { fixedRatesFor } from "@/lib/fixedRates";
 import { keepsTeamRates } from "@/lib/confirmRate";
 import { leaderFirst } from "@/lib/orgOrder";
-import { roundPeriods, roundLabel, resolveSurveyPeriod, mailPeriodOf, prefillsFromEarlier } from "@/lib/surveyPeriods";
+import { roundPeriods, roundLabel, resolveSurveyPeriod, mailPeriodOf, prefillsFromEarlier, linkPeriodsFor } from "@/lib/surveyPeriods";
 import { computeItRates } from "@/lib/itBasis";
 import { submitLockState } from "@/lib/submitLock";
 import { computeSelfuseRates, hasBundangSelfuse2, usesBuildingBasis, selfuseTypeFor, computeBuildingRates } from "@/lib/selfuseBasis";
@@ -583,6 +583,10 @@ function runCases(): Case[] {
   c.push(eq("round: 표기", roundLabel("2026-Q4+2027-BP"), "2026-4Q & 2027-BP"));
   c.push(eq("round: 묶음 안의 기간은 받는다", resolveSurveyPeriod({ current_period: "2026-Q4+2027-BP" }, "2027-BP"), "2027-BP"));
   c.push(eq("round: 묶음 밖의 기간은 거절", resolveSurveyPeriod({ current_period: "2026-Q4+2027-BP" }, "2026-Q3"), null));
+  c.push(eq("link: 해외법인 링크는 4Q만", linkPeriodsFor("법인", ["2026-Q4", "2027-BP"]), ["2026-Q4"]));
+  c.push(eq("link: 주재원 링크도 4Q만", linkPeriodsFor("주재원", ["2026-Q4", "2027-BP"]), ["2026-Q4"]));
+  c.push(eq("link: 본사 링크는 둘 다", linkPeriodsFor("본사", ["2026-Q4", "2027-BP"]), ["2026-Q4", "2027-BP"]));
+  c.push(eq("link: 해외법인의 BP 제출은 거절", resolveSurveyPeriod({ current_period: "2026-Q4+2027-BP" }, "2027-BP", "법인"), null));
   c.push(eq("round: 기간 없는 옛 요청은 첫 기간", resolveSurveyPeriod({ current_period: "2026-Q4+2027-BP" }, undefined), "2026-Q4"));
   c.push(ok("bs/ito: 3Q에는 고정 행이 없다", !fixedRatesFor("2026-Q3").some((d) => d.basis === "비즈니스솔루션" || d.basis === "ITO")));
   c.push(

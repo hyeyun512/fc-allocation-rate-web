@@ -31,11 +31,29 @@ export function surveyPeriodsOf(settings: { current_period?: string | null } | n
 }
 
 /**
+ * 조사 링크에서 연간 예산(BP)을 받지 않는 구분 — 해외법인·주재원의 BP는 관리자가 검토 화면에서 직접 입력한다(사용자 지시).
+ * 이 구분의 링크에는 분기 실적(예: 26년 4Q)만 열린다.
+ */
+export const LINK_NO_BP_DIVISIONS = ["법인", "주재원"];
+
+/** 조직 링크에 여는 기간 — 라운드의 기간 중 그 조직이 링크로 입력하는 것만. */
+export function linkPeriodsFor(division: string | null | undefined, periods: string[]): string[] {
+  if (!division || !LINK_NO_BP_DIVISIONS.includes(division)) return periods;
+  const quarters = periods.filter((p) => !parseQuarter(p).bp);
+  return quarters.length > 0 ? quarters : periods;
+}
+
+/**
  * 요청에 실린 기간을 검증한다. 지금 라운드의 기간이 아니면 null.
  * 기간을 싣지 않은 요청(배포 전에 열어 둔 화면)은 라운드의 첫 기간으로 본다.
+ * division을 주면 그 조직 링크에 열린 기간만 받는다(해외법인·주재원은 BP를 링크로 받지 않는다).
  */
-export function resolveSurveyPeriod(settings: { current_period?: string | null } | null, requested: unknown): string | null {
-  const open = surveyPeriodsOf(settings);
+export function resolveSurveyPeriod(
+  settings: { current_period?: string | null } | null,
+  requested: unknown,
+  division?: string | null
+): string | null {
+  const open = linkPeriodsFor(division, surveyPeriodsOf(settings));
   if (requested == null || requested === "") return open[0] ?? null;
   const p = String(requested);
   return open.includes(p) ? p : null;

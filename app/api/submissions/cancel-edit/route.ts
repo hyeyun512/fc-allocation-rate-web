@@ -46,7 +46,7 @@ export async function POST(req: NextRequest) {
 
   const { data: settings } = await supabase.from("allocation_settings").select("*").eq("id", 1).single();
   // 링크 하나로 여러 기간(예: 26년 4Q와 27년 BP)을 함께 받는다 — 화면이 실어 보낸 기간이 열린 기간인지 확인한다.
-  const period = resolveSurveyPeriod(settings, body?.period);
+  const period = resolveSurveyPeriod(settings, body?.period, org?.division);
   if (!period) {
     return NextResponse.json({ error: "지금 조사 중인 기간이 아닙니다. 화면을 새로고침해 주세요." }, { status: 400 });
   }

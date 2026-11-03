@@ -14,7 +14,7 @@ import { submitLangOf, orgLabelFor, submitterFor, noteFor } from "@/lib/englishO
 import { submitStrings } from "@/lib/submitLang";
 import type { CurrentPerson, PersonHistoryEntry, RateHistoryEntry, PersonRole } from "@/components/RateParts";
 import SubmitForm, { SubmitOrgData, SubmitPageData, SubmitRound } from "./SubmitForm";
-import { surveyPeriodsOf, prefillsFromEarlier } from "@/lib/surveyPeriods";
+import { surveyPeriodsOf, prefillsFromEarlier, linkPeriodsFor } from "@/lib/surveyPeriods";
 import { quarterRank } from "@/lib/quarter";
 import { isOrgActiveIn } from "@/lib/orgLifespan";
 
@@ -51,7 +51,8 @@ async function getData(token: string) {
 
   const { data: settings } = await supabase.from("allocation_settings").select("*").eq("id", 1).single();
   // 링크에 여는 기간 — 26년 4Q와 27년 BP처럼 둘 이상이면 화면에 기간별 탭이 생긴다.
-  const periods = surveyPeriodsOf(settings);
+  // 해외법인·주재원 링크는 27년 BP를 받지 않는다 — BP는 관리자가 검토 화면에서 입력한다.
+  const periods = linkPeriodsFor(org.division, surveyPeriodsOf(settings));
   if (periods.length === 0) periods.push("이번 분기");
   const version = settings?.current_version ?? "Forecast";
 
