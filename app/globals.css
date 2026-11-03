@@ -426,6 +426,18 @@ footer{text-align:center;padding:22px;color:#94a3b8;font-size:11.5px}
 .av-table td.col-basis{display:table-cell;white-space:nowrap}
 .av-table td.col-basis .type-dot{display:inline-block;vertical-align:middle;margin:0 7px 2px 0}
 
+/* 관리자 검토 표 — 배부 대상 열이 15개라 TOTAL이 화면 밖으로 밀렸다. 한눈에 TOTAL까지 들어오도록
+   입력칸·여백·기간·인원수 열을 줄인다(사용자 지시). 링크 표는 아래 .submit-tight가 따로 맞춘다. */
+.rate-tbl th{padding-left:4px;padding-right:4px}
+.rate-tbl td{padding:6px 3px}
+.rate-tbl td:first-child{padding-right:6px}
+.rate-tbl .pct-input input{width:46px;padding:5px 6px;font-size:12.5px}
+.rate-tbl input.hc-field{width:36px}
+.rate-tbl .pct-input{gap:2px}
+.rate-tbl .pct-input span{font-size:10.5px}
+.rate-tbl th.col-clear,.rate-tbl td:has(> .row-clear-btn){width:24px;padding-left:2px;padding-right:2px}
+.rate-tbl th.col-hc{width:44px}
+
 /* ================= 조사 링크 표 — 가로 스크롤 없이 한눈에 =================
    기본 표 크기로는 배부대상 13~14개가 화면을 넘겨서, 값을 보려면 표를 옆으로 밀어야 했다.
    링크 화면(.submit-tight)에서만 표를 화면 폭에 맞춰 고정하고 글자·여백을 줄여 한눈에 담는다.
