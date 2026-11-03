@@ -309,9 +309,13 @@ export function toPersonPayload(list: PersonEditRow[]) {
  */
 const TargetColumnsContext = createContext<TargetDef[]>(TARGETS);
 
+/** 리소스배부율(조직별 배부율) 조사·검토 화면에서 감추는 열. */
+export const RESOURCE_HIDDEN_TARGETS: TargetKey[] = ["building"];
+
 export function TargetColumns({
   periods,
   current,
+  exclude,
   children,
 }: {
   periods: string[];
@@ -320,11 +324,13 @@ export function TargetColumns({
    * (예: 2027-BP의 홀딩스)은 이력이 있어도 감춘다. 4Q와 BP를 함께 입력하면 둘 다 넘긴다.
    */
   current?: string | string[];
+  /** 이 화면에서는 아예 쓰지 않는 열. 리소스배부율 조사·검토는 '건물'에 배부하지 않아 감춘다(사용자 지시) — View에는 그대로 보인다. */
+  exclude?: TargetKey[];
   children: React.ReactNode;
 }) {
-  const key = `${Array.isArray(current) ? current.join("+") : current ?? ""}#${periods.join("|")}`;
+  const key = `${Array.isArray(current) ? current.join("+") : current ?? ""}#${periods.join("|")}#${(exclude ?? []).join(",")}`;
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  const cols = useMemo(() => visibleTargets(periods, current), [key]);
+  const cols = useMemo(() => visibleTargets(periods, current).filter((t) => !exclude?.includes(t.key)), [key]);
   return <TargetColumnsContext.Provider value={cols}>{children}</TargetColumnsContext.Provider>;
 }
 

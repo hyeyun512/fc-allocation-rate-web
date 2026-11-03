@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Nav from "../Nav";
 import SurveyOverview, { SurveyOrgData } from "../SurveyOverview";
-import { TargetColumns } from "@/components/RateParts";
+import { TargetColumns, RESOURCE_HIDDEN_TARGETS } from "@/components/RateParts";
 import { roundLabel } from "@/lib/surveyPeriods";
 import ConfirmReview, { OrgReviewData, RateHistoryEntry, ReviewRound } from "./ConfirmReview";
 import ItPanel, { ItBasisRow } from "./ItPanel";
@@ -201,6 +201,7 @@ export default function ConfirmTabs({
         <TargetColumns
           periods={shownPeriods(periods, reviewRounds.flatMap((r) => r.data), hkrHistory)}
           current={periods}
+          exclude={RESOURCE_HIDDEN_TARGETS}
         >
           <ConfirmReview rounds={reviewRounds} version={version} hkrHistory={hkrHistory} />
         </TargetColumns>

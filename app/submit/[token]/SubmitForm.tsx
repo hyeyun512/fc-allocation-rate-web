@@ -23,6 +23,7 @@ import {
   personRowFromCurrent,
   toPersonPayload,
   TargetColumns,
+  RESOURCE_HIDDEN_TARGETS,
 } from "@/components/RateParts";
 import type {
   CurrentPerson,
@@ -32,7 +33,7 @@ import type {
   RateHistoryEntry,
   RateMap,
 } from "@/components/RateParts";
-import { SubmitLang, submitStrings, targetLabel } from "@/lib/submitLang";
+import { SubmitLang, submitStrings } from "@/lib/submitLang";
 import { submitLockState } from "@/lib/submitLock";
 import { prettyQuarterLabel, sortQuarters } from "@/lib/quarter";
 
@@ -459,9 +460,6 @@ function OrgSubmitSection({
   const beforePersonRows = pastPersonHistory.filter((r) => personOrder.indexOf(r.period) < firstIdx).sort(personRowSort);
   const afterPersonRows = pastPersonHistory.filter((r) => personOrder.indexOf(r.period) > lastIdx).sort(personRowSort);
 
-  const lockedNoteKeys = Array.from(new Set(entries.filter((e) => e.editable).flatMap((e) => e.lockedKeys)));
-  const lockedNoteLabels = TARGETS.filter((t) => lockedNoteKeys.includes(t.key)).map((t) => targetLabel(t, lang)).join(", ");
-
   function setSubmitter(v: string) {
     entries.forEach((e) => e.setSubmittedBy(v));
   }
@@ -527,6 +525,11 @@ function OrgSubmitSection({
               {sending ? s.btnSubmitting : s.btnSubmit}
             </button>
           )}
+          {anyEditable && (
+            <span className="field-hint" style={{ margin: 0 }}>
+              {s.submitHint}
+            </span>
+          )}
           {/* 이미 제출한 기간을 다시 연 경우에만 — 되돌아갈 '원래 값'이 있어야 취소가 뜻을 갖는다. */}
           {entries
             .filter((e) => e.editable && e.submitted)
@@ -546,15 +549,13 @@ function OrgSubmitSection({
               ))}
         </>
       )}
-      {anyEditable && (
+      {anyEditable && (draftState === "saving" || draftState === "error" || draftSavedAt) && (
         <span className="field-hint" style={{ margin: 0, color: draftState === "error" ? "#dc2626" : undefined }}>
           {draftState === "saving"
             ? s.draftSaving
             : draftState === "error"
             ? s.draftFailed
-            : draftSavedAt
-            ? s.draftSaved(fmtTime(draftSavedAt, s.locale))
-            : s.draftIdle}
+            : s.draftSaved(fmtTime(draftSavedAt as string, s.locale))}
         </span>
       )}
     </div>
@@ -629,7 +630,7 @@ function OrgSubmitSection({
 
   return (
     // 보일 열은 입력하는 기간 모두를 기준으로 — 4Q·BP 둘 다 없는 홀딩스는 감추고, 4Q에 남은 건물은 그린다.
-    <TargetColumns periods={personOrder} current={periods}>
+    <TargetColumns periods={personOrder} current={periods} exclude={RESOURCE_HIDDEN_TARGETS}>
       <div className="panel">
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 10, marginBottom: 14 }}>
           <div>
@@ -718,11 +719,6 @@ function OrgSubmitSection({
               {s.totalWarning(e.period)}
             </div>
           ))}
-        {lockedNoteKeys.length > 0 && (
-          <div className="field-hint" style={{ marginBottom: 12 }}>
-            {s.inactiveTargetsNote(lockedNoteLabels)}
-          </div>
-        )}
 
         {usesPersonTable && (
           <>
@@ -792,7 +788,7 @@ function ParentSummary({ rounds, version, lang }: { rounds: SubmitRound[]; versi
   const first = rounds[0].data;
 
   return (
-    <TargetColumns periods={quarterOrder} current={periods}>
+    <TargetColumns periods={quarterOrder} current={periods} exclude={RESOURCE_HIDDEN_TARGETS}>
       <div className="panel">
         <div style={{ marginBottom: 14 }}>
           <div className="panel-title">

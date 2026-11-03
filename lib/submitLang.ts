@@ -41,8 +41,6 @@ const KO = {
   errMustEditAll: (labels: string) =>
     `${labels}은(는) 아직 수정하지 않았습니다. 두 기간을 모두 확인·수정한 뒤 제출해 주세요. (미리 채워진 값은 지난 분기 확정값입니다)`,
   errNothingToSubmit: "제출할 값이 없습니다. 배부율을 입력한 뒤 제출해 주세요.",
-  inactiveTargetsNote: (labels: string) =>
-    `※ ${labels}은(는) 이번 분기부터 배부 대상에서 제외되어 입력하지 않습니다. 전분기 데이터를 끌고오면 ${labels} 비율이 빠지므로, 합계가 100%가 되도록 다른 항목에 나눠 입력해주세요.`,
 
   // ── 조직 입력 구역 (SubmitForm) ─────────────────────────────────────
   divisionLabel: (d: string) => d,
@@ -75,11 +73,11 @@ const KO = {
   cancelEditing: "되돌리는 중...",
   cancelEditFailed: "수정 취소에 실패했습니다.",
   btnSubmit: "제출하기",
+  submitHint: "제출 시 수정이 어렵습니다. 담당자에게 문의해주세요.",
   btnSubmitting: "제출 중...",
   draftSaving: "임시저장 중...",
   draftFailed: "임시저장 실패 — 네트워크를 확인해주세요",
   draftSaved: (time: string) => `임시저장됨 ${time} (제출 전까지 담당자에게 보이지 않습니다)`,
-  draftIdle: "입력하면 자동으로 임시저장됩니다 (제출 전까지 담당자에게 보이지 않습니다)",
   errNoName: "입력자 이름을 적어주세요.",
   errPersonTotal: (name: string) => `'${name}'님의 비율 합계가 100%가 아닙니다. 확인 후 다시 제출해주세요.`,
   errOrgTotal: "조직 단위 배부율 합계가 100%가 아닙니다. 확인 후 다시 제출해주세요.",
@@ -123,8 +121,6 @@ const EN: SubmitStrings = {
   errMustEditAll: (labels: string) =>
     `You have not updated ${labels} yet. Please review and update both periods before submitting. (The pre-filled figures are last quarter's.)`,
   errNothingToSubmit: "There is nothing to submit. Please enter the allocation rates first.",
-  inactiveTargetsNote: (labels: string) =>
-    `* ${labels} is no longer an allocation target from this quarter and cannot be entered. If you copy last quarter's figures, the ${labels} share is left out, so please spread it over the other columns so the total is 100%.`,
 
   divisionLabel: (d: string) =>
     d === "법인" ? "Subsidiary" : d === "주재원" ? "Expatriates" : d === "본사" ? "Head office" : d,
@@ -156,11 +152,11 @@ const EN: SubmitStrings = {
   cancelEditing: "Restoring...",
   cancelEditFailed: "Could not cancel editing.",
   btnSubmit: "Submit",
+  submitHint: "Changes are difficult after you submit. Please contact the allocation team if needed.",
   btnSubmitting: "Submitting...",
   draftSaving: "Saving draft...",
   draftFailed: "Could not save the draft — please check your connection",
   draftSaved: (time: string) => `Draft saved at ${time} (not visible to the allocation team until you submit)`,
-  draftIdle: "Your entries are saved as a draft automatically (not visible to the allocation team until you submit)",
   errNoName: "Please enter your name.",
   errPersonTotal: (name: string) => `${name}'s figures do not add up to 100%. Please check and submit again.`,
   errOrgTotal: "The organisation-level figures do not add up to 100%. Please check and submit again.",
