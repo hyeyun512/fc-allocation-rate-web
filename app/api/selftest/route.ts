@@ -6,6 +6,7 @@ import { deltaPairOptions, defaultDeltaPairKey, deltaQuarterLabel, sortQuarters,
 import { TARGETS, toDbTargets, visibleTargets, isTargetActiveIn, inactiveTargetKeys, parseTargetRates, stripInactiveTargets, getPreviousPeriod } from "@/lib/targets";
 import { isOrgActiveIn } from "@/lib/orgLifespan";
 import { fixedRatesFor } from "@/lib/fixedRates";
+import { keepsTeamRates } from "@/lib/confirmRate";
 import { roundPeriods, roundLabel, resolveSurveyPeriod, mailPeriodOf, prefillsFromEarlier } from "@/lib/surveyPeriods";
 import { computeItRates } from "@/lib/itBasis";
 import { submitLockState } from "@/lib/submitLock";
@@ -589,14 +590,21 @@ function runCases(): Case[] {
   );
   c.push(
     ok(
-      "bs/ito: 4Q·BP 모두 비즈니스솔루션·ITO 각 100% 행 (리소스배부율/본사)",
+      "bs/ito: 4Q·BP 모두 비즈니스솔루션·ITO 각 100% 행 (고정비율/직접비)",
       ["2026-Q4", "2027-BP"].every(
         (q) =>
-          fixedRatesFor(q).some((d) => d.basis === "비즈니스솔루션" && d.type === "리소스배부율" && d.division === "본사" && d.rates.business_solution === 1) &&
-          fixedRatesFor(q).some((d) => d.basis === "ITO" && d.rates.ito === 1)
+          fixedRatesFor(q).some((d) => d.basis === "비즈니스솔루션" && !d.type && d.division === "직접비" && d.rates.business_solution === 1) &&
+          fixedRatesFor(q).some((d) => d.basis === "ITO" && !d.type && d.division === "직접비" && d.rates.ito === 1)
       )
     )
   );
+  c.push(
+    ok(
+      "it그룹: IT사업 그룹 팀은 배부율을 팀마다 남긴다 (개발 그룹은 아니다)",
+      keepsTeamRates("IT사업 그룹") && !keepsTeamRates("개발 그룹") && !keepsTeamRates(null)
+    )
+  );
+  c.push(ok("it그룹: IT사업 그룹은 4Q부터", !isOrgActiveIn("IT사업 그룹", "2026-Q3") && isOrgActiveIn("IT사업 그룹", "2026-Q4")));
   c.push(ok("mobility: 'Mobility 100%'는 BP에 없다", !fixedRatesFor("2027-BP").some((d) => d.basis === "Mobility 100%")));
   {
     const IT = { headquarters: 70, overseasCorp: 0, hMobility: 10, hEv: 10, hiparking: 0, peoplecar: 0, winercom: 0, holdings: 10, hiparkingResident: null };

@@ -60,7 +60,7 @@ const STATUS_LABEL: Record<string, string> = { new: "신규", removed: "삭제",
 const BASIS_ORDER = [
   // 리소스배부율 · 본사
   "Staff(휴맥스이브이)", "국내영업팀", "Platform개발팀", "사업협력팀", "사업 그룹", "개발 그룹",
-  "SCM실", "Media그룹", "CEO", "경영지원실", "지식재산팀", "Staff(CEO)", "HR실", "IT사업대표", "Staff(IT)", "ERP PI팀", "Infra팀", "개발팀", "MES팀", "준솔팀", "사업팀", "AI팀", "PM팀", "비즈니스솔루션", "ITO", "HKR(관계사제외)",
+  "SCM실", "Media그룹", "CEO", "경영지원실", "지식재산팀", "Staff(CEO)", "HR실", "IT사업대표", "Staff(IT)", "ERP PI팀", "Infra팀", "개발팀", "MES팀", "준솔팀", "사업팀", "AI팀", "PM팀", "HKR(관계사제외)",
   // 리소스배부율 · 주재원
   "HBR_주재원", "HUK_주재원", "HDG_주재원", "HSZ_주재원",
   // 리소스배부율 · 법인
@@ -75,7 +75,7 @@ const BASIS_ORDER = [
   // 고정비율 · 기타
   "EVCS(국내/해외)", "EVCS(국내30/해외70)",
   // 고정비율 · 직접비
-  "건물 100%", "공통 100%", "STB 100%", "Mobility 100%", "EVCS(국내) 100%", "EVCS(해외) 100%",
+  "건물 100%", "공통 100%", "STB 100%", "Mobility 100%", "EVCS(국내) 100%", "EVCS(해외) 100%", "비즈니스솔루션", "ITO",
   "H.Networks", "H.Mobility 100%", "H.Holdings 100%", "H.EV 100%", "실적 제외",
 ];
 function basisOrderIndex(basis: string): number {

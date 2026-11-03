@@ -1,4 +1,4 @@
-import { FIXED_RATES } from "@/lib/fixedRates";
+import { keepsTeamRates } from "@/lib/confirmRate";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { sortQuarters } from "@/lib/quarter";
 import AllocationView, { AllocRateRow } from "./AllocationView";
@@ -21,13 +21,14 @@ export default async function AdminViewPage() {
   // View에는 검토및확정 > 리소스배부율의 '조직/팀 선택'에 뜨는 조직만 싣는다.
   // 하위 팀(SW팀·HW팀·재무팀 등)은 상위 조직(개발 그룹·경영지원실) 값에 이미 가중평균으로 반영돼 있어
   // 따로 실으면 같은 인원이 두 줄로 잡힌다.
+  // 단, IT사업 그룹처럼 팀 값을 따로 쓰는 그룹은 그룹 평균 대신 각 팀을 싣는다.
   const selectableBases = new Set(
-    (orgs ?? []).filter((o) => o.active && !o.parent_basis).map((o) => o.basis as string)
+    (orgs ?? [])
+      .filter((o) => o.active && (o.parent_basis ? keepsTeamRates(o.parent_basis) : !keepsTeamRates(o.basis)))
+      .map((o) => o.basis as string)
   );
   // HKR은 조직 마스터에 없는 자동계산 항목이지만 선택 목록에는 들어 있다.
   selectableBases.add("HKR(관계사제외)");
-  // 조사하지 않고 정해진 비율로 채우는 리소스배부율 행(예: 비즈니스솔루션·ITO)도 싣는다.
-  FIXED_RATES.filter((d) => d.type === "리소스배부율").forEach((d) => selectableBases.add(d.basis));
 
   const allRows = ((rows ?? []) as AllocRateRow[]).filter(
     (r) =>
