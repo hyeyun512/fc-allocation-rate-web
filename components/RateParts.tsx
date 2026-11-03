@@ -106,10 +106,10 @@ export interface PersonEditRow {
  * 코멘트 말풍선.
  * 표가 overflow:auto 스크롤 컨테이너라 말풍선을 표 안에 그리면 잘려서 안 보인다.
  * 그래서 body에 portal로 띄우고 위치를 직접 계산한다(잘림 없음).
- * 커서를 떼도 2초는 남겨두고, 그 사이 말풍선 위로 커서를 옮기면 계속 유지된다.
+ * 커서를 떼도 1초는 남겨두고(사용자 지시), 그 사이 말풍선 위로 커서를 옮기면 계속 유지된다.
  */
-const NOTE_TIP_LINGER_MS = 2000; // 커서를 뗀 뒤 남아 있는 시간
-const NOTE_TIP_FADE_MS = 450; // 그 뒤 서서히 사라지는 시간 (globals.css의 transition과 맞춰둔다)
+const NOTE_TIP_LINGER_MS = 1000; // 커서를 뗀 뒤 남아 있는 시간
+const NOTE_TIP_FADE_MS = 600; // 그 뒤 서서히 사라지는 시간 (globals.css의 transition과 맞춰둔다)
 const NOTE_TIP_WIDTH = 320;
 const NOTE_TIP_SHIFT_LEFT = 140; // 아이콘보다 왼쪽으로 당겨 코멘트가 왼쪽에 치우쳐 보이게 한다
 
