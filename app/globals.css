@@ -157,7 +157,8 @@ a{color:inherit}
 .survey-tbl td{padding:7px 8px;border-bottom:0.5px solid #f1f5f9;vertical-align:middle}
 .survey-tbl tr:last-child td{border-bottom:none}
 .survey-tbl .col-link{width:92px;text-align:center}
-.survey-tbl .col-manager{width:170px}
+/* 담당자 이름·메일이 잘리지 않을 만큼 넓힌다 (예: "hongkw@humaxdigital.com"). */
+.survey-tbl .col-manager{width:280px}
 .survey-tbl th.col-link,.survey-tbl th.col-manager{text-align:center}
 .survey-tbl th.col-manager{text-align:left;padding-left:14px}
 
