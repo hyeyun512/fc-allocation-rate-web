@@ -545,3 +545,9 @@ footer{text-align:center;padding:22px;color:#94a3b8;font-size:11.5px}
 .copy-link{font-family:inherit;font-size:11.5px;color:#64748b;background:none;border:none;padding:2px 0;cursor:pointer;text-decoration:underline;text-decoration-color:#cbd5e1;text-underline-offset:3px}
 .copy-link::before{content:"↳ ";color:#94a3b8;text-decoration:none;display:inline-block;margin-right:2px}
 .copy-link:hover{color:#334155;text-decoration-color:#64748b}
+
+/* 검토 및 확정 — 집계 조직(예: Media그룹) 아래 '하위 조직 개별 입력' 상자.
+   상위 패널과 같은 흰 상자라 어디까지가 하위인지 헷갈렸다 — 상자 안을 연한 파랑으로 칠하고 왼쪽에 색 막대를 둔다.
+   표는 흰 바탕 그대로라 값은 잘 읽힌다. */
+.child-orgs > .panel{background:#f5f8fd;border:1px solid #dbe5f3;box-shadow:inset 3px 0 0 #93b4e0;margin-bottom:0}
+.child-orgs > .panel .panel-title{font-size:15px}

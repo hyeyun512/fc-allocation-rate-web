@@ -466,7 +466,8 @@ function ParentOrgDetail({ entries: entryData, version }: { entries: ReviewEntry
       <div className="panel-sub" style={{ fontWeight: 700, color: "#1a202c", margin: "20px 0 12px" }}>
         ■ 하위 조직 개별 입력 ({editableChildren.length}개)
       </div>
-      <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      {/* 하위 조직 상자는 연한 바탕 + 왼쪽 색 막대로 상위(집계) 조직 패널과 구분한다 (globals.css의 .child-orgs). */}
+      <div className="child-orgs" style={{ display: "flex", flexDirection: "column", gap: 16 }}>
         {leaderFirst(editableChildren).map((c) => (
           <OrgDetail
             key={c.org.id}
