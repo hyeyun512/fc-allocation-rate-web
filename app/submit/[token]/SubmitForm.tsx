@@ -571,7 +571,11 @@ function OrgSubmitSection({
         rates={e.orgRates}
         onChange={e.updateOrgRate}
         headcount={e.currentOrgHeadcount}
-        onClear={() => e.setOrgRates(emptyRates())}
+        // X는 그 행을 통째로 비운다 — 배부율뿐 아니라 인원수도 0으로 되돌린다(예전엔 인원수가 남았다).
+        onClear={() => {
+          e.setOrgRates(emptyRates());
+          e.setOrgHeadcountInput("0");
+        }}
         headcountEditable
         headcountValue={e.orgHeadcountInput}
         onHeadcountChange={e.setOrgHeadcountInput}
