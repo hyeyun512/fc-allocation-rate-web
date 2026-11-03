@@ -15,7 +15,7 @@ import { HIDDEN_IN_CONFIRM, MIRROR_HEADCOUNT, mirrorSourceOf } from "@/lib/autoA
 import { isOrgActiveIn } from "@/lib/orgLifespan";
 // 조사 현황과 같은 단위·순서로 보여야 해서 정렬 규칙을 함께 쓴다.
 import { leaderFirst, sortForOrgPicker } from "@/lib/orgOrder";
-import { prettyQuarterLabel, shortQuarterLabel, sortQuarters } from "@/lib/quarter";
+import { prettyQuarterLabel, sortQuarters } from "@/lib/quarter";
 // 표·행 컴포넌트는 조사 링크 화면(/submit/[token])과 함께 쓴다 — 두 화면이 어긋나지 않도록 한 곳에 둔다.
 import {
   NoteTip,
@@ -1281,15 +1281,8 @@ export default function ConfirmReview({
   }
   const hkrStatuses = periods.map((p) => ({ period: p, confirmed: hkrHistory.some((h) => h.quarter === p) }));
 
-  /** 선택 버튼 안의 기간별 표시 — 두 기간을 함께 검토하면 어느 기간이 반영됐는지 버튼에서 바로 보이게 한다. */
-  function chipMarks(statuses: { period: string; confirmed: boolean }[]) {
-    if (!multi) return null;
-    return (
-      <span style={{ fontSize: 11, fontWeight: 400, opacity: 0.85 }}>
-        {statuses.map((s) => `${shortQuarterLabel(s.period)}${s.confirmed ? "✓" : "·"}`).join(" ")}
-      </span>
-    );
-  }
+  // 선택 버튼에는 기간별 표시('4Q· BP·')를 두지 않는다 — 기간은 위 '현재 라운드'에 이미 있어 모든 버튼에 반복됐다(사용자 지시).
+  // 기간별 반영 상태는 버튼에 마우스를 올리면(title) 보이고, 버튼 색은 모든 기간이 반영됐을 때만 바뀐다.
   const chipTitle = (statuses: { period: string; confirmed: boolean }[]) =>
     multi ? statuses.map((s) => `${s.period} ${s.confirmed ? "반영됨" : "미반영"}`).join(" / ") : undefined;
   // 모든 기간이 반영돼야 '반영됨' 색으로 칠한다 — 한 기간만 끝난 조직이 다 끝난 것처럼 보이면 안 된다.
@@ -1332,7 +1325,6 @@ export default function ConfirmReview({
                   {item.org.basis}
                   {item.children.length > 0 ? " 📊" : ""}
                   {item.expat ? " 🌐" : ""}
-                  {chipMarks(statuses)}
                 </button>
               );
             })}
@@ -1345,7 +1337,6 @@ export default function ConfirmReview({
                 onClick={() => setSelectedId(HKR_ID)}
               >
                 HKR(관계사제외) 🧮
-                {chipMarks(hkrStatuses)}
               </button>
             )}
           </div>
