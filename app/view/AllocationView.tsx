@@ -500,13 +500,7 @@ export default function AllocationView({
       </section>
 
       <div className="av-legend">
-        {!isDelta && (
-          <div className="av-seq-legend">
-            <span>배부율</span>
-            <div className="av-seq-bar" />
-            <span>0% → 100%</span>
-          </div>
-        )}
+        {/* 배부율 칸은 입력 표와 같은 모양(값은 진하게, 0은 흐리게)이라 색 범례가 필요 없다. 변화 보기만 색을 쓴다. */}
         {isDelta && (
           <div className="av-seq-legend">
             <span>{deltaPair ? prettyQuarterLabel(deltaPair[0]) : ""} → {deltaPair ? prettyQuarterLabel(deltaPair[1]) : ""} 변화</span>
@@ -530,7 +524,10 @@ export default function AllocationView({
             <tr>
               <th className="col-basis">배부기준</th>
               {cols.map((t) => (
-                <th key={t.key}>{t.label}</th>
+                // 묶음 표시는 입력 표(RateParts)와 같은 클래스 — 머리글 위 얇은 색 띠로 Humax 내부/계열사를 구분한다.
+                <th key={t.key} className={t.group === "humax" ? "grp-humax" : "grp-affiliate"}>
+                  {t.label}
+                </th>
               ))}
               {/* update(반영 여부)는 검토 및 확정 > 조사 탭에서 확인하는 내용이라 여기서는 빼둔다. */}
               {isDelta ? <th>상태</th> : <th>TOTAL</th>}

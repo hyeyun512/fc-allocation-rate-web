@@ -373,6 +373,41 @@ footer{text-align:center;padding:22px;color:#94a3b8;font-size:11.5px}
   .av-stats{grid-template-columns:repeat(2,minmax(0,1fr))}
 }
 
+/* ================= 배부율 표 공통 디자인 =================
+   조사 링크·검토 및 확정·View의 배부율 표를 같은 모양으로 맞춘다(사용자 지시 — 모던하고 깔끔하게).
+   - 머리글: 흰 바탕 + 회색 글자. Humax 내부/계열사 구분은 칸 전체를 칠하지 않고 위쪽 얇은 색 띠로만 한다.
+   - 값: 숫자 폭을 맞추고(tabular), 0%는 흐리게 두어 값이 있는 칸만 눈에 들어오게 한다.
+   - 지난 기간(읽기 전용) 행도 회색 바탕을 깔지 않는다 — 입력칸 유무로 이미 구분된다.
+   - TOTAL은 왼쪽 구분선 + 굵게.
+   폭·여백은 건드리지 않는다(링크의 .submit-tight가 따로 정한다). */
+:root{--tbl-line:#e2e8f0;--tbl-line-soft:#f1f5f9;--tbl-head:#64748b;--tbl-text:#0f172a;--tbl-zero:#cbd5e1;--tbl-humax:#3b82f6;--tbl-aff:#f59e0b}
+.rate-tbl{border-collapse:separate;border-spacing:0}
+.rate-tbl th,.av-table thead th{background:#fff;color:var(--tbl-head);font-weight:600;letter-spacing:.01em;border-bottom:1px solid var(--tbl-line)}
+.rate-tbl th.grp-humax,.av-table thead th.grp-humax{background:#fff;color:#334155;box-shadow:inset 0 2px 0 var(--tbl-humax)}
+.rate-tbl th.grp-affiliate,.av-table thead th.grp-affiliate{background:#fff;color:#334155;box-shadow:inset 0 2px 0 var(--tbl-aff)}
+.rate-tbl td{border-bottom:1px solid var(--tbl-line-soft);color:var(--tbl-text);font-variant-numeric:tabular-nums}
+.rate-tbl td:first-child{white-space:nowrap;color:#475569;font-weight:500}
+.rate-tbl tr.ro-row,.rate-tbl tr.ro-row td{background:transparent;color:#334155}
+.rate-tbl tr.ro-row td:first-child{color:#64748b}
+.rate-tbl td{font-size:12.5px}
+.rate-tbl td.z,.rate-tbl tr.ro-row td.z{color:var(--tbl-zero)}
+.rate-tbl td.nz,.rate-tbl tr.ro-row td.nz{color:var(--tbl-text);font-weight:600}
+.rate-tbl tbody tr:hover td{background:#f8fafc}
+.rate-tbl .total-col,.rate-tbl th.col-total{border-left:1px solid var(--tbl-line)}
+.rate-tbl input{border:1px solid var(--tbl-line);background:#fff;color:var(--tbl-text)}
+.rate-tbl input:hover:not(:disabled){border-color:#cbd5e1}
+.rate-tbl input:focus{outline:none;border-color:var(--tbl-humax);box-shadow:0 0 0 3px rgba(59,130,246,.15)}
+.rate-tbl input:disabled{background:#f8fafc;border-color:var(--tbl-line-soft)}
+/* View — 히트맵 색 대신 입력 표와 같은 글자 표현 (값 진하게, 0 흐리게). 변화 보기(delta-*)의 색은 그대로 둔다. */
+.av-table td{border-bottom:1px solid var(--tbl-line-soft);color:var(--tbl-text)}
+.av-table td.heat-cell.has-value{background:transparent;color:var(--tbl-text);font-weight:600}
+.av-table td.heat-cell.hi{color:var(--tbl-text)}
+.av-table td.heat-cell.zero{color:var(--tbl-zero)}
+.av-table td.col-total{border-left:1px solid var(--tbl-line)}
+/* 배부기준 칸이 flex라 표 칸 구실을 못 해 세로선이 칸 밖으로 어긋나 보였다 — 표 칸으로 되돌리고 점은 글자 옆에 붙인다. */
+.av-table td.col-basis{display:table-cell;white-space:nowrap}
+.av-table td.col-basis .type-dot{display:inline-block;vertical-align:middle;margin:0 7px 2px 0}
+
 /* ================= 조사 링크 표 — 가로 스크롤 없이 한눈에 =================
    기본 표 크기로는 배부대상 13~14개가 화면을 넘겨서, 값을 보려면 표를 옆으로 밀어야 했다.
    링크 화면(.submit-tight)에서만 표를 화면 폭에 맞춰 고정하고 글자·여백을 줄여 한눈에 담는다.
@@ -383,11 +418,11 @@ footer{text-align:center;padding:22px;color:#94a3b8;font-size:11.5px}
 .submit-tight .rate-tbl{table-layout:fixed;width:100%}
 .submit-tight .rate-tbl th{padding:5px 2px;font-size:10.5px;line-height:1.25;white-space:normal;word-break:keep-all;overflow-wrap:anywhere}
 .submit-tight .rate-tbl td{padding:4px 2px;font-size:11.5px}
-/* 분기 이름 칸은 "2026-Q3 (입력중)"처럼 길어 한 줄로 두면 열을 밀어낸다 — 두 줄로 접는다. */
-.submit-tight .rate-tbl td:first-child{font-size:11.5px;padding-right:6px;white-space:normal;line-height:1.3}
+/* 분기 이름 칸은 "2026-Q3 (제출됨)"처럼 길어 한 줄로 두면 열을 밀어낸다 — 꼬리표 앞에서만 두 줄로 접는다(기간 안 하이픈은 RateParts의 periodLabel이 묶는다). */
+.submit-tight .rate-tbl td:first-child{font-size:11.5px;padding-right:6px;white-space:normal;word-break:keep-all;line-height:1.3}
 /* 폭을 정해두는 열은 이것뿐 — 배부대상 열은 남은 폭을 똑같이 나눠 갖는다. */
 .submit-tight .rate-tbl th.col-clear{width:22px}
-.submit-tight .rate-tbl th.col-label{width:92px}
+.submit-tight .rate-tbl th.col-label{width:104px}
 .submit-tight .rate-tbl th.col-hc{width:42px}
 .submit-tight .rate-tbl th.col-name{width:76px}
 .submit-tight .rate-tbl th.col-role{width:58px}

@@ -347,6 +347,21 @@ function rateCell(value: number | string | null | undefined, key: TargetKey, per
   return `${((Number(value) || 0) * 100).toFixed(1)}%`;
 }
 
+/**
+ * 행 이름 칸의 기간 표기. 좁은 링크 표에서 "2026-Q1"이 하이픈에서 "2026- / Q1"로 잘리던 것을 막으려고
+ * 기간 안의 하이픈만 줄바꿈 없는 하이픈(U+2011)으로 바꾼다. 꼬리표("(제출됨)" 등) 앞 공백에서는 접힐 수 있다.
+ */
+function periodLabel(label: string): string {
+  return label.replace(/(\d{4})-(Q\d|BP)/g, "$1‑$2");
+}
+
+/** 읽기 전용 배부율 칸. 0%는 흐리게 두어 값이 있는 칸만 눈에 들어오게 한다 (표 공통 디자인 — globals.css의 td.z). */
+function RateTd({ value, k, period }: { value: number | string | null | undefined; k: TargetKey; period?: string }) {
+  const text = rateCell(value, k, period);
+  if (text === "") return <td></td>;
+  return <td className={Number(value) > 0 ? "nz" : "z"}>{text}</td>;
+}
+
 /** 배부하지 않는 대상 칸 — 값은 비워 두고 입력을 막는다. */
 function lockedInputProps(locked: boolean, lang: SubmitLang) {
   if (!locked) return {};
@@ -487,10 +502,10 @@ export function ReadOnlyRateRow({
   return (
     <tr className="ro-row">
       {showClearSlot && <td></td>}
-      <td>{label}</td>
+      <td>{periodLabel(label)}</td>
       <td>{headcount != null ? s.headcountValue(headcount) : "-"}</td>
       {cols.map((t) => (
-        <td key={t.key}>{rateCell(rec[t.key], t.key, period)}</td>
+        <RateTd key={t.key} value={rec[t.key]} k={t.key} period={period} />
       ))}
       <td className="total-col">{(total * 100).toFixed(1)}%</td>
       {withNote && (
@@ -582,7 +597,7 @@ export function EditableRateRow({
           </button>
         </td>
       )}
-      <td>{label}</td>
+      <td>{periodLabel(label)}</td>
       <td>
         {headcountEditable ? (
           <input
@@ -879,7 +894,7 @@ export function PersonReadOnlyTable({
               <td>{p.name}</td>
               {hasExpat && <td>{p.role === "주재원" ? s.roleExpat : s.roleLegal}</td>}
               {cols.map((t) => (
-                <td key={t.key}>{rateCell(p.rates[t.key], t.key, period)}</td>
+                <RateTd key={t.key} value={p.rates[t.key]} k={t.key} period={period} />
               ))}
               <td className="total-col">{(totalOf(p.rates) * 100).toFixed(1)}%</td>
               <td>
@@ -948,7 +963,7 @@ export function PersonHistoryBlocks({
                     <td>{p.name}</td>
                     {hasExpat && <td>{p.role === "주재원" ? s.roleExpat : s.roleLegal}</td>}
                     {cols.map((t) => (
-                      <td key={t.key}>{rateCell(p.rates[t.key], t.key, q)}</td>
+                      <RateTd key={t.key} value={p.rates[t.key]} k={t.key} period={q} />
                     ))}
                     <td className="total-col">{(p.total * 100).toFixed(1)}%</td>
                     <td>
