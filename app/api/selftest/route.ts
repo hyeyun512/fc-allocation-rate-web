@@ -17,6 +17,7 @@ import {
   isValidEmail,
   isAllowedDomain,
   buildLinkMail,
+  tightenParagraphs,
   insertLink,
   insertLinkHtml,
   htmlToPlainText,
@@ -119,6 +120,7 @@ function runCases(): Case[] {
   c.push(ok("tpl: rejects multiline subject", !!mailTemplateProblem("a\nb", "<div>본문</div>")));
 
   /* ── buildLinkMail ── */
+  c.push(eq("mail: <p> 여백을 일반 메일 정도로", tightenParagraphs('<p>a</p><p style="color:red">b</p><pre>x</pre>'), '<p style="margin:0 0 10pt 0">a</p><p style="margin:0 0 10pt 0;color:red">b</p><pre>x</pre>'));
   const saved = buildLinkMail({
     orgLabel: "개발 그룹",
     url: "https://x/submit/tok",

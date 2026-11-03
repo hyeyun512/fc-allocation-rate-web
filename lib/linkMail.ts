@@ -87,6 +87,9 @@ const BR = /<br\s*\/?>/gi;
 /** HTML 본문을 평문으로. 초안(mailto)에는 평문만 들어가므로 서식을 걷어낸 형태가 필요하다. */
 export function htmlToPlainText(html: string): string {
   return String(html ?? "")
+    // 태그 사이의 줄바꿈 문자는 HTML 소스 서식일 뿐이다(Outlook에서 복사한 문구에 섞여 들어온다).
+    // 남겨 두면 문단마다 빈 줄이 하나씩 더 생겨 초안 행간이 벌어진다.
+    .replace(/>\s*\n\s*</g, "><")
     .replace(BR, "\n")
     .replace(BLOCK_END, "\n")
     .replace(/<[^>]*>/g, "")
@@ -123,9 +126,25 @@ export function insertLink(body: string, url: string): string {
   return `${b.trimEnd()}\n\n${url}`;
 }
 
+/**
+ * 문단(<p>) 간격을 일반 메일 정도로 맞춘다.
+ * 문구를 Outlook·Word에서 복사해 붙여 저장하면 본문이 <p>로 들어오는데, 여백이 지정되지 않은 <p>는
+ * Outlook에 붙여넣을 때 위아래 여백이 크게 붙어 행간이 지나치게 벌어졌다(사용자 지적).
+ * 각 <p>의 위 여백은 없애고 아래 여백만 한 줄 남짓(10pt)으로 둔다. 원래 있던 style은 그대로 뒤에 이어 붙인다.
+ */
+export function tightenParagraphs(html: string): string {
+  const P_MARGIN = "margin:0 0 10pt 0";
+  return String(html ?? "").replace(/<p(\s[^>]*)?>/gi, (_m, attrs: string | undefined) => {
+    const a = attrs ?? "";
+    if (/\sstyle\s*=\s*"/i.test(a)) return `<p${a.replace(/\sstyle\s*=\s*"/i, ` style="${P_MARGIN};`)}>`;
+    if (/\sstyle\s*=\s*'/i.test(a)) return `<p${a.replace(/\sstyle\s*=\s*'/i, ` style='${P_MARGIN};`)}>`;
+    return `<p${a} style="${P_MARGIN}">`;
+  });
+}
+
 /** Outlook에 붙여넣을 수 있도록 기본 글꼴을 입힌 조각으로 감싼다. */
 export function wrapMailHtml(bodyHtml: string): string {
-  return `<div style="${MAIL_FONT_CSS}">${bodyHtml}</div>`;
+  return `<div style="${MAIL_FONT_CSS}">${tightenParagraphs(bodyHtml)}</div>`;
 }
 
 /** 저장 전 검사. 문제가 없으면 null. */
