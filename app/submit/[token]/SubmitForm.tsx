@@ -902,8 +902,9 @@ export default function SubmitForm({
   const isParent = !!base.parent;
 
   return (
-    // page-form: 배부대상 13~14개가 들어가도록 폭을 넓게, submit-tight: 표를 압축해 가로 스크롤을 없앤다.
-    <div className="page page-form submit-tight">
+    // page-form: 배부대상 13~14개가 들어가도록 폭을 넓게. 표는 검토 및 확정 화면과 같은 규칙으로 그린다 —
+    // 예전의 압축 표(.submit-tight, 화면 폭에 맞춰 열을 늘림)는 넓은 화면에서 열이 지나치게 넓어졌다(사용자 지시).
+    <div className="page page-form">
       {multi && (
         <div className="callout info" style={{ marginBottom: 16 }}>
           {s.multiRoundHint(rounds.map((r) => prettyQuarterLabel(r.period)).join(", "))}
