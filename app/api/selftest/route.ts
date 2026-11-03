@@ -584,7 +584,7 @@ function runCases(): Case[] {
   c.push(ok("bs/ito: 3Q에는 고정 행이 없다", !fixedRatesFor("2026-Q3").some((d) => d.basis === "비즈니스솔루션" || d.basis === "ITO")));
   c.push(
     ok(
-      "it사업부: 어느 기간에도 IT사업부 행은 없다",
+      "it사업부: IT사업부는 고정비율 행이 아니다 (조사하는 그룹이다)",
       !fixedRatesFor("2026-Q4").some((d) => d.basis === "IT사업부") && !fixedRatesFor("2027-BP").some((d) => d.basis === "IT사업부")
     )
   );
@@ -600,11 +600,11 @@ function runCases(): Case[] {
   );
   c.push(
     ok(
-      "it그룹: IT사업 그룹 팀은 배부율을 팀마다 남긴다 (개발 그룹은 아니다)",
-      keepsTeamRates("IT사업 그룹") && !keepsTeamRates("개발 그룹") && !keepsTeamRates(null)
+      "it그룹: IT사업부 팀은 배부율을 팀마다 남긴다 (개발 그룹은 아니다)",
+      keepsTeamRates("IT사업부") && !keepsTeamRates("개발 그룹") && !keepsTeamRates(null)
     )
   );
-  c.push(ok("it그룹: IT사업 그룹은 4Q부터", !isOrgActiveIn("IT사업 그룹", "2026-Q3") && isOrgActiveIn("IT사업 그룹", "2026-Q4")));
+  c.push(ok("it그룹: IT사업부는 4Q부터", !isOrgActiveIn("IT사업부", "2026-Q3") && isOrgActiveIn("IT사업부", "2026-Q4")));
   c.push(ok("mobility: 'Mobility 100%'는 BP에 없다", !fixedRatesFor("2027-BP").some((d) => d.basis === "Mobility 100%")));
   {
     const IT = { headquarters: 70, overseasCorp: 0, hMobility: 10, hEv: 10, hiparking: 0, peoplecar: 0, winercom: 0, holdings: 10, hiparkingResident: null };

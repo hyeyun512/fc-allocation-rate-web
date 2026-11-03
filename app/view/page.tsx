@@ -21,7 +21,7 @@ export default async function AdminViewPage() {
   // View에는 검토및확정 > 리소스배부율의 '조직/팀 선택'에 뜨는 조직만 싣는다.
   // 하위 팀(SW팀·HW팀·재무팀 등)은 상위 조직(개발 그룹·경영지원실) 값에 이미 가중평균으로 반영돼 있어
   // 따로 실으면 같은 인원이 두 줄로 잡힌다.
-  // 단, IT사업 그룹처럼 팀 값을 따로 쓰는 그룹은 그룹 평균 대신 각 팀을 싣는다.
+  // 단, IT사업부처럼 팀 값을 따로 쓰는 그룹은 그룹 평균 대신 각 팀을 싣는다.
   const selectableBases = new Set(
     (orgs ?? [])
       .filter((o) => o.active && (o.parent_basis ? keepsTeamRates(o.parent_basis) : !keepsTeamRates(o.basis)))

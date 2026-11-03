@@ -16,9 +16,9 @@ export const ORG_LIFESPAN: Record<string, { from?: string; to?: string }> = {
   "Staff(CEO) 직속": { to: "2026-Q1" },
   // 2Q에만 있던 조직 (1Q에는 없었고 3Q부터 없음)
   사업협력팀: { from: "2026-Q2", to: "2026-Q2" },
-  // 26년 4Q에 새로 생긴 IT사업 그룹과 그 팀들 — 그룹 링크 하나로 조사하고, 배부율은 팀마다 남긴다
+  // 26년 4Q에 새로 생긴 IT사업부와 그 팀들 — 그룹 링크 하나로 조사하고, 배부율은 팀마다 남긴다
   // (lib/confirmRate.ts의 TEAM_RATE_GROUPS).
-  "IT사업 그룹": { from: "2026-Q4" },
+  "IT사업부": { from: "2026-Q4" },
   "IT사업대표": { from: "2026-Q4" },
   "Staff(IT)": { from: "2026-Q4" },
   "ERP PI팀": { from: "2026-Q4" },

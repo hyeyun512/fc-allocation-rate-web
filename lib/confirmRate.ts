@@ -28,10 +28,10 @@ export interface ApplyRateResult {
 
 /**
  * 링크·검토는 그룹 하나로 묶되, 배부율은 팀마다 따로 남기는 그룹.
- * IT사업 그룹(26년 4Q~)은 팀들을 한 링크로 조사하지만 View·배부에는 그룹 평균이 아니라 각 팀 값을 쓴다
+ * IT사업부(26년 4Q~)는 팀들을 한 링크로 조사하지만 View·배부에는 그룹 평균이 아니라 각 팀 값을 쓴다
  * (사용자 지시). 그룹 평균 행도 계산해 두지만 View에는 팀 행만 싣는다.
  */
-export const TEAM_RATE_GROUPS = ["IT사업 그룹"];
+export const TEAM_RATE_GROUPS = ["IT사업부"];
 
 export function keepsTeamRates(groupBasis: string | null | undefined): boolean {
   return !!groupBasis && TEAM_RATE_GROUPS.includes(groupBasis);
@@ -52,7 +52,7 @@ export async function applyOrgRate(
   // 따로 실으면 같은 인원이 두 줄로 잡힌다. View가 하위 팀을 걸러 보여주던 것을
   // 화면이 아니라 저장 단계에서 지키게 한 것이다 — 표를 그대로 읽는 쪽(fc-2 등)도 중복되지 않는다.
   // 제출한 값 자체는 allocation_submissions에 그대로 남고, 상위 조직 계산도 그 표를 쓴다.
-  // 단, 팀 값을 따로 쓰는 그룹(IT사업 그룹)의 팀은 예외로 그대로 싣는다.
+  // 단, 팀 값을 따로 쓰는 그룹(IT사업부)의 팀은 예외로 그대로 싣는다.
   if (org.parent_basis && !keepsTeamRates(org.parent_basis)) {
     const { error } = await supabase
       .from("allocation_rate")
