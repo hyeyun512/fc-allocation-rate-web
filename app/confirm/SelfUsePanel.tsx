@@ -317,7 +317,7 @@ export default function SelfUsePanel({
     if (!e.editable) return renderReadOnlyRow(e.asRow(submittedBy), e.period);
     return (
       <tr key={e.period}>
-        <td style={{ textAlign: "left", fontWeight: 700, color: "#2563eb" }}>{e.period} (입력중)</td>
+        <td style={{ textAlign: "left", fontWeight: 700, color: "#2563eb" }}>{e.period}</td>
         {visibleFields.map((f, i) => (
           <td key={f.key} className={isGroupStart(visibleFields, i) ? "fg-start" : undefined}>
             {f.derived ? (

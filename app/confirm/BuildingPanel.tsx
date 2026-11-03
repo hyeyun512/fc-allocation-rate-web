@@ -274,7 +274,7 @@ export default function BuildingPanel({
     if (!e.editable) return readOnlyRow(e.asRow(submittedBy), e.period);
     return (
       <tr key={e.period}>
-        <td style={{ textAlign: "left", fontWeight: 700, color: "#2563eb" }}>{e.period} (입력중)</td>
+        <td style={{ textAlign: "left", fontWeight: 700, color: "#2563eb" }}>{e.period}</td>
         {FIELDS.map((f, i) => (
           <td key={f.key} className={isGroupStart(FIELDS, i) ? "fg-start" : undefined}>
             <input

@@ -165,7 +165,7 @@ function CurrentBasisRow({
     </tr>
   ) : (
     <tr key={quarter}>
-      <td style={{ textAlign: "left", fontWeight: 700, color: "#2563eb" }}>{quarter} (입력중)</td>
+      <td style={{ textAlign: "left", fontWeight: 700, color: "#2563eb" }}>{quarter}</td>
       <td>
         <select
           value={isCustomBasis ? BILLING_CUSTOM : billingBasis}

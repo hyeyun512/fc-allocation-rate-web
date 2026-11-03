@@ -1006,7 +1006,7 @@ function OrgDetail({ entries: entryData, version }: { entries: ReviewEntryData[]
       return (
         <EditableRateRow
           key={e.period}
-          label={`${e.period} (입력중)`}
+          label={e.period}
           rates={e.orgRates}
           onChange={e.updateOrgRate}
           headcount={e.currentOrgHeadcount}
@@ -1203,7 +1203,7 @@ function OrgDetail({ entries: entryData, version }: { entries: ReviewEntryData[]
             <div key={e.period} style={{ marginBottom: multi ? 12 : 0 }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8, marginBottom: 8 }}>
                 <div className="field-hint" style={{ fontWeight: 700, color: personsEditable(e) ? "#2563eb" : "#1a202c", margin: 0 }}>
-                  {e.period} {personsEditable(e) ? "(입력중)" : "(반영됨)"}
+                  {e.period}{personsEditable(e) ? "" : " (반영됨)"}
                 </div>
                 {loadButton(e, i)}
               </div>
