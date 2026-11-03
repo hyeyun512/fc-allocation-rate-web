@@ -636,7 +636,7 @@ function OrgSubmitSection({
     // 보일 열은 입력하는 기간 모두를 기준으로 — 4Q·BP 둘 다 없는 홀딩스는 감추고, 4Q에 남은 건물은 그린다.
     <TargetColumns periods={personOrder} current={periods} exclude={RESOURCE_HIDDEN_TARGETS}>
       <div className="panel">
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 10, marginBottom: 14 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 10, marginBottom: 4 }}>
           <div>
             <div className="panel-title">
               <span className="org-name">{data.orgBasis}</span>{" "}
@@ -687,15 +687,9 @@ function OrgSubmitSection({
           </div>
         )}
 
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8, marginBottom: 8 }}>
-          {/* 표가 하나뿐인 조직은 '조직별 리소스 배부율' 제목을 두지 않는다(사용자 지시) — 개인별 표가 함께 있을 때만 두 표를 구분하려고 적는다. */}
-          {usesPersonTable ? (
-            <div className="panel-sub" style={{ fontWeight: 700, color: "#1a202c", margin: 0 }}>
-              {s.sectionOrgRate}
-            </div>
-          ) : (
-            <div />
-          )}
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8, marginBottom: 2 }}>
+          {/* '조직별 리소스 배부율' 제목은 두지 않는다(사용자 지시) — 아래 '개인별 리소스 배부율' 제목만 남긴다. */}
+          <div />
           {!usesPersonTable && <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>{entries.map(loadButton)}</div>}
         </div>
         <div className="tbl-scroll" style={{ marginBottom: 12 }}>
@@ -830,7 +824,7 @@ function ParentSummary({ rounds, version, lang }: { rounds: SubmitRound[]; versi
             })}
           </div>
           <div className="panel-sub">
-            {s.divisionLabel(parent.division)} · {s.parentSub(first.parentChildNames.join(" + "))}
+            {s.parentSub(first.parentChildNames.join(" + "))}
           </div>
         </div>
 

@@ -395,7 +395,7 @@ function ParentOrgDetail({ entries: entryData, version }: { entries: ReviewEntry
           <ConfirmBadges items={entries} multi={multi} />
         </div>
         <div className="panel-sub">
-          {item.org.division} · 하위 조직({item.children.map((c) => c.org.basis).join(" + ")})의 인원수 가중평균으로 자동 계산됩니다. 하위 조직에서 직접 입력해주세요.
+          하위 조직({item.children.map((c) => c.org.basis).join(" + ")})의 인원수 가중평균으로 자동 계산됩니다. 하위 조직에서 직접 입력해주세요.
         </div>
       </div>
 
@@ -1095,32 +1095,39 @@ function OrgDetail({ entries: entryData, version }: { entries: ReviewEntryData[]
 
   return (
     <div className="panel">
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 10, marginBottom: 14 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", flexWrap: "wrap", gap: 10, marginBottom: 6 }}>
         <div>
           <div className="panel-title">
             <span className="org-name">{item.org.basis}</span>
             {hasExpat && <span className="status-badge" style={{ background: "#fef3c7", color: "#92400e", marginLeft: 6 }}>법인+주재원</span>}{" "}
             <ConfirmBadges items={entries} multi={multi} />
           </div>
-          <div className="panel-sub">
-            {item.org.division} · {usesPersonTable ? "개인별 확인 필요" : "조직 단위"}
-            {submitters.length > 0 ? ` · 제출자: ${submitters.join(", ")}` : ""}
-            {latestSubmittedAt ? ` · ${new Date(latestSubmittedAt).toLocaleString("ko-KR")}` : ""}
-          </div>
+          {/* '본사 · 조직 단위' 같은 구분 표기는 뺐다(사용자 지시) — 개인별 확인 조직 안내와 제출 이력만 남긴다. */}
+          {(usesPersonTable || submitters.length > 0 || latestSubmittedAt) && (
+            <div className="panel-sub">
+              {[
+                usesPersonTable ? "개인별 확인 필요" : "",
+                submitters.length > 0 ? `제출자: ${submitters.join(", ")}` : "",
+                latestSubmittedAt ? new Date(latestSubmittedAt).toLocaleString("ko-KR") : "",
+              ]
+                .filter(Boolean)
+                .join(" · ")}
+            </div>
+          )}
         </div>
+        {/* 표가 하나뿐인 조직은 불러오기·복사 버튼을 제목 줄 오른쪽에 붙여 빈 줄을 없앤다(사용자 지시). */}
+        {!usesPersonTable && !hasExpat && <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>{entries.map(loadButton)}</div>}
       </div>
 
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8, marginBottom: 8 }}>
-        {/* 표가 하나뿐인 조직은 제목을 두지 않는다(사용자 지시) — 개인별·주재원 표가 함께 있을 때만 구분용으로 적는다. */}
-        {usesPersonTable || hasExpat ? (
+      {/* '조직별 리소스 배부율' 제목은 두지 않는다(사용자 지시). 법인+주재원 조직만 아래 '주재원분' 표와 구분하려고 '법인분'을 적는다. */}
+      {hasExpat && (
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8, margin: "8px 0 4px" }}>
           <div className="panel-sub" style={{ fontWeight: 700, color: "#1a202c", margin: 0 }}>
-            ▸ 조직별 리소스 배부율{hasExpat ? " (법인분)" : ""}
+            ▸ 법인분
           </div>
-        ) : (
-          <div />
-        )}
-        {!usesPersonTable && <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>{entries.map(loadButton)}</div>}
-      </div>
+          {!usesPersonTable && <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>{entries.map(loadButton)}</div>}
+        </div>
+      )}
       <div className="tbl-scroll" style={{ marginBottom: 12 }}>
         <table className="rate-tbl">
           <RateTableHead withClear={anyOrgEditable} withNote withNoteEn={item.needsEnglishNote} />
