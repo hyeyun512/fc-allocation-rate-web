@@ -61,7 +61,8 @@ async function getData(token: string) {
     .eq("parent_basis", org.basis)
     .eq("active", true);
 
-  const children = childOrgs ?? [];
+  // 하위 조직 안내 문구·입력란 모두 같은 순서로 보이도록 처음부터 정렬해 둔다 (IT사업부 팀 순서 고정).
+  const children = leaderFirst((childOrgs ?? []).map((o) => ({ org: o }))).map((x) => x.org);
   const isParent = children.length > 0;
   // 다른 조직 값을 그대로 따라가는 자리(사업총괄대표)는 입력란을 두지 않고 각주로만 알린다 — 관리자 화면과 같다.
   const editableOrgs = isParent ? children.filter((c) => !mirrorSourceOf(c.basis)) : [org];

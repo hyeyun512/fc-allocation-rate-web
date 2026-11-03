@@ -13,8 +13,8 @@ export const ORG_ORDER = [
   "HUS", "HMX", "HUK", "HDG", "HUG", "HTR", "HBR", "HJP", "HTH", "HAU", "HID", "HSZ",
   "HBR_주재원", "HDG_주재원", "HSZ_주재원", "HUK_주재원",
   "Staff(휴맥스이브이)", "국내영업팀", "Platform개발팀", "사업협력팀", "사업 그룹", "개발 그룹", "SCM실", "Media그룹", "CEO", "지식재산팀", "Staff(CEO)", "경영지원실", "HR실",
-  // IT사업부(26년 4Q~)와 그 하위 팀 순서.
-  "IT사업부", "IT사업대표", "Staff(IT)", "ERP PI팀", "Infra팀", "개발팀", "MES팀", "준솔팀", "사업팀", "AI팀", "PM팀",
+  // IT사업부(26년 4Q~)와 그 하위 팀 순서 — 하위 팀은 이 순서로 고정한다(사용자 지시).
+  "IT사업부", "IT사업대표", "Staff(IT)", "PM팀", "ERP PI팀", "Infra팀", "MES팀", "사업팀", "AI팀", "준솔팀", "개발팀",
 ];
 
 export function orgOrderIndex(basis: string): number {
@@ -29,9 +29,16 @@ export function isLeaderOrg(basis: string): boolean {
   return LEADER_FIRST.includes(String(basis).replace(/\s/g, ""));
 }
 
-/** 조직장을 맨 위로 올리되, 나머지는 원래 순서를 유지한다. */
+/**
+ * 조직장을 맨 위로 올리고, 위 순서표에 있는 팀(IT사업부 하위 팀)은 그 순서로 놓는다.
+ * 순서표에 없는 팀끼리는 원래 순서를 유지한다 (안정 정렬 — 모두 같은 맨 뒤 순위를 받는다).
+ */
 export function leaderFirst<T extends { org: { basis: string } }>(items: T[]): T[] {
-  return [...items].sort((a, b) => Number(isLeaderOrg(b.org.basis)) - Number(isLeaderOrg(a.org.basis)));
+  return [...items].sort(
+    (a, b) =>
+      Number(isLeaderOrg(b.org.basis)) - Number(isLeaderOrg(a.org.basis)) ||
+      orgOrderIndex(a.org.basis) - orgOrderIndex(b.org.basis)
+  );
 }
 
 /** 구분(division) 표시 순서 — 위에서부터 본사 → 주재원 → 법인. */

@@ -7,6 +7,7 @@ import { TARGETS, toDbTargets, visibleTargets, isTargetActiveIn, inactiveTargetK
 import { isOrgActiveIn } from "@/lib/orgLifespan";
 import { fixedRatesFor } from "@/lib/fixedRates";
 import { keepsTeamRates } from "@/lib/confirmRate";
+import { leaderFirst } from "@/lib/orgOrder";
 import { roundPeriods, roundLabel, resolveSurveyPeriod, mailPeriodOf, prefillsFromEarlier } from "@/lib/surveyPeriods";
 import { computeItRates } from "@/lib/itBasis";
 import { submitLockState } from "@/lib/submitLock";
@@ -604,6 +605,14 @@ function runCases(): Case[] {
       keepsTeamRates("IT사업부") && !keepsTeamRates("개발 그룹") && !keepsTeamRates(null)
     )
   );
+  c.push(
+    eq(
+      "it그룹: IT사업부 하위 팀은 정해진 순서로 보인다",
+      leaderFirst(["개발팀", "AI팀", "IT사업대표", "준솔팀", "PM팀", "Staff(IT)", "MES팀", "ERP PI팀", "사업팀", "Infra팀"].map((basis) => ({ org: { basis } }))).map((x) => x.org.basis),
+      ["IT사업대표", "Staff(IT)", "PM팀", "ERP PI팀", "Infra팀", "MES팀", "사업팀", "AI팀", "준솔팀", "개발팀"]
+    )
+  );
+  c.push(eq("order: 순서표에 없는 팀끼리는 원래 순서", leaderFirst(["SW팀", "HW팀", "개발그룹장"].map((basis) => ({ org: { basis } }))).map((x) => x.org.basis), ["개발그룹장", "SW팀", "HW팀"]));
   c.push(ok("it그룹: IT사업부는 4Q부터", !isOrgActiveIn("IT사업부", "2026-Q3") && isOrgActiveIn("IT사업부", "2026-Q4")));
   c.push(ok("mobility: 'Mobility 100%'는 BP에 없다", !fixedRatesFor("2027-BP").some((d) => d.basis === "Mobility 100%")));
   {
