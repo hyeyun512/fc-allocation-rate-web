@@ -163,8 +163,23 @@ a{color:inherit}
 
 .survey-org-name{font-size:13px;font-weight:600;color:#1a202c;display:flex;align-items:center;gap:6px;flex-wrap:wrap}
 .survey-org-sub{font-size:11px;color:#94a3b8;margin-top:1px}
-/* 하위 팀은 상위 조직 아래에 한 칸 들여 쓴다 — 링크는 상위 조직 것 하나뿐이라 화살표로만 표시한다. */
-.survey-tbl tr.child-row .survey-org-name{font-weight:500}
+/* 상위(집계) 조직과 하위 팀을 계층으로 구분한다 (사용자 지시).
+   상위 행은 옅은 바탕 + 굵은 이름으로 묶음의 머리처럼, 하위 행은 들여 쓰고 왼쪽 세로선·가지선으로 이어
+   한 묶음임을 보이게 한다. 하위 이름은 충분히 읽히도록 색은 진하게 둔다.
+   링크는 상위 조직 것 하나뿐이라 하위 행의 링크 칸은 화살표로만 표시한다. */
+.survey-tbl tr.group-row td{background:#f1f5f9;border-top:1px solid #e2e8f0}
+.survey-tbl tr.group-row td.col-org{box-shadow:inset 3px 0 0 #94a3b8}
+/* 미완료 진행 배지는 회색 바탕이라 상위 행 바탕에 묻힌다 — 흰 바탕으로 띄운다. */
+.survey-tbl tr.group-row .status-badge:not(.status-pending){background:#fff!important;box-shadow:0 0 0 0.5px #e2e8f0}
+.survey-tbl tr.group-row .survey-org-name{font-size:13.5px;font-weight:700;color:#0f172a}
+.survey-tbl tr.child-row td{background:#fff}
+.survey-tbl tr.child-row td.col-org{position:relative;padding-left:34px}
+.survey-tbl tr.child-row td.col-org::before{content:"";position:absolute;left:16px;top:0;bottom:0;border-left:2px solid #cbd5e1}
+.survey-tbl tr.child-row td.col-org::after{content:"";position:absolute;left:16px;top:50%;width:10px;border-top:2px solid #cbd5e1}
+.survey-tbl tr.child-row .survey-org-name{font-size:12.5px;font-weight:600;color:#334155}
+/* 마지막 하위 팀에서는 세로선을 가지선 높이에서 끊어 '└' 모양으로 묶음이 끝났음을 보인다. */
+.survey-tbl tr.child-last td.col-org::before{bottom:50%}
+.survey-tbl tr.child-row .survey-org-branch{display:none}
 .survey-org-branch{color:#cbd5e1;font-size:11px}
 .survey-inherit-link{color:#cbd5e1;text-align:center;font-size:12px}
 

@@ -666,7 +666,7 @@ function DivisionTable({
             const { canSend, hint } = sendability(item);
             return (
               <Fragment key={item.org.id}>
-                <tr>
+                <tr className={item.children.length > 0 ? "group-row" : undefined}>
                   <td className="col-org">
                     <OrgCell item={item} periods={periods} />
                   </td>
@@ -688,8 +688,8 @@ function DivisionTable({
                     )}
                   </td>
                 </tr>
-                {leaderFirst(item.children).map((c) => (
-                  <tr key={c.org.id} className="child-row">
+                {leaderFirst(item.children).map((c, i, all) => (
+                  <tr key={c.org.id} className={i === all.length - 1 ? "child-row child-last" : "child-row"}>
                     <td className="col-org">
                       <OrgCell item={c} isChild periods={periods} />
                     </td>
