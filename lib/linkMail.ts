@@ -129,11 +129,13 @@ export function insertLink(body: string, url: string): string {
 /**
  * 문단(<p>) 간격을 일반 메일 정도로 맞춘다.
  * 문구를 Outlook·Word에서 복사해 붙여 저장하면 본문이 <p>로 들어오는데, 여백이 지정되지 않은 <p>는
- * Outlook에 붙여넣을 때 위아래 여백이 크게 붙어 행간이 지나치게 벌어졌다(사용자 지적).
- * 각 <p>의 위 여백은 없애고 아래 여백만 한 줄 남짓(10pt)으로 둔다. 원래 있던 style은 그대로 뒤에 이어 붙인다.
+ * Outlook(Word 엔진)에 붙여넣을 때 '웹 표준' 문단으로 읽혀 위아래 5pt씩 여백이 붙어 행간이 지나치게 벌어졌다(사용자 지적).
+ * 위아래 여백을 모두 없앤다 — 띄우고 싶은 자리에는 문구에 이미 빈 문단이 들어 있다.
+ * (아래 여백만 10pt로 남기면 문단 사이가 원래와 똑같이 10pt라 달라지지 않았다 — Word에 붙여넣어 확인.)
+ * 원래 있던 style은 그대로 뒤에 이어 붙인다.
  */
 export function tightenParagraphs(html: string): string {
-  const P_MARGIN = "margin:0 0 10pt 0";
+  const P_MARGIN = "margin:0";
   return String(html ?? "").replace(/<p(\s[^>]*)?>/gi, (_m, attrs: string | undefined) => {
     const a = attrs ?? "";
     if (/\sstyle\s*=\s*"/i.test(a)) return `<p${a.replace(/\sstyle\s*=\s*"/i, ` style="${P_MARGIN};`)}>`;
