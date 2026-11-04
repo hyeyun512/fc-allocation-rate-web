@@ -621,8 +621,8 @@ function runCases(): Case[] {
   c.push(eq("order: 순서표에 없는 팀끼리는 원래 순서", leaderFirst(["SW팀", "HW팀", "개발그룹장"].map((basis) => ({ org: { basis } }))).map((x) => x.org.basis), ["개발그룹장", "SW팀", "HW팀"]));
   c.push(
     ok(
-      "orgs: HUS·HJP·HUG·HID는 27년 BP만 빠진다",
-      ["HUS", "HJP", "HUG", "HID"].every((b) => isOrgActiveIn(b, "2026-Q4") && !isOrgActiveIn(b, "2027-BP") && isOrgActiveIn(b, "2027-Q1")) &&
+      "orgs: HUS·HJP·HUG·HID·HTR는 27년 BP만 빠진다",
+      ["HUS", "HJP", "HUG", "HID", "HTR"].every((b) => isOrgActiveIn(b, "2026-Q4") && !isOrgActiveIn(b, "2027-BP") && isOrgActiveIn(b, "2027-Q1")) &&
         isOrgActiveIn("HUK", "2027-BP")
     )
   );

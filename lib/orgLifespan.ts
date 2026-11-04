@@ -46,6 +46,7 @@ export const ORG_SKIP_PERIODS: Record<string, string[]> = {
   HJP: ["2027-BP"],
   HUG: ["2027-BP"],
   HID: ["2027-BP"],
+  HTR: ["2027-BP"],
 };
 
 /** "2026-Q1" → 20261, "2027-BP" → 20270 (분기 크기 비교용). 형식이 다르면 null. */
