@@ -36,6 +36,18 @@ export const ORG_LIFESPAN: Record<string, { from?: string; to?: string }> = {
   "PM팀": { from: "2026-Q4" },
 };
 
+/**
+ * 존속 기간 안이지만 특정 기간에만 빠지는 조직.
+ * 27년 BP(사업계획)를 편성하지 않는 법인은 BP 배부율이 필요 없다(사용자 지시) — 26년 4Q까지와
+ * 27년 분기 실적에는 그대로 나온다. 여기 적힌 기간에는 조사·검토·자동계산·View 어디에도 나오지 않는다.
+ */
+export const ORG_SKIP_PERIODS: Record<string, string[]> = {
+  HUS: ["2027-BP"],
+  HJP: ["2027-BP"],
+  HUG: ["2027-BP"],
+  HID: ["2027-BP"],
+};
+
 /** "2026-Q1" → 20261, "2027-BP" → 20270 (분기 크기 비교용). 형식이 다르면 null. */
 export function quarterKey(quarter: string): number | null {
   const rank = quarterRank(String(quarter));
@@ -44,6 +56,7 @@ export function quarterKey(quarter: string): number | null {
 
 /** 그 분기에 이 조직이 존재했는지. 표에 없는 조직은 항상 존재하는 것으로 본다. */
 export function isOrgActiveIn(basis: string, quarter: string): boolean {
+  if (ORG_SKIP_PERIODS[basis]?.includes(quarter)) return false;
   const span = ORG_LIFESPAN[basis];
   if (!span) return true;
   const q = quarterKey(quarter);
