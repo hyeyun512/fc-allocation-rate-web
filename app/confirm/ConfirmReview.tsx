@@ -1301,8 +1301,14 @@ export default function ConfirmReview({
 
   // 선택 버튼에는 기간별 표시('4Q· BP·')를 두지 않는다 — 기간은 위 '현재 라운드'에 이미 있어 모든 버튼에 반복됐다(사용자 지시).
   // 기간별 반영 상태는 버튼에 마우스를 올리면(title) 보이고, 버튼 색은 모든 기간이 반영됐을 때만 바뀐다.
-  const chipTitle = (statuses: { period: string; confirmed: boolean }[]) =>
-    multi ? statuses.map((s) => `${s.period} ${s.confirmed ? "반영됨" : "미반영"}`).join(" / ") : undefined;
+  /** 라운드 기간 중 이 조직이 빠지는 기간 (예: 27년 BP 미편성 법인 HUS 등의 2027-BP). */
+  const skippedPeriods = (statuses: { period: string }[]) => periods.filter((p) => !statuses.some((s) => s.period === p));
+  const chipTitle = (statuses: { period: string; confirmed: boolean }[]) => {
+    if (!multi) return undefined;
+    const parts = statuses.map((s) => `${s.period} ${s.confirmed ? "반영됨" : "미반영"}`);
+    skippedPeriods(statuses).forEach((p) => parts.push(`${p} 미편성`));
+    return parts.join(" / ");
+  };
   // 모든 기간이 반영돼야 '반영됨' 색으로 칠한다 — 한 기간만 끝난 조직이 다 끝난 것처럼 보이면 안 된다.
   const allConfirmed = (statuses: { period: string; confirmed: boolean }[]) =>
     statuses.length > 0 && statuses.every((s) => s.confirmed);
@@ -1335,7 +1341,10 @@ export default function ConfirmReview({
                   key={item.org.id}
                   type="button"
                   // 배부율이 반영된 조직은 체크표시 대신 연한 초록 배경으로 알아본다 (제출하면 곧바로 반영된다).
-                  className={`av-chip ${allConfirmed(statuses) ? "submitted" : ""} ${selectedId === item.org.id ? "active" : ""}`}
+                  // 라운드 기간 중 빠지는 기간이 있는 조직(27년 BP 미편성 법인 등)은 테두리를 점선으로 둬 관리자만 알아보게 한다.
+                  className={`av-chip ${allConfirmed(statuses) ? "submitted" : ""} ${selectedId === item.org.id ? "active" : ""} ${
+                    multi && skippedPeriods(statuses).length > 0 ? "partial-round" : ""
+                  }`}
                   style={{ marginRight: 6, marginBottom: 6 }}
                   title={chipTitle(statuses)}
                   onClick={() => setSelectedId(item.org.id)}

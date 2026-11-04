@@ -653,3 +653,8 @@ input.required-input:not(:disabled):focus{background:#fff}
 .inputter-field{gap:3px;min-width:150px}
 .inputter-field label{font-size:11.5px}
 .field.inputter-field input{font-size:12.5px;padding:5px 8px;border-radius:6px;width:150px}
+
+/* 검토 화면 조직 선택 — 이번 라운드의 일부 기간에는 빠지는 조직(예: 27년 BP 미편성 법인). 테두리만 점선으로 은근히 표시한다. */
+.av-chip.partial-round{border:1px dashed #94a3b8}
+.av-chip.partial-round.submitted{border-color:#16a34a}
+.av-chip.partial-round.active{border:1px dashed #fff;outline:1px solid #2563eb}
