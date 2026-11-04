@@ -217,12 +217,13 @@ export function buildLinkMail(input: LinkMailInput): LinkMail | null {
  * 관리자 PC의 기본 메일 앱이 Outlook 데스크톱임을 확인하고 이 방식으로 정했다.
  */
 export function mailtoUrl(to: string | string[], subject: string, body: string): string {
-  // 주소는 하나씩 인코딩하고 구분자 쉼표는 그대로 둔다 — 쉼표까지 %2C로 바꾸면
-  // Outlook이 전체를 주소 하나로 읽어 수신인이 깨진다.
+  // 주소는 하나씩 인코딩하고 구분자는 세미콜론 그대로 둔다.
+  // Outlook 데스크톱은 받는 사람을 세미콜론으로 나눈다 — 쉼표로 이으면 여러 주소가 한 덩어리 글자로 들어가
+  // 받는 사람으로 인식되지 않았다(사용자 지적). 구분자를 %3B로 인코딩해도 한 덩어리가 된다.
   // @는 주소의 일부라 인코딩하지 않는다(메일 주소에서는 그대로 두는 것이 관례이고 호환성도 낫다).
   const list = (Array.isArray(to) ? to : [to])
     .map((a) => encodeURIComponent(a).replace(/%40/g, "@"))
-    .join(",");
+    .join(";");
   return `mailto:${list}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
 }
 

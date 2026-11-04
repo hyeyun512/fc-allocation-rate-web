@@ -127,7 +127,14 @@ async function getData(token: string) {
         role: (p.sub_team === "주재원" ? "주재원" : "법인") as PersonRole,
       }));
 
-    const draft = (drafts ?? []).find((d) => d.org_id === o.id && d.period === period) ?? null;
+    // 임시저장본은 마지막 제출(관리자가 검토 화면에서 저장한 것 포함)보다 나중 것만 쓴다.
+    // 제출 직후 늦게 도착한 자동 임시저장본이 남아, 관리자가 고친 값 대신 예전 입력이 링크에 보인 적이 있다
+    // (업무지원팀 27년 BP — 제출 00:50:05, 늦은 임시저장 00:50:07, 관리자 저장 01:37).
+    const latestSubmitAt = orgSubs
+      .filter((s) => s.period === period)
+      .reduce((m, s) => Math.max(m, new Date(s.submitted_at).getTime() || 0), 0);
+    const rawDraft = (drafts ?? []).find((d) => d.org_id === o.id && d.period === period) ?? null;
+    const draft = rawDraft && new Date(rawDraft.updated_at).getTime() > latestSubmitAt ? rawDraft : null;
     // 제출 라우트와 같은 함수를 쓴다 — 다르면 화면은 입력을 받고 서버는 거절하는 상태가 된다.
     const hasAnyValue = hasSubmittedValue(orgSubs.filter((s) => s.period === period));
 

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { resolveTargetOrg } from "@/lib/submitScope";
 import { resolveSurveyPeriod } from "@/lib/surveyPeriods";
+import { hasSubmittedValue, SubmissionRow } from "@/lib/rollup";
 
 /**
  * 조사 링크 화면의 자동 임시저장.
@@ -43,6 +44,16 @@ export async function POST(req: NextRequest) {
   const period = resolveSurveyPeriod(settings, body?.period, org?.division);
   if (!period) {
     return NextResponse.json({ error: "지금 조사 중인 기간이 아닙니다. 화면을 새로고침해 주세요." }, { status: 400 });
+  }
+
+  // 이미 제출돼 잠긴 기간(관리자가 다시 열지 않은 기간)에는 임시저장을 남기지 않는다.
+  // 제출 직후 늦게 도착한 자동 임시저장이 남아 링크에 예전 값이 보이는 일을 막는다.
+  const [{ data: periodSubs }, { data: unlock }] = await Promise.all([
+    supabase.from("allocation_submissions").select("*").eq("org_id", org.id).eq("period", period),
+    supabase.from("allocation_submit_unlocks").select("org_id").eq("org_id", org.id).eq("period", period).maybeSingle(),
+  ]);
+  if (hasSubmittedValue((periodSubs ?? []) as SubmissionRow[]) && !unlock) {
+    return NextResponse.json({ ok: true, skipped: "submitted" });
   }
 
   const savedAt = new Date().toISOString();

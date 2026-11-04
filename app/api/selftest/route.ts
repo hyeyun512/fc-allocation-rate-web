@@ -153,8 +153,8 @@ function runCases(): Case[] {
   c.push(ok("mailto under 1800 chars", mailtoUrl("a@b.com", saved?.subject ?? "", saved?.text ?? "").length < 1800));
   // 수신인 여러 명은 쉼표로 잇되 쉼표 자체는 인코딩하지 않는다 — %2C면 Outlook이 주소 하나로 읽는다.
   const multi = mailtoUrl(["a@b.com", "c@d.com"], "s", "b");
-  c.push(ok("mailto joins addresses with raw comma", multi.startsWith("mailto:a@b.com,c@d.com?")));
-  c.push(ok("mailto does not encode the separator", !multi.includes("%2C")));
+  c.push(ok("mailto joins addresses with raw semicolon (Outlook)", multi.startsWith("mailto:a@b.com;c@d.com?")));
+  c.push(ok("mailto does not encode the separator", !multi.includes("%3B") && !multi.includes("%2C")));
 
   /* ── 변화 비교 분기 쌍 (View 콤보박스) ── */
   {

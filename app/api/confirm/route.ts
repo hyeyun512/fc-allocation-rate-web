@@ -119,6 +119,9 @@ export async function POST(req: NextRequest) {
     .eq("period", period)
     .or(`status.is.null,status.neq.${DELETED_STATUS}`);
 
+  // 관리자가 저장한 값이 이 기간의 기준이다 — 남아 있던 링크 임시저장본은 지워 링크에도 같은 값이 보이게 한다.
+  await supabase.from("allocation_submission_drafts").delete().eq("org_id", orgId).eq("period", period);
+
   // 상위 집계 조직·HKR·사업총괄대표는 이 조직 값에서 파생되므로 여기서 같이 갱신한다
   // (예전에는 화면의 별도 '저장' 버튼을 눌러야 반영돼 누락되기 쉬웠다).
   const aggregateProblems = await recomputeAggregates(supabase, period, version);
