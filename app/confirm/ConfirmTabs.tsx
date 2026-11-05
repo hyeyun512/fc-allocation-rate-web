@@ -86,11 +86,11 @@ export default function ConfirmTabs({
   const selfusePeriods = periods.filter((p) => !usesBuildingBasis(p));
   const buildingPeriods = periods.filter(usesBuildingBasis);
   const hasBuilding = buildingPeriods.length > 0;
-  // 한 라운드(4Q+BP)가 두 표로 갈리면, 표 하나 안의 여러 기간과 같은 규칙 — 열린 기간을 모두 고쳐야 저장 —
-  // 을 표를 건너 지키도록 서로 아직 고치지 않은 기간을 알려 준다. 기간이 하나뿐인 라운드는 상관없다.
+  // 한 라운드(4Q+BP)가 두 표로 갈리면, 표 하나 안의 여러 기간과 같은 규칙 — 열린 기간 중 빈 기간이 있으면 저장 안 함 —
+  // 을 표를 건너 지키도록 서로 값이 비어 있는 기간을 알려 준다. 기간이 하나뿐인 라운드는 상관없다.
   const splitSelfuse = selfusePeriods.length > 0 && hasBuilding;
-  const [selfuseUntouched, setSelfuseUntouched] = useState<string[]>([]);
-  const [buildingUntouched, setBuildingUntouched] = useState<string[]>([]);
+  const [selfuseEmpty, setSelfuseEmpty] = useState<string[]>([]);
+  const [buildingEmpty, setBuildingEmpty] = useState<string[]>([]);
   // 건물 기준정보에 이어 쓸 용인 재료비 비중 — 건물 기간 바로 앞의 확정된 자가사용 기준정보 (예: 2026-Q4).
   const materialSource =
     hasBuilding
@@ -218,8 +218,8 @@ export default function ConfirmTabs({
               key={selfusePeriods.join("+")}
               periods={selfusePeriods}
               history={selfuseHistory}
-              onUntouchedChange={setSelfuseUntouched}
-              partnerUntouched={splitSelfuse ? buildingUntouched : undefined}
+              onEmptyChange={setSelfuseEmpty}
+              partnerEmpty={splitSelfuse ? buildingEmpty : undefined}
             />
           )}
           {hasBuilding && (
@@ -228,8 +228,8 @@ export default function ConfirmTabs({
               periods={buildingPeriods}
               history={buildingHistory}
               materialSource={materialSource}
-              onUntouchedChange={setBuildingUntouched}
-              partnerUntouched={splitSelfuse ? selfuseUntouched : undefined}
+              onEmptyChange={setBuildingEmpty}
+              partnerEmpty={splitSelfuse ? selfuseEmpty : undefined}
             />
           )}
         </TargetColumns>

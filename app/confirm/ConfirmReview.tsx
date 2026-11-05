@@ -684,6 +684,8 @@ function useOrgReviewEntry({ item, period, version }: { item: OrgReviewData; per
   const snapshotRef = useRef<string | null>(null);
   if (snapshotRef.current === null) snapshotRef.current = currentJson;
   const dirty = currentJson !== snapshotRef.current;
+  // 저장 전 빈 기간 검사용 — 법인(또는 조직) 배부율이나 주재원 배부율 중 하나라도 들어 있으면 값이 있는 것으로 본다.
+  const hasInput = totalOf(computedOrgRates) > 0 || (computedExpatRates ? totalOf(computedExpatRates) > 0 : false);
 
   function updateOrgRate(key: TargetKey, value: string) {
     setOrgRates((r) => ({ ...r, [key]: value }));
@@ -837,6 +839,7 @@ function useOrgReviewEntry({ item, period, version }: { item: OrgReviewData; per
     totalOk,
     expatTotalOk,
     dirty,
+    hasInput,
     loadPreviousPersons,
     loadPreviousOrgRate,
     copyFrom,
@@ -921,12 +924,12 @@ function OrgDetail({ entries: entryData, version }: { entries: ReviewEntryData[]
     // 손대지 않은 기간까지 저장하면 미리 채워진 값이 그 기간 확정값으로 남고, 하위 팀은 담당자가 링크로
     // 더 나중에 낸 값과 제출자를 덮어쓴다. 검사도 저장할 기간만 한다.
     // 기간이 하나뿐이면 예전처럼 그대로 저장한다.
-    // 두 기간을 함께 조사할 때는 열린 기간을 모두 고쳐야 저장된다(사용자 지시) — 미리 채워진 지난 분기
-    // 값이 그대로 확정되거나, 한 기간만 고치고 다른 기간을 빠뜨리는 일을 막는다.
+    // 두 기간을 함께 조사할 때는 열린 기간 중 값이 빈 기간이 있으면 저장하지 않는다(사용자 지시) — 한 기간만
+    // 입력하고 다른 기간을 빠뜨리는 일을 막는다. 손대지 않은 기간이 있어도 값만 있으면 저장된다(바뀐 기간만 저장).
     if (multi) {
-      const untouched = entries.filter((e) => editable(e) && !e.dirty);
-      if (untouched.length > 0) {
-        setError(`${untouched.map((e) => prettyQuarterLabel(e.period)).join(", ")}은(는) 아직 수정하지 않았습니다. 두 기간을 모두 수정한 뒤 저장해 주세요.`);
+      const empty = entries.filter((e) => editable(e) && !e.hasInput);
+      if (empty.length > 0) {
+        setError(`${empty.map((e) => prettyQuarterLabel(e.period)).join(", ")}은(는) 값이 비어 있습니다. 두 기간을 모두 입력한 뒤 저장해 주세요.`);
         return;
       }
     }

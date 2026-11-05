@@ -604,12 +604,12 @@ export default function ItPanel({
    * 표 안의 코멘트 ✓는 그 행의 기간만 저장한다.
    */
   function handleConfirm() {
-    // 두 기간을 함께 조사할 때는 열린 기간을 모두 고쳐야 저장된다(사용자 지시) — 미리 채워진 지난 분기
-    // 값이 그대로 확정되거나, 한 기간만 고치고 다른 기간을 빠뜨리는 일을 막는다.
+    // 두 기간을 함께 조사할 때는 열린 기간 중 값이 빈 기간이 있으면 저장하지 않는다(사용자 지시) — 한 기간만
+    // 입력하고 다른 기간을 빠뜨리는 일을 막는다. 손대지 않은 기간이 있어도 값만 있으면 저장된다(바뀐 기간만 저장).
     if (multi) {
-      const untouched = entries.filter((e) => e.editable && !e.dirty);
-      if (untouched.length > 0) {
-        setError(`${untouched.map((e) => prettyQuarterLabel(e.quarter)).join(", ")}은(는) 아직 수정하지 않았습니다. 두 기간을 모두 수정한 뒤 저장해 주세요.`);
+      const empty = entries.filter((e) => e.editable && !e.hasInput);
+      if (empty.length > 0) {
+        setError(`${empty.map((e) => prettyQuarterLabel(e.quarter)).join(", ")}은(는) 값이 비어 있습니다. 두 기간을 모두 입력한 뒤 저장해 주세요.`);
         return;
       }
     }
