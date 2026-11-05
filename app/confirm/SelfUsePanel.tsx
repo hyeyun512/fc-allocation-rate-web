@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { TARGETS, TargetKey, getPreviousPeriod } from "@/lib/targets";
 import { prettyQuarterLabel, sortQuarters } from "@/lib/quarter";
@@ -147,12 +147,6 @@ function useSelfuseEntry(period: string, initial: SelfuseBasisRow | null) {
   // 빈 화면에서 저장이 눌리면 자가사용비율 0 → '건물 100%'짜리 배부율이 만들어져,
   // 열어본 적도 없는 분기가 View에 확정된 것처럼 남는다.
   const hasInput = Object.values(input).some((v) => (v ?? 0) > 0);
-  // 두 기간을 함께 검토할 때는 이 화면에서 값을 바꾼 기간만 저장한다 — 손대지 않은 기간을 다시 저장하면
-  // 그 기간의 확정 시각·입력자가 덮어써진다. 처음 불러온 값(또는 마지막 저장값)과 비교한다.
-  const currentJson = JSON.stringify({ form, note });
-  const snapshotRef = useRef<string | null>(null);
-  if (snapshotRef.current === null) snapshotRef.current = currentJson;
-  const dirty = currentJson !== snapshotRef.current;
 
   /** 이 분기의 입력값을 과거 행과 같은 모양으로 본 것. 확정 후 읽기 전용 행에 그대로 쓴다. */
   function asRow(submittedBy: string): SelfuseBasisRow {
@@ -183,7 +177,6 @@ function useSelfuseEntry(period: string, initial: SelfuseBasisRow | null) {
     if (!res.ok) throw new Error(json.error || "확정 처리 중 오류가 발생했습니다.");
     setConfirmed(true);
     setUnlocked(false);
-    snapshotRef.current = currentJson;
   }
 
   return {
@@ -200,7 +193,6 @@ function useSelfuseEntry(period: string, initial: SelfuseBasisRow | null) {
     hasBundang2,
     canEditField,
     hasInput,
-    dirty,
     asRow,
     save,
   };
@@ -264,11 +256,11 @@ export default function SelfUsePanel({
 
   async function handleConfirm() {
     setError("");
-    // 함께 저장할 기간: 열려 있고 이 화면에서 값을 바꾼 기간 (기간이 하나뿐이면 예전처럼 그 기간).
+    // 함께 저장할 기간: 열려 있는 기간 모두.
     // 그중 값이 빈 기간은 뺀다 — 빈 기간을 저장하면 '건물 100%'가 확정된 것처럼 남는다.
     // 두 기간을 함께 조사할 때는 열린 기간 중 값이 빈 기간이 있으면 저장하지 않는다(사용자 지시) — 한 기간만
-    // 입력하고 다른 기간을 빠뜨리는 일을 막는다. 손대지 않은 기간도 아직 반영 전이면 함께 저장한다 —
-    // 빼면 그 기간만 반영되지 않은 채 입력칸이 열려 남는다. 이미 반영된 기간은 바뀐 경우에만 다시 저장한다.
+    // 입력하고 다른 기간을 빠뜨리는 일을 막는다. 값만 있으면 손대지 않은 기간도
+    // 함께 저장한다(사용자 지시) — 빼면 그 기간만 반영되지 않은 채 입력칸이 열려 남는다.
     if (multi) {
       const empty = [...emptyLabels, ...(partnerEmpty ?? [])];
       if (empty.length > 0) {
@@ -276,9 +268,9 @@ export default function SelfUsePanel({
         return;
       }
     }
-    const changed = entries.filter((e) => e.editable && (!multi || e.dirty || !e.confirmed));
+    const changed = entries.filter((e) => e.editable);
     if (changed.length === 0) {
-      setError("바뀐 값이 없어 저장하지 않았습니다.");
+      setError("열려 있는 기간이 없어 저장하지 않았습니다.");
       return;
     }
     const targets = changed.filter((e) => e.hasInput);

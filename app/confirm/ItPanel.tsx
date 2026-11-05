@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { TARGETS, TargetKey, getPreviousPeriod, isTargetActiveIn } from "@/lib/targets";
 import { prettyQuarterLabel, sortQuarters } from "@/lib/quarter";
@@ -379,12 +379,6 @@ function useItEntry(quarter: string, history: ItBasisRow[]) {
   // 빈 화면에서 저장(또는 코멘트 칸 엔터)이 눌리면 값이 0인 분기가 확정된 것처럼 남는다 —
   // 실제로 3Q를 연 적도 없는데 View에 3Q IT 배부율이 생긴 적이 있어 저장 전에 이걸로 막는다.
   const hasInput = sumItBasisInput(toBasisInput(headcountForm)) > 0 || sumItBasisInput(toBasisInput(sapForm)) > 0;
-  // 두 기간을 함께 검토할 때 아래 저장 버튼은 이 화면에서 값을 바꾼 기간만 저장한다 — 손대지 않은 기간을
-  // 다시 저장하면 그 기간의 확인일자·입력자가 덮어써진다. 처음 불러온 값(또는 마지막 저장값)과 비교한다.
-  const currentJson = JSON.stringify({ headcountForm, sapForm, headcountBy, sapBy, headcountBasis, sapBasis, headcountNote, sapNote });
-  const snapshotRef = useRef<string | null>(null);
-  if (snapshotRef.current === null) snapshotRef.current = currentJson;
-  const dirty = currentJson !== snapshotRef.current;
 
   /** 이 기간을 저장한다. 실패하면 던진다. */
   async function save() {
@@ -411,7 +405,6 @@ function useItEntry(quarter: string, history: ItBasisRow[]) {
     setSavedSapNote(sapNote);
     setSavedConfirmedAt(new Date().toISOString());
     setUnlocked(false);
-    snapshotRef.current = currentJson;
   }
 
   return {
@@ -439,7 +432,6 @@ function useItEntry(quarter: string, history: ItBasisRow[]) {
     setUnlocked,
     preview,
     hasInput,
-    dirty,
     save,
   };
 }
@@ -601,13 +593,13 @@ export default function ItPanel({
   }
 
   /**
-   * 아래 저장 버튼 — 열려 있고 값을 바꾼 기간을 저장한다 (기간이 하나뿐이면 예전처럼 그 기간).
+   * 아래 저장 버튼 — 열려 있는 기간을 모두 저장한다.
    * 표 안의 코멘트 ✓는 그 행의 기간만 저장한다.
    */
   async function handleConfirm() {
     // 두 기간을 함께 조사할 때는 열린 기간 중 값이 빈 기간이 있으면 저장하지 않는다(사용자 지시) — 한 기간만
-    // 입력하고 다른 기간을 빠뜨리는 일을 막는다. 손대지 않은 기간도 아직 반영 전이면 함께 저장한다 —
-    // 빼면 그 기간만 반영되지 않은 채 입력칸이 열려 남는다. 이미 반영된 기간은 바뀐 경우에만 다시 저장한다.
+    // 입력하고 다른 기간을 빠뜨리는 일을 막는다. 값만 있으면 손대지 않은 기간도
+    // 함께 저장한다(사용자 지시) — 빼면 그 기간만 반영되지 않은 채 입력칸이 열려 남는다.
     if (multi) {
       const empty = entries.filter((e) => e.editable && !e.hasInput);
       if (empty.length > 0) {
@@ -615,9 +607,9 @@ export default function ItPanel({
         return;
       }
     }
-    const changed = entries.filter((e) => e.editable && (!multi || e.dirty || !e.savedConfirmedAt));
+    const changed = entries.filter((e) => e.editable);
     if (changed.length === 0) {
-      setError("바뀐 값이 없어 저장하지 않았습니다.");
+      setError("열려 있는 기간이 없어 저장하지 않았습니다.");
       return;
     }
     // 바뀌지 않아 다시 저장하지 않은 기간도 '재수정'으로 열어 둔 것이면 함께 잠근다.

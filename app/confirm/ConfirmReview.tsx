@@ -214,20 +214,6 @@ function initialPersons(item: OrgReviewData): PersonEditRow[] {
 }
 
 /**
- * 저장 대상인 입력값을 비교용 문자열로. 행 key는 화면용이라(불러오기·복사 때마다 바뀐다) 뺀다.
- * 개인별 표는 법인·주재원 행을 함께 들고 있어 주재원 변경도 여기서 잡힌다.
- */
-function valuesJson(v: {
-  orgRates: RateMap;
-  orgHeadcountInput: string;
-  orgNoteInput: string;
-  orgNoteEnInput: string;
-  persons: PersonEditRow[];
-}): string {
-  return JSON.stringify({ ...v, persons: v.persons.map(({ key: _key, ...rest }) => rest) });
-}
-
-/**
  * 자동계산 표의 코멘트 입력 상태 + 자동저장.
  * 배부율은 못 고치는 표라 별도 저장 버튼을 두지 않고, 입력칸에서 포커스가 빠질 때 저장한다.
  */
@@ -677,13 +663,6 @@ function useOrgReviewEntry({ item, period, version }: { item: OrgReviewData; per
   const totalOk = Math.abs(total - 1) < RATE_TOTAL_TOLERANCE || total === 0;
   const expatTotal = computedExpatRates ? totalOf(computedExpatRates) : 0;
   const expatTotalOk = !computedExpatRates || expatTotal === 0 || Math.abs(expatTotal - 1) < RATE_TOTAL_TOLERANCE;
-  // 두 기간을 함께 검토할 때 저장 대상은 **이 화면에서 값을 바꾼 기간만**이다.
-  // 입력칸은 이전 기간 확정값으로 미리 채워지므로 '값이 있다'로 고르면 손대지 않은 27년 BP까지 저장돼
-  // allocation_rate와 확정 제출이 생기고 담당자 링크가 잠긴다. 처음 불러온 값(또는 마지막 저장값)과 비교한다.
-  const currentJson = valuesJson({ orgRates, orgHeadcountInput, orgNoteInput, orgNoteEnInput, persons });
-  const snapshotRef = useRef<string | null>(null);
-  if (snapshotRef.current === null) snapshotRef.current = currentJson;
-  const dirty = currentJson !== snapshotRef.current;
   // 저장 전 빈 기간 검사용 — 법인(또는 조직) 배부율이나 주재원 배부율 중 하나라도 들어 있으면 값이 있는 것으로 본다.
   const hasInput = totalOf(computedOrgRates) > 0 || (computedExpatRates ? totalOf(computedExpatRates) > 0 : false);
 
@@ -784,8 +763,6 @@ function useOrgReviewEntry({ item, period, version }: { item: OrgReviewData; per
 
     // 값이 없는 저장(행을 전부 지웠거나 배부율이 0%)은 반영으로 보지 않는다 — 화면 배지도 그대로 둔다.
     setConfirmed(totalOf(computedOrgRates) > 0);
-    // 방금 저장한 값이 새 기준이다 — 다시 고치기 전에는 함께 저장 대상이 아니다.
-    snapshotRef.current = currentJson;
     return corrected;
   }
 
@@ -806,8 +783,6 @@ function useOrgReviewEntry({ item, period, version }: { item: OrgReviewData; per
     setOrgNoteInput(saved.orgNoteInput);
     setOrgNoteEnInput(saved.orgNoteEnInput);
     setPersons(saved.persons);
-    // 되돌린 값이 곧 기준값이다 — 되돌린 기간이 '바뀐 기간'으로 남지 않게 한다.
-    snapshotRef.current = valuesJson(saved);
   }
 
   return {
@@ -838,7 +813,6 @@ function useOrgReviewEntry({ item, period, version }: { item: OrgReviewData; per
     autoNote,
     totalOk,
     expatTotalOk,
-    dirty,
     hasInput,
     loadPreviousPersons,
     loadPreviousOrgRate,
@@ -920,13 +894,11 @@ function OrgDetail({ entries: entryData, version }: { entries: ReviewEntryData[]
   async function handleConfirm() {
     setError("");
     setNotice("");
-    // 함께 저장할 기간: 열려 있고 이 화면에서 값을 바꿨거나 아직 반영 전인 기간 (비워서 저장하는 것도 바꾼 것이다).
-    // 이미 반영된 기간을 손대지 않고 다시 저장하면 하위 팀은 담당자가 링크로 더 나중에 낸 값과 제출자를
-    // 덮어쓰므로 뺀다. 검사도 저장할 기간만 한다.
+    // 함께 저장할 기간: 열려 있는 기간 모두.
     // 기간이 하나뿐이면 예전처럼 그대로 저장한다.
     // 두 기간을 함께 조사할 때는 열린 기간 중 값이 빈 기간이 있으면 저장하지 않는다(사용자 지시) — 한 기간만
-    // 입력하고 다른 기간을 빠뜨리는 일을 막는다. 손대지 않은 기간도 아직 반영 전이면 함께 저장한다 —
-    // 빼면 그 기간만 반영되지 않은 채 입력칸이 열려 남는다. 이미 반영된 기간은 바뀐 경우에만 다시 저장한다.
+    // 입력하고 다른 기간을 빠뜨리는 일을 막는다. 값만 있으면 손대지 않은 기간도
+    // 함께 저장한다(사용자 지시) — 빼면 그 기간만 반영되지 않은 채 입력칸이 열려 남는다.
     if (multi) {
       const empty = entries.filter((e) => editable(e) && !e.hasInput);
       if (empty.length > 0) {
@@ -934,9 +906,9 @@ function OrgDetail({ entries: entryData, version }: { entries: ReviewEntryData[]
         return;
       }
     }
-    const targets = entries.filter((e) => editable(e) && (!multi || e.dirty || !e.confirmed));
+    const targets = entries.filter((e) => editable(e));
     if (targets.length === 0) {
-      setError("바뀐 값이 없어 저장하지 않았습니다.");
+      setError("열려 있는 기간이 없어 저장하지 않았습니다.");
       return;
     }
     for (const e of targets) {

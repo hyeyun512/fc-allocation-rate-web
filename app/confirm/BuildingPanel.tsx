@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { TARGETS, TargetKey } from "@/lib/targets";
 import { prettyQuarterLabel, sortQuarters } from "@/lib/quarter";
@@ -133,11 +133,6 @@ function useBuildingEntry(period: string, initial: BuildingBasisRow | null) {
   const input = toInput(form);
   const preview = useMemo(() => computeBuildingRates(input), [JSON.stringify(input)]);
   const hasInput = Object.values(input).some((v) => v > 0);
-  // 여러 기간을 함께 검토할 때는 이 화면에서 값을 바꾼 기간만 저장한다 (SelfUsePanel과 같은 규칙).
-  const currentJson = JSON.stringify({ form, note });
-  const snapshotRef = useRef<string | null>(null);
-  if (snapshotRef.current === null) snapshotRef.current = currentJson;
-  const dirty = currentJson !== snapshotRef.current;
 
   function asRow(submittedBy: string): BuildingBasisRow {
     return {
@@ -166,10 +161,9 @@ function useBuildingEntry(period: string, initial: BuildingBasisRow | null) {
     if (!res.ok) throw new Error(json.error || "확정 처리 중 오류가 발생했습니다.");
     setConfirmed(true);
     setUnlocked(false);
-    snapshotRef.current = currentJson;
   }
 
-  return { period, form, setForm, note, setNote, confirmed, editable, setUnlocked, input, preview, hasInput, dirty, asRow, save };
+  return { period, form, setForm, note, setNote, confirmed, editable, setUnlocked, input, preview, hasInput, asRow, save };
 }
 
 type BuildingEntry = ReturnType<typeof useBuildingEntry>;
@@ -222,7 +216,7 @@ export default function BuildingPanel({
   async function handleConfirm() {
     setError("");
     // 두 기간을 함께 조사할 때는 열린 기간 중 값이 빈 기간이 있으면 저장하지 않는다(사용자 지시) — 4Q 자가사용 표까지 함께 본다.
-    // 손대지 않은 기간도 아직 반영 전이면 함께 저장한다 — 빼면 그 기간만 반영되지 않은 채 입력칸이 열려 남는다. 이미 반영된 기간은 바뀐 경우에만 다시 저장한다.
+    // 값만 있으면 손대지 않은 기간도 함께 저장한다(사용자 지시) — 빼면 그 기간만 반영되지 않은 채 입력칸이 열려 남는다.
     if (multi) {
       const empty = [...(partnerEmpty ?? []), ...emptyLabels];
       if (empty.length > 0) {
@@ -230,10 +224,10 @@ export default function BuildingPanel({
         return;
       }
     }
-    // 함께 저장할 기간: 열려 있고 값을 바꿨거나 아직 반영 전인 기간 (기간이 하나뿐이면 그 기간).
-    const changed = entries.filter((e) => e.editable && (!multi || e.dirty || !e.confirmed));
+    // 함께 저장할 기간: 열려 있는 기간 모두.
+    const changed = entries.filter((e) => e.editable);
     if (changed.length === 0) {
-      setError("바뀐 값이 없어 저장하지 않았습니다.");
+      setError("열려 있는 기간이 없어 저장하지 않았습니다.");
       return;
     }
     for (const e of changed) {
