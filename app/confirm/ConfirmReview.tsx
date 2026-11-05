@@ -912,16 +912,19 @@ function OrgDetail({ entries: entryData, version }: { entries: ReviewEntryData[]
     setConfirming(true);
     const corrected: string[] = [];
     const failures: string[] = [];
-    for (const e of targets) {
-      try {
-        const fixed = await e.confirm();
-        fixed.forEach((c) =>
+    // 기간마다 서버가 상위 집계까지 다시 계산해 한 번에 10초 넘게 걸린다. 차례로 저장하면 4Q가 먼저 잠긴 뒤
+    // BP는 한참 열린 채 남아 4Q만 저장된 것처럼 보였다 — 기간끼리 겹치는 행이 없으므로 동시에 저장한다.
+    const results = await Promise.allSettled(targets.map((e) => e.confirm()));
+    results.forEach((r, i) => {
+      const e = targets[i];
+      if (r.status === "fulfilled") {
+        r.value.forEach((c) =>
           corrected.push(`${c.basis}${multi ? ` ${e.period}` : ""} 합계가 ${(c.from * 100).toFixed(3)}%였습니다`)
         );
-      } catch (err: any) {
-        failures.push(withPeriod(e.period, err?.message || "저장 중 오류가 발생했습니다."));
+      } else {
+        failures.push(withPeriod(e.period, r.reason?.message || "저장 중 오류가 발생했습니다."));
       }
-    }
+    });
     // 화면 검증은 ±0.5%p까지 통과시키므로 100.01% 같은 입력이 그대로 저장될 뻔했다.
     // 저장은 100%로 맞춰 끝났지만, 원본 입력을 다시 보도록 어떤 값이었는지 알려준다.
     if (corrected.length > 0) {
