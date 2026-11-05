@@ -920,12 +920,13 @@ function OrgDetail({ entries: entryData, version }: { entries: ReviewEntryData[]
   async function handleConfirm() {
     setError("");
     setNotice("");
-    // 함께 저장할 기간: 열려 있고 이 화면에서 값을 바꾼 기간만 (비워서 저장하는 것도 바꾼 것이다).
-    // 손대지 않은 기간까지 저장하면 미리 채워진 값이 그 기간 확정값으로 남고, 하위 팀은 담당자가 링크로
-    // 더 나중에 낸 값과 제출자를 덮어쓴다. 검사도 저장할 기간만 한다.
+    // 함께 저장할 기간: 열려 있고 이 화면에서 값을 바꿨거나 아직 반영 전인 기간 (비워서 저장하는 것도 바꾼 것이다).
+    // 이미 반영된 기간을 손대지 않고 다시 저장하면 하위 팀은 담당자가 링크로 더 나중에 낸 값과 제출자를
+    // 덮어쓰므로 뺀다. 검사도 저장할 기간만 한다.
     // 기간이 하나뿐이면 예전처럼 그대로 저장한다.
     // 두 기간을 함께 조사할 때는 열린 기간 중 값이 빈 기간이 있으면 저장하지 않는다(사용자 지시) — 한 기간만
-    // 입력하고 다른 기간을 빠뜨리는 일을 막는다. 손대지 않은 기간이 있어도 값만 있으면 저장된다(바뀐 기간만 저장).
+    // 입력하고 다른 기간을 빠뜨리는 일을 막는다. 손대지 않은 기간도 아직 반영 전이면 함께 저장한다 —
+    // 빼면 그 기간만 반영되지 않은 채 입력칸이 열려 남는다. 이미 반영된 기간은 바뀐 경우에만 다시 저장한다.
     if (multi) {
       const empty = entries.filter((e) => editable(e) && !e.hasInput);
       if (empty.length > 0) {
@@ -933,7 +934,7 @@ function OrgDetail({ entries: entryData, version }: { entries: ReviewEntryData[]
         return;
       }
     }
-    const targets = entries.filter((e) => editable(e) && (!multi || e.dirty));
+    const targets = entries.filter((e) => editable(e) && (!multi || e.dirty || !e.confirmed));
     if (targets.length === 0) {
       setError("바뀐 값이 없어 저장하지 않았습니다.");
       return;
