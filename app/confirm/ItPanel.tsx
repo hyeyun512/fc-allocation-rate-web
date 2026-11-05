@@ -593,20 +593,11 @@ export default function ItPanel({
   }
 
   /**
-   * 아래 저장 버튼 — 열려 있는 기간을 모두 저장한다.
+   * 아래 저장 버튼 — 열려 있는 기간을 모두 저장한다. 값이 빈 기간은 건너뛰므로 4Q나 BP 하나만 저장할 수도 있다.
    * 표 안의 코멘트 ✓는 그 행의 기간만 저장한다.
    */
   async function handleConfirm() {
-    // 두 기간을 함께 조사할 때는 열린 기간 중 값이 빈 기간이 있으면 저장하지 않는다(사용자 지시) — 한 기간만
-    // 입력하고 다른 기간을 빠뜨리는 일을 막는다. 값만 있으면 손대지 않은 기간도
-    // 함께 저장한다(사용자 지시) — 빼면 그 기간만 반영되지 않은 채 입력칸이 열려 남는다.
-    if (multi) {
-      const empty = entries.filter((e) => e.editable && !e.hasInput);
-      if (empty.length > 0) {
-        setError(`${empty.map((e) => prettyQuarterLabel(e.quarter)).join(", ")}은(는) 값이 비어 있습니다. 두 기간을 모두 입력한 뒤 저장해 주세요.`);
-        return;
-      }
-    }
+    // 손대지 않은 기간도 값이 있으면 함께 저장한다 — 빼면 그 기간만 반영되지 않은 채 입력칸이 열려 남는다.
     const changed = entries.filter((e) => e.editable);
     if (changed.length === 0) {
       setError("열려 있는 기간이 없어 저장하지 않았습니다.");

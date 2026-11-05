@@ -894,21 +894,12 @@ function OrgDetail({ entries: entryData, version }: { entries: ReviewEntryData[]
   async function handleConfirm() {
     setError("");
     setNotice("");
-    // 함께 저장할 기간: 열려 있는 기간 모두.
-    // 기간이 하나뿐이면 예전처럼 그대로 저장한다.
-    // 두 기간을 함께 조사할 때는 열린 기간 중 값이 빈 기간이 있으면 저장하지 않는다(사용자 지시) — 한 기간만
-    // 입력하고 다른 기간을 빠뜨리는 일을 막는다. 값만 있으면 손대지 않은 기간도
-    // 함께 저장한다(사용자 지시) — 빼면 그 기간만 반영되지 않은 채 입력칸이 열려 남는다.
-    if (multi) {
-      const empty = entries.filter((e) => editable(e) && !e.hasInput);
-      if (empty.length > 0) {
-        setError(`${empty.map((e) => prettyQuarterLabel(e.period)).join(", ")}은(는) 값이 비어 있습니다. 두 기간을 모두 입력한 뒤 저장해 주세요.`);
-        return;
-      }
-    }
-    const targets = entries.filter((e) => editable(e));
+    // 함께 저장할 기간: 열려 있고 값이 있는 기간 — 4Q나 BP 하나만 입력해도 그 기간만 저장된다(사용자 지시).
+    // 손대지 않은 기간도 값이 있으면 함께 저장한다 — 빼면 그 기간만 반영되지 않은 채 입력칸이 열려 남는다.
+    // 기간이 하나뿐이면 예전처럼 그대로 저장한다(비워서 저장해 지우는 것도 된다).
+    const targets = entries.filter((e) => editable(e) && (!multi || e.hasInput));
     if (targets.length === 0) {
-      setError("열려 있는 기간이 없어 저장하지 않았습니다.");
+      setError(multi ? "입력값이 비어 있어 저장하지 않았습니다." : "열려 있는 기간이 없어 저장하지 않았습니다.");
       return;
     }
     for (const e of targets) {

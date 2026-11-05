@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { TARGETS, TargetKey, getPreviousPeriod } from "@/lib/targets";
 import { prettyQuarterLabel, sortQuarters } from "@/lib/quarter";
@@ -203,32 +203,17 @@ type SelfuseEntry = ReturnType<typeof useSelfuseEntry>;
 export default function SelfUsePanel({
   periods,
   history,
-  onEmptyChange,
-  partnerEmpty,
 }: {
   /** 이번 라운드의 기간들 (기간 순서대로). 묶음 라운드(26년 4Q & 27년 BP)면 기간마다 입력 행이 붙는다. */
   periods: string[];
   history: SelfuseBasisRow[];
-  /** 값이 비어 있는 열린 기간(표기)을 알린다 — 같은 라운드의 건물 표(BuildingPanel)가 저장 전에 본다. */
-  onEmptyChange?: (labels: string[]) => void;
-  /**
-   * 같은 라운드의 다른 표(27년 BP 건물)에서 값이 비어 있는 열린 기간. 넘어오면 두 표가 한 라운드라는 뜻이고,
-   * 한 표 안의 여러 기간과 같은 규칙(열린 기간 중 값이 빈 기간이 있으면 저장하지 않음)을 표를 건너 적용한다.
-   */
-  partnerEmpty?: string[];
 }) {
   const initialOf = (p: string) => history.find((h) => h.quarter === p) ?? null;
   // 기간 수는 라운드가 정하고 화면을 여는 동안 바뀌지 않으므로, 훅을 기간마다 한 번씩 불러도 순서가 고정된다.
   // eslint-disable-next-line react-hooks/rules-of-hooks
   const entries: SelfuseEntry[] = periods.map((p) => useSelfuseEntry(p, initialOf(p)));
   // 다른 표와 함께 저장 규칙을 지켜야 하면(4Q 자가사용 + BP 건물) 기간이 하나여도 여러 기간 라운드로 본다.
-  const multi = entries.length > 1 || partnerEmpty !== undefined;
-  const emptyLabels = entries.filter((e) => e.editable && !e.hasInput).map((e) => prettyQuarterLabel(e.period));
-  const emptyKey = emptyLabels.join(",");
-  useEffect(() => {
-    onEmptyChange?.(emptyLabels);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [emptyKey]);
+  const multi = entries.length > 1;
   // 입력자는 한 사람이 라운드의 기간을 함께 입력하므로 하나만 받고, 이번에 저장하는 기간에만 실어 보낸다.
   // 기간마다 저장된 입력자가 서로 다르면 어느 쪽인지 알 수 없으므로 비워 두고 새로 적게 한다.
   const [submittedBy, setSubmittedBy] = useState(() => {
@@ -256,18 +241,8 @@ export default function SelfUsePanel({
 
   async function handleConfirm() {
     setError("");
-    // 함께 저장할 기간: 열려 있는 기간 모두.
-    // 그중 값이 빈 기간은 뺀다 — 빈 기간을 저장하면 '건물 100%'가 확정된 것처럼 남는다.
-    // 두 기간을 함께 조사할 때는 열린 기간 중 값이 빈 기간이 있으면 저장하지 않는다(사용자 지시) — 한 기간만
-    // 입력하고 다른 기간을 빠뜨리는 일을 막는다. 값만 있으면 손대지 않은 기간도
-    // 함께 저장한다(사용자 지시) — 빼면 그 기간만 반영되지 않은 채 입력칸이 열려 남는다.
-    if (multi) {
-      const empty = [...emptyLabels, ...(partnerEmpty ?? [])];
-      if (empty.length > 0) {
-        setError(`${empty.join(", ")}은(는) 값이 비어 있습니다. 두 기간을 모두 입력한 뒤 저장해 주세요.`);
-        return;
-      }
-    }
+    // 함께 저장할 기간: 열려 있는 기간 모두. 그중 값이 빈 기간은 뺀다 — 빈 기간을 저장하면 '건물 100%'가
+    // 확정된 것처럼 남는다. 그래서 4Q나 BP 하나만 입력해도 그 기간만 저장된다(사용자 지시).
     const changed = entries.filter((e) => e.editable);
     if (changed.length === 0) {
       setError("열려 있는 기간이 없어 저장하지 않았습니다.");

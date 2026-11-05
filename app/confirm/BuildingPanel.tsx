@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { TARGETS, TargetKey } from "@/lib/targets";
 import { prettyQuarterLabel, sortQuarters } from "@/lib/quarter";
@@ -172,8 +172,6 @@ export default function BuildingPanel({
   periods,
   history,
   materialSource,
-  onEmptyChange,
-  partnerEmpty,
 }: {
   /** 이번 라운드에서 건물 기준정보를 쓰는 기간들 (27년 BP~). */
   periods: string[];
@@ -183,23 +181,13 @@ export default function BuildingPanel({
    * 같은 값이라 이어 쓸 수 있다 — 분당은 인원수에서 면적으로 바뀌어 가져올 것이 없다.
    */
   materialSource: { quarter: string; material_evcs_domestic_ratio: number; material_evcs_overseas_ratio: number } | null;
-  /** 값이 비어 있는 열린 기간(표기)을 알린다 — 같은 라운드의 자가사용 표(SelfUsePanel)가 저장 전에 본다. */
-  onEmptyChange?: (labels: string[]) => void;
-  /** 같은 라운드의 자가사용 표(26년 4Q)에서 값이 비어 있는 열린 기간 — SelfUsePanel의 같은 이름 prop 참고. */
-  partnerEmpty?: string[];
 }) {
   const initialOf = (p: string) => history.find((h) => h.quarter === p) ?? null;
   // 기간 수는 라운드가 정하고 화면을 여는 동안 바뀌지 않으므로, 훅을 기간마다 한 번씩 불러도 순서가 고정된다.
   // eslint-disable-next-line react-hooks/rules-of-hooks
   const entries: BuildingEntry[] = periods.map((p) => useBuildingEntry(p, initialOf(p)));
   // 다른 표와 함께 저장 규칙을 지켜야 하면(4Q 자가사용 + BP 건물) 기간이 하나여도 여러 기간 라운드로 본다.
-  const multi = entries.length > 1 || partnerEmpty !== undefined;
-  const emptyLabels = entries.filter((e) => e.editable && !e.hasInput).map((e) => prettyQuarterLabel(e.period));
-  const emptyKey = emptyLabels.join(",");
-  useEffect(() => {
-    onEmptyChange?.(emptyLabels);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [emptyKey]);
+  const multi = entries.length > 1;
   // 기간마다 저장된 입력자가 다르면 어느 쪽인지 알 수 없으므로 비워 두고 새로 적게 한다.
   const [submittedBy, setSubmittedBy] = useState(() => {
     const names = Array.from(new Set(periods.map((p) => initialOf(p)?.submitted_by).filter((x): x is string => !!x)));
@@ -215,17 +203,8 @@ export default function BuildingPanel({
 
   async function handleConfirm() {
     setError("");
-    // 두 기간을 함께 조사할 때는 열린 기간 중 값이 빈 기간이 있으면 저장하지 않는다(사용자 지시) — 4Q 자가사용 표까지 함께 본다.
-    // 값만 있으면 손대지 않은 기간도 함께 저장한다(사용자 지시) — 빼면 그 기간만 반영되지 않은 채 입력칸이 열려 남는다.
-    if (multi) {
-      const empty = [...(partnerEmpty ?? []), ...emptyLabels];
-      if (empty.length > 0) {
-        setError(`${empty.join(", ")}은(는) 값이 비어 있습니다. 두 기간을 모두 입력한 뒤 저장해 주세요.`);
-        return;
-      }
-    }
-    // 함께 저장할 기간: 열려 있는 기간 모두.
-    const changed = entries.filter((e) => e.editable);
+    // 함께 저장할 기간: 열려 있는 기간 모두. 여러 기간이면 값이 빈 기간은 건너뛴다 — 한 기간만 저장할 수 있다(사용자 지시).
+    const changed = entries.filter((e) => e.editable && (!multi || e.hasInput));
     if (changed.length === 0) {
       setError("열려 있는 기간이 없어 저장하지 않았습니다.");
       return;
