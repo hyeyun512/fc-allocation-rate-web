@@ -346,6 +346,65 @@ function ConfirmBadges({ items, multi }: { items: { period: string; confirmed: b
 }
 
 // ---------- 상위 집계 조직 (경영지원실 등) : 하위 조직 인원수 가중평균, 읽기 전용 ----------
+/**
+ * 그룹 평균 자리(IT사업대표·Staff(IT)) — 입력칸 없이 자동 계산값만 보여주는 상자.
+ * 지난 분기 이력은 확정값 그대로, 이번 라운드 기간은 화면에서 계산한 값(서버 autoAggregate와 같은 식)을 그린다.
+ */
+function DerivedOrgDetail({
+  org,
+  rows,
+  sources,
+}: {
+  org: OrgReviewData;
+  rows: { period: string; rec: Record<TargetKey, number> | null; headcount: number }[];
+  sources: string[];
+}) {
+  const periods = rows.map((r) => r.period);
+  const past = org.rateHistory.filter((h) => !periods.includes(h.quarter));
+  const anyValue = rows.some((r) => r.rec && totalOf(toRateMap(r.rec)) > 0);
+  return (
+    <div className="panel derived">
+      <div style={{ marginBottom: 6 }}>
+        <div className="panel-title">
+          <span className="org-name">{org.org.basis}</span>{" "}
+          <span className="status-badge" style={{ background: "#eef0f3", color: "#64748b" }}>
+            자동 계산
+          </span>
+        </div>
+        <div className="panel-sub">입력하지 않습니다 — 아래 각주의 팀 평균으로 자동 계산됩니다.</div>
+      </div>
+      <div className="tbl-scroll" style={{ marginBottom: 6 }}>
+        <table className="rate-tbl">
+          <RateTableHead />
+          <tbody>
+            {quarterOrderWith(past.map((h) => h.quarter), periods).map((q) => {
+              const r = rows.find((x) => x.period === q);
+              if (r) {
+                const has = !!r.rec && totalOf(toRateMap(r.rec)) > 0;
+                return (
+                  <ReadOnlyRateRow
+                    key={q}
+                    label={q}
+                    period={q}
+                    rec={has ? (r.rec as Record<TargetKey, number>) : toNumRec(emptyRates())}
+                    headcount={has ? r.headcount : null}
+                  />
+                );
+              }
+              const h = past.find((x) => x.quarter === q)!;
+              return <ReadOnlyRateRow key={q} label={q} period={q} rec={h.rates} headcount={h.headcount ?? null} />;
+            })}
+          </tbody>
+        </table>
+      </div>
+      <div className="field-hint">
+        ※ {sources.join(", ")} 중 입력한 팀들의 배부율을 각 팀 인원수로 가중평균한 값입니다
+        {anyValue ? "." : " (아직 입력한 팀이 없습니다)."}
+      </div>
+    </div>
+  );
+}
+
 function ParentOrgDetail({ entries: entryData, version }: { entries: ReviewEntryData[]; version: string }) {
   // 기간 수는 라운드가 정하고 화면을 여는 동안 바뀌지 않으므로, 훅을 기간마다 한 번씩 불러도 순서가 고정된다.
   const entries = entryData.map(({ period, item }) => {
@@ -477,15 +536,32 @@ function ParentOrgDetail({ entries: entryData, version }: { entries: ReviewEntry
       </div>
       {/* 하위 조직 상자는 연한 바탕 + 왼쪽 색 막대로 상위(집계) 조직 패널과 구분한다 (globals.css의 .child-orgs). */}
       <div className="child-orgs" style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-        {leaderFirst(editableChildren).map((c) => (
-          <OrgDetail
-            key={c.org.id}
-            entries={entries
-              .map((e) => ({ period: e.period, item: e.item.children.find((x) => x.org.id === c.org.id) }))
-              .filter((x): x is ReviewEntryData => !!x.item)}
-            version={version}
-          />
-        ))}
+        {/* 자동 계산 자리(IT사업대표·Staff(IT))도 다른 팀과 같은 자리에 같은 모양으로 보여준다 — 입력칸 없이 회색 상자(사용자 지시). */}
+        {leaderFirst([...editableChildren, ...averagedChildren]).map((c) =>
+          averagedGroupOf(c.org.basis) ? (
+            <DerivedOrgDetail
+              key={c.org.id}
+              org={c}
+              rows={entries.map((e) => {
+                const self = e.item.children.find((x) => x.org.id === c.org.id);
+                return {
+                  period: e.period,
+                  rec: self ? effectiveChild(self, e.item.children, e.period).rec : null,
+                  headcount: derivedHeadcountOf(c.org.basis),
+                };
+              })}
+              sources={leaderFirst(editableChildren).map((x) => x.org.basis)}
+            />
+          ) : (
+            <OrgDetail
+              key={c.org.id}
+              entries={entries
+                .map((e) => ({ period: e.period, item: e.item.children.find((x) => x.org.id === c.org.id) }))
+                .filter((x): x is ReviewEntryData => !!x.item)}
+              version={version}
+            />
+          )
+        )}
       </div>
     </div>
   );

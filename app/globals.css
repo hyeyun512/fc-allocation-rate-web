@@ -658,3 +658,7 @@ input.required-input:not(:disabled):focus{background:#fff}
 .av-chip.partial-round{border:1px dashed #94a3b8}
 .av-chip.partial-round.submitted{border-color:#16a34a}
 .av-chip.partial-round.active{border:1px dashed #fff;outline:1px solid #2563eb}
+
+/* 검토 화면 — 자동 계산 자리(IT사업대표·Staff(IT)) 상자. 입력하는 하위 팀(연한 파랑)과 구분해 연한 회색으로 둔다(사용자 지시). */
+.child-orgs > .panel.derived{background:#f4f5f7;border:1px solid #e2e8f0;box-shadow:inset 3px 0 0 #cbd5e1}
+.child-orgs > .panel.derived .panel-title .org-name{border-left-color:#cbd5e1;color:#475569}
