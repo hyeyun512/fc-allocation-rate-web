@@ -7,6 +7,7 @@ import { TARGETS, toDbTargets, visibleTargets, isTargetActiveIn, inactiveTargetK
 import { isOrgActiveIn } from "@/lib/orgLifespan";
 import { fixedRatesFor } from "@/lib/fixedRates";
 import { keepsTeamRates } from "@/lib/confirmRate";
+import { averagedGroupOf, isDerivedOrg } from "@/lib/autoAggregate";
 import { leaderFirst } from "@/lib/orgOrder";
 import { roundPeriods, roundLabel, resolveSurveyPeriod, mailPeriodOf, prefillsFromEarlier, linkPeriodsFor } from "@/lib/surveyPeriods";
 import { computeItRates } from "@/lib/itBasis";
@@ -624,6 +625,13 @@ function runCases(): Case[] {
       "orgs: HUS·HJP·HUG·HID·HTR는 27년 BP만 빠진다",
       ["HUS", "HJP", "HUG", "HID", "HTR"].every((b) => isOrgActiveIn(b, "2026-Q4") && !isOrgActiveIn(b, "2027-BP") && isOrgActiveIn(b, "2027-Q1")) &&
         isOrgActiveIn("HUK", "2027-BP")
+    )
+  );
+  c.push(
+    ok(
+      "it그룹: IT사업대표·Staff(IT)는 IT사업부 평균 자리, 입력받지 않는다",
+      averagedGroupOf("IT사업대표") === "IT사업부" && averagedGroupOf("Staff(IT)") === "IT사업부" && !averagedGroupOf("PM팀") &&
+        isDerivedOrg("Staff(IT)") && isDerivedOrg("사업총괄대표") && !isDerivedOrg("ERP PI팀")
     )
   );
   c.push(ok("orgs: HAU는 1Q까지", isOrgActiveIn("HAU", "2026-Q1") && !isOrgActiveIn("HAU", "2026-Q2") && !isOrgActiveIn("HAU", "2027-BP")));

@@ -11,7 +11,7 @@ import {
   inactiveTargetKeys,
   stripInactiveTargets,
 } from "@/lib/targets";
-import { HIDDEN_IN_CONFIRM, MIRROR_HEADCOUNT, mirrorSourceOf } from "@/lib/autoAggregate";
+import { HIDDEN_IN_CONFIRM, MIRROR_HEADCOUNT, mirrorSourceOf, averagedGroupOf, isDerivedOrg, derivedHeadcountOf } from "@/lib/autoAggregate";
 import { isOrgActiveIn } from "@/lib/orgLifespan";
 // 조사 현황과 같은 단위·순서로 보여야 해서 정렬 규칙을 함께 쓴다.
 import { leaderFirst, sortForOrgPicker } from "@/lib/orgOrder";
@@ -101,7 +101,7 @@ function orgWeight(c: OrgReviewData): number {
  * 하위 조직 인원수를 합쳐 센다 — 안 그러면 인원수 0으로 잡혀 상위 평균에서 통째로 빠진다.
  */
 function headcountForOrg(c: OrgReviewData): number {
-  if (mirrorSourceOf(c.org.basis)) return MIRROR_HEADCOUNT;
+  if (isDerivedOrg(c.org.basis)) return derivedHeadcountOf(c.org.basis);
   if (c.children.length > 0) return c.children.reduce((s, ch) => s + headcountForOrg(ch), 0);
   return orgWeight(c);
 }
@@ -119,6 +119,19 @@ function effectiveChild(
   siblings: OrgReviewData[],
   period: string
 ): { rec: Record<TargetKey, number>; weight: number } {
+  // 그룹 평균 자리(IT사업대표·Staff(IT))는 같은 그룹의 나머지 팀 중 입력한 팀들의 인원수 가중평균 (서버 autoAggregate와 같은 식).
+  if (averagedGroupOf(c.org.basis)) {
+    const src = siblings.filter((s) => !isDerivedOrg(s.org.basis) && s.hasSubmission);
+    const eff = src.map((s) => effectiveChild(s, siblings, period));
+    const totalW = eff.reduce((a, e) => a + e.weight, 0);
+    const avg = {} as Record<TargetKey, number>;
+    TARGETS.forEach((t) => {
+      const sum = eff.reduce((s, e) => s + (Number(e.rec[t.key]) || 0) * (totalW > 0 ? e.weight : 1), 0);
+      const div = totalW > 0 ? totalW : eff.length;
+      avg[t.key] = div > 0 ? sum / div : 0;
+    });
+    return { rec: normalizeTargets(avg) as Record<TargetKey, number>, weight: headcountForOrg(c) };
+  }
   const srcBasis = mirrorSourceOf(c.org.basis);
   const from = srcBasis ? siblings.find((s) => s.org.basis === srcBasis) ?? c : c;
   const rec = from.hasSubmission
@@ -148,7 +161,7 @@ function orgWeightForQuarter(c: OrgReviewData, quarter: string): number {
 
 // 특정 분기 기준 조직 인원수. 집계 조직은 하위 조직 인원수를 합쳐 센다 (headcountForOrg의 과거분기판).
 function headcountForOrgIn(c: OrgReviewData, quarter: string): number {
-  if (mirrorSourceOf(c.org.basis)) return MIRROR_HEADCOUNT;
+  if (isDerivedOrg(c.org.basis)) return derivedHeadcountOf(c.org.basis);
   if (c.children.length > 0) return c.children.reduce((s, ch) => s + headcountForOrgIn(ch, quarter), 0);
   return orgWeightForQuarter(c, quarter);
 }
@@ -369,7 +382,9 @@ function ParentOrgDetail({ entries: entryData, version }: { entries: ReviewEntry
   // 입력란은 감추지만 가중평균에는 들어가는 자리(사업총괄대표)는 각주로만 알린다.
   const allChildren = uniqueOrgs(entries.map((e) => e.item.children));
   const mirroredChildren = allChildren.filter((c) => mirrorSourceOf(c.org.basis));
-  const editableChildren = allChildren.filter((c) => !mirrorSourceOf(c.org.basis));
+  // 그룹 평균 자리(IT사업대표·Staff(IT))도 입력란을 두지 않고 각주로 계산 방식을 알린다.
+  const averagedChildren = allChildren.filter((c) => averagedGroupOf(c.org.basis));
+  const editableChildren = allChildren.filter((c) => !isDerivedOrg(c.org.basis));
 
   return (
     <div className="panel">
@@ -437,6 +452,13 @@ function ParentOrgDetail({ entries: entryData, version }: { entries: ReviewEntry
           위 가중평균에 포함됩니다. 별도 입력란은 두지 않습니다 (View에서 조회 가능).
         </div>
       ))}
+      {averagedChildren.length > 0 && (
+        <div className="field-hint" style={{ marginBottom: 6 }}>
+          ※ {averagedChildren.map((c) => c.org.basis).join("·")}은(는) 입력하지 않습니다. 나머지 팀(
+          {editableChildren.map((c) => c.org.basis).join(", ")}) 중 입력한 팀들의 배부율을 각 팀 인원수로 가중평균해 자동 계산하며,
+          인원수 {averagedChildren.map((c) => `${c.org.basis} ${derivedHeadcountOf(c.org.basis)}명`).join(" · ")}으로 위 평균에 포함됩니다.
+        </div>
+      )}
       {entries
         .filter((e) => !e.totalOk)
         .map((e) => (

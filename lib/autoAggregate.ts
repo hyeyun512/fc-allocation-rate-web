@@ -2,6 +2,7 @@ import { TARGETS, TargetKey, sumTargets, normalizeTargets, stripInactiveTargets,
 import { latestByPerson, computeRollup, countedPersonRows, SubmissionRow } from "./rollup";
 import { ensureFixedRates } from "./fixedRates";
 import { isOrgActiveIn } from "./orgLifespan";
+import { keepsTeamRates } from "./confirmRate";
 
 /**
  * 자동계산 조직(상위 집계 조직 · HKR)의 배부율을 서버에서 다시 계산해 allocation_rate에 반영한다.
@@ -33,7 +34,7 @@ export const MIRROR_RULES: { from: string; to: string }[] = [{ from: "사업그�
  * 검토·확정 화면에서 **입력란만** 감출 조직 (값이 자동으로 채워지므로).
  * 상위 조직 가중평균에는 그대로 포함된다 — 실제로 존재하는 자리이기 때문이다.
  */
-export const HIDDEN_IN_CONFIRM = MIRROR_RULES.map((r) => r.to);
+export const HIDDEN_IN_CONFIRM: string[] = [];
 
 /** 미러 조직은 한 사람이 앉는 자리라 인원수를 항상 1명으로 센다. */
 export const MIRROR_HEADCOUNT = 1;
@@ -41,6 +42,32 @@ export const MIRROR_HEADCOUNT = 1;
 /** basis가 다른 조직 값을 따라가는 자리라면 그 원본 조직명을 돌려준다. */
 export function mirrorSourceOf(basis: string): string | null {
   return MIRROR_RULES.find((r) => r.to === basis)?.from ?? null;
+}
+
+/**
+ * 값을 직접 입력받지 않고 같은 그룹의 나머지 팀 평균을 쓰는 조직 (26년 4Q~, 사용자 지시).
+ * IT사업대표·Staff(IT)는 IT사업부의 다른 팀들의 **인원수 가중평균**으로 자동 계산한다 — 링크·검토 화면에 입력칸이 없다.
+ * 이 자리 자신의 인원수는 입력받지 않으므로 AVERAGED_HEADCOUNT로 정해 둔다(그룹·HKR 가중치에만 쓰인다).
+ */
+export const AVERAGE_RULES: { group: string; to: string[] }[] = [{ group: "IT사업부", to: ["IT사업대표", "Staff(IT)"] }];
+export const AVERAGED_HEADCOUNT: Record<string, number> = { IT사업대표: 1, "Staff(IT)": 1 };
+
+/** basis가 그룹 평균을 쓰는 자리라면 그 그룹(상위 조직)명을 돌려준다. */
+export function averagedGroupOf(basis: string): string | null {
+  return AVERAGE_RULES.find((r) => r.to.includes(basis))?.group ?? null;
+}
+
+/** 입력받지 않고 자동으로 값이 정해지는 자리(미러·그룹 평균)인지. */
+// 미러 자리와 그룹 평균 자리는 입력받지 않으므로 조사 대상 목록(조사 탭·링크 수신인)에서도 뺀다.
+HIDDEN_IN_CONFIRM.push(...MIRROR_RULES.map((r) => r.to), ...AVERAGE_RULES.flatMap((r) => r.to));
+
+export function isDerivedOrg(basis: string): boolean {
+  return !!mirrorSourceOf(basis) || !!averagedGroupOf(basis);
+}
+
+/** 자동 계산 자리의 인원수 (미러는 1명, 그룹 평균 자리는 AVERAGED_HEADCOUNT). */
+export function derivedHeadcountOf(basis: string): number {
+  return mirrorSourceOf(basis) ? MIRROR_HEADCOUNT : AVERAGED_HEADCOUNT[basis] ?? 1;
 }
 
 type Rec = Record<TargetKey, number>;
@@ -226,6 +253,23 @@ export async function recomputeAggregates(
     });
   }
 
+  // 그룹 평균 자리(IT사업대표·Staff(IT))는 같은 그룹의 나머지 팀 인원수 가중평균을 쓴다.
+  // 그룹 평균(아래 1단계)보다 먼저 정해 두어야 그룹 값 계산에 이 자리도 들어간다.
+  for (const rule of AVERAGE_RULES) {
+    const sources = orgs.filter((o: any) => o.parent_basis === rule.group && !rule.to.includes(o.basis));
+    const srcStates: OrgState[] = sources.map((o: any) => stateById.get(o.id)!).filter(Boolean);
+    const any = srcStates.some((s) => s.hasSubmission);
+    for (const basis of rule.to) {
+      const dst = orgs.find((o: any) => o.basis === basis);
+      if (!dst) continue;
+      stateById.set(dst.id, {
+        rate: any ? weightedAvg(srcStates.filter((s) => s.hasSubmission)) : zeroRec(),
+        weight: AVERAGED_HEADCOUNT[basis] ?? 1,
+        hasSubmission: any,
+      });
+    }
+  }
+
   // 집계 조직은 자기 인원을 따로 갖지 않으므로 하위 조직 인원수를 합쳐 가중치로 쓴다.
   // (그대로 두면 인원수 0으로 잡혀 HKR 같은 상위 평균에서 통째로 빠진다 — 화면 계산과 동일하게 맞춘다.)
   const weightOf = (org: any): number => {
@@ -278,6 +322,23 @@ export async function recomputeAggregates(
       version,
     });
     if (err) problems.push(`${parent.basis}: ${err.message}`);
+  }
+
+  // 2-0) 그룹 평균 자리의 배부율을 기록 — 팀마다 배부율을 남기는 그룹(IT사업부)이라 View에도 팀으로 보인다.
+  //      아직 아무 팀도 입력하지 않았으면 남아 있던 행을 지운다.
+  for (const rule of AVERAGE_RULES) {
+    for (const basis of rule.to) {
+      const dst = orgs.find((o: any) => o.basis === basis);
+      const st = dst ? stateById.get(dst.id) : null;
+      if (!dst) continue;
+      const key = { quarter: period, type: dst.type, division: dst.division, basis: dst.basis };
+      if (!st?.hasSubmission || !keepsTeamRates(rule.group)) {
+        await deleteRate(supabase, key);
+        continue;
+      }
+      const err = await upsertRate(supabase, { ...key, rates: st.rate, version });
+      if (err) problems.push(`${basis}: ${err.message}`);
+    }
   }
 
   // 2) 다른 조직 값을 그대로 따라가는 조직의 배부율을 기록 (사업총괄대표 ← 사업그룹장)

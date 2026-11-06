@@ -8,7 +8,7 @@ import {
   hasSubmittedValue,
   SubmissionRow,
 } from "@/lib/rollup";
-import { mirrorSourceOf, MIRROR_HEADCOUNT } from "@/lib/autoAggregate";
+import { mirrorSourceOf, MIRROR_HEADCOUNT, averagedGroupOf, isDerivedOrg, derivedHeadcountOf } from "@/lib/autoAggregate";
 import { leaderFirst } from "@/lib/orgOrder";
 import { submitLangOf, orgLabelFor, submitterFor, noteFor } from "@/lib/englishOrgs";
 import { submitStrings } from "@/lib/submitLang";
@@ -71,7 +71,9 @@ async function getData(token: string) {
   ).map((x) => x.org);
   const isParent = children.length > 0;
   // 다른 조직 값을 그대로 따라가는 자리(사업총괄대표)는 입력란을 두지 않고 각주로만 알린다 — 관리자 화면과 같다.
-  const editableOrgs = isParent ? children.filter((c) => !mirrorSourceOf(c.basis)) : [org];
+  // 그룹 평균 자리(IT사업대표·Staff(IT))도 미러처럼 입력란을 두지 않는다 — 나머지 팀 평균으로 자동 계산된다.
+  const editableOrgs = isParent ? children.filter((c) => !isDerivedOrg(c.basis)) : [org];
+  const averagedOrgs = isParent ? children.filter((c) => averagedGroupOf(c.basis)) : [];
   const mirroredOrgs = isParent ? children.filter((c) => mirrorSourceOf(c.basis)) : [];
 
   const orgIds = [org.id, ...children.map((c) => c.id)];
@@ -194,6 +196,18 @@ async function getData(token: string) {
         source: orgLabelFor(mirrorSourceOf(c.basis) as string, lang),
         headcount: MIRROR_HEADCOUNT,
       })),
+      // 자동 계산된 값(서버가 allocation_rate에 남긴 그 기간 행)을 읽기 전용으로 보여준다. 아직 아무 팀도 입력하지 않았으면 null.
+      averaged: averagedOrgs.map((c) => {
+        const row = (rateRows ?? []).find(
+          (r) => r.basis === c.basis && r.division === c.division && r.type === c.type && r.quarter === period && (Number(r.total) || 0) > 0
+        );
+        return {
+          basis: orgLabelFor(c.basis, lang),
+          headcount: derivedHeadcountOf(c.basis),
+          rates: row ? (toRateRecord(row) as Record<TargetKey, number>) : null,
+        };
+      }),
+      averageSources: editableOrgs.map((c) => orgLabelFor(c.basis, lang)),
       orgs,
     };
     return { period, data };

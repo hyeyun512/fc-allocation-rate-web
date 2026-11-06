@@ -89,6 +89,9 @@ const KO = {
   parentSub: (names: string) => `하위 조직(${names})의 인원수 가중평균으로 자동 계산됩니다. 아래에서 하위 조직별로 입력해주세요.`,
   mirrorNote: (basis: string, source: string, headcount: number) =>
     `※ ${basis}은(는) ${source}과(와) 동일한 배부율을 적용하며, 인원수 ${headcount}명으로 위 가중평균에 포함됩니다. 별도 입력란은 두지 않습니다.`,
+  averagedTitle: "▸ 자동 계산 팀 (입력하지 않음)",
+  averagedNote: (names: string, sources: string, headcounts: string) =>
+    `※ ${names}은(는) 입력하지 않습니다. 아래 팀(${sources}) 중 제출한 팀들의 배부율을 각 팀 인원수로 가중평균해 자동 계산합니다. (인원수 ${headcounts}명으로 위 평균에 포함)`,
   parentFooter: "아래 하위 조직을 제출하면 이 값도 자동으로 다시 계산되어 반영됩니다.",
   childSectionTitle: (n: number) => `■ 하위 조직 개별 입력 (${n}개)`,
 };
@@ -166,6 +169,9 @@ const EN: SubmitStrings = {
     `Calculated automatically as the headcount-weighted average of the sub-organisations (${names}). Please fill in each sub-organisation below.`,
   mirrorNote: (basis: string, source: string, headcount: number) =>
     `* ${basis} uses the same allocation rate as ${source} and is included in the weighted average above with a headcount of ${headcount}. No separate entry is required.`,
+  averagedTitle: "▸ Calculated automatically (no entry)",
+  averagedNote: (names: string, sources: string, headcounts: string) =>
+    `* ${names} are not entered. They are calculated as the headcount-weighted average of the submitted teams below (${sources}). (Included in the average above with headcount ${headcounts})`,
   parentFooter: "These figures are recalculated automatically each time a sub-organisation below is submitted.",
   childSectionTitle: (n: number) => `■ Sub-organisation entries (${n})`,
 };

@@ -84,6 +84,10 @@ export interface SubmitPageData {
   parentChildNames: string[];
   /** 입력란 없이 다른 조직 값을 따라가는 자리 — 각주로만 알린다. */
   mirrors: { basis: string; source: string; headcount: number }[];
+  /** 입력란 없이 나머지 팀 인원수 가중평균으로 자동 계산되는 자리 (IT사업대표·Staff(IT)). rates가 null이면 아직 계산할 값이 없다. */
+  averaged: { basis: string; headcount: number; rates: Record<TargetKey, number> | null }[];
+  /** 그 평균의 근거가 되는 팀 이름. */
+  averageSources: string[];
   /** 실제로 입력받는 조직들 (단일 조직이면 1개). */
   orgs: SubmitOrgData[];
 }
@@ -795,7 +799,9 @@ function ParentSummary({ rounds, version, lang }: { rounds: SubmitRound[]; versi
     return Number(o.submittedHeadcount) || 0;
   }
   const childHeadcountOf = (d: SubmitPageData) =>
-    d.orgs.reduce((s, o) => s + headcountOf(o), 0) + d.mirrors.reduce((s, m) => s + m.headcount, 0);
+    d.orgs.reduce((s, o) => s + headcountOf(o), 0) +
+    d.mirrors.reduce((s, m) => s + m.headcount, 0) +
+    d.averaged.reduce((s, a) => s + (a.rates ? a.headcount : 0), 0);
   const first = rounds[0].data;
 
   return (
@@ -874,6 +880,44 @@ function ParentSummary({ rounds, version, lang }: { rounds: SubmitRound[]; versi
             {s.mirrorNote(m.basis, m.source, m.headcount)}
           </div>
         ))}
+
+        {/* 그룹 평균 자리 — 입력칸 없이 자동 계산 값만 보여주고, 계산 방식을 아래에 적는다(사용자 지시). */}
+        {first.averaged.length > 0 && (
+          <>
+            <div className="panel-sub" style={{ fontWeight: 700, color: "#1a202c", margin: "14px 0 4px" }}>
+              {s.averagedTitle}
+            </div>
+            <div className="tbl-scroll" style={{ marginBottom: 6 }}>
+              <table className="rate-tbl">
+                <RateTableHead lang={lang} />
+                <tbody>
+                  {first.averaged.flatMap((a, ai) =>
+                    rounds.map((r) => {
+                      const cur = r.data.averaged[ai];
+                      return (
+                        <ReadOnlyRateRow
+                          key={`${a.basis}-${r.period}`}
+                          label={`${a.basis} · ${r.period}`}
+                          period={r.period}
+                          rec={cur?.rates ?? toNumRec(emptyRates())}
+                          headcount={cur?.rates ? cur.headcount : null}
+                          lang={lang}
+                        />
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
+            <div className="field-hint" style={{ marginBottom: 6 }}>
+              {s.averagedNote(
+                first.averaged.map((a) => a.basis).join("·"),
+                first.averageSources.join(", "),
+                first.averaged.map((a) => `${a.basis} ${a.headcount}`).join(" · ")
+              )}
+            </div>
+          </>
+        )}
 
         <div className="field-hint">{s.parentFooter}</div>
       </div>
