@@ -124,8 +124,7 @@ async function saveBuildingBasis(supabase: any, quarter: string, input: any, sub
   const parsed = {
     bundangAreaEvcsDomestic: Number(input.bundangAreaEvcsDomestic) || 0,
     bundangAreaEvcsOverseas: Number(input.bundangAreaEvcsOverseas) || 0,
-    bundangAreaBusinessSolution: Number(input.bundangAreaBusinessSolution) || 0,
-    bundangAreaIto: Number(input.bundangAreaIto) || 0,
+    bundangAreaIt: Number(input.bundangAreaIt) || 0,
     bundangAreaHumaxCommon: Number(input.bundangAreaHumaxCommon) || 0,
     materialEvcsDomesticRatio: Number(input.materialEvcsDomesticRatio) || 0,
     materialEvcsOverseasRatio: Number(input.materialEvcsOverseasRatio) || 0,
@@ -139,8 +138,7 @@ async function saveBuildingBasis(supabase: any, quarter: string, input: any, sub
   const areaSum =
     parsed.bundangAreaEvcsDomestic +
     parsed.bundangAreaEvcsOverseas +
-    parsed.bundangAreaBusinessSolution +
-    parsed.bundangAreaIto +
+    parsed.bundangAreaIt +
     parsed.bundangAreaHumaxCommon;
   if (areaSum <= 0) {
     return NextResponse.json({ error: "분당 면적을 입력해 주세요." }, { status: 400 });
@@ -156,8 +154,7 @@ async function saveBuildingBasis(supabase: any, quarter: string, input: any, sub
       payload: {
         bundang_area_evcs_domestic: parsed.bundangAreaEvcsDomestic,
         bundang_area_evcs_overseas: parsed.bundangAreaEvcsOverseas,
-        bundang_area_business_solution: parsed.bundangAreaBusinessSolution,
-        bundang_area_ito: parsed.bundangAreaIto,
+        bundang_area_it: parsed.bundangAreaIt,
         bundang_area_humax_common: parsed.bundangAreaHumaxCommon,
         material_evcs_domestic_ratio: parsed.materialEvcsDomesticRatio,
         material_evcs_overseas_ratio: parsed.materialEvcsOverseasRatio,

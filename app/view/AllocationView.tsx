@@ -75,7 +75,7 @@ const BASIS_ORDER = [
   // 고정비율 · 기타
   "EVCS(국내/해외)", "EVCS(국내30/해외70)",
   // 고정비율 · 직접비
-  "건물 100%", "공통 100%", "STB 100%", "Mobility 100%", "EVCS(국내) 100%", "EVCS(해외) 100%", "비즈니스솔루션", "ITO",
+  "건물 100%", "공통 100%", "STB 100%", "Mobility 100%", "EVCS(국내) 100%", "EVCS(해외) 100%", "IT 100%",
   "H.Networks", "H.Mobility 100%", "H.Holdings 100%", "H.EV 100%", "실적 제외",
 ];
 function basisOrderIndex(basis: string): number {

@@ -17,8 +17,7 @@ export interface BuildingBasisRow {
   quarter: string;
   bundang_area_evcs_domestic: number;
   bundang_area_evcs_overseas: number;
-  bundang_area_business_solution: number;
-  bundang_area_ito: number;
+  bundang_area_it: number;
   bundang_area_humax_common: number;
   material_evcs_domestic_ratio: number;
   material_evcs_overseas_ratio: number;
@@ -34,8 +33,7 @@ type FormState = Record<FieldKey, string>;
 const FIELDS: { key: FieldKey; group: string; label: string; pct?: boolean }[] = [
   { key: "bundangAreaEvcsDomestic", group: "분당 면적 비율(%)", label: "EVCS(국내)" },
   { key: "bundangAreaEvcsOverseas", group: "분당 면적 비율(%)", label: "EVCS(해외)" },
-  { key: "bundangAreaBusinessSolution", group: "분당 면적 비율(%)", label: "비즈니스솔루션" },
-  { key: "bundangAreaIto", group: "분당 면적 비율(%)", label: "ITO" },
+  { key: "bundangAreaIt", group: "분당 면적 비율(%)", label: "IT" },
   { key: "bundangAreaHumaxCommon", group: "분당 면적 비율(%)", label: "Humax(공통)" },
   { key: "materialEvcsDomesticRatio", group: "용인 재료비 비율(%)", label: "EVCS(국내)", pct: true },
   { key: "materialEvcsOverseasRatio", group: "용인 재료비 비율(%)", label: "EVCS(해외)", pct: true },
@@ -50,8 +48,7 @@ const FIELD_GROUPS = FIELDS.reduce<{ group: string; span: number }[]>((acc, f) =
 const EMPTY_FORM: FormState = {
   bundangAreaEvcsDomestic: "",
   bundangAreaEvcsOverseas: "",
-  bundangAreaBusinessSolution: "",
-  bundangAreaIto: "",
+  bundangAreaIt: "",
   bundangAreaHumaxCommon: "",
   materialEvcsDomesticRatio: "",
   materialEvcsOverseasRatio: "",
@@ -62,8 +59,7 @@ function fromRow(row: BuildingBasisRow | null): FormState {
   return {
     bundangAreaEvcsDomestic: String(row.bundang_area_evcs_domestic ?? ""),
     bundangAreaEvcsOverseas: String(row.bundang_area_evcs_overseas ?? ""),
-    bundangAreaBusinessSolution: String(row.bundang_area_business_solution ?? ""),
-    bundangAreaIto: String(row.bundang_area_ito ?? ""),
+    bundangAreaIt: String(row.bundang_area_it ?? ""),
     bundangAreaHumaxCommon: String(row.bundang_area_humax_common ?? ""),
     materialEvcsDomesticRatio: String((row.material_evcs_domestic_ratio ?? 0) * 100),
     materialEvcsOverseasRatio: String((row.material_evcs_overseas_ratio ?? 0) * 100),
@@ -74,8 +70,7 @@ function toInput(f: FormState): BuildingBasisInput {
   return {
     bundangAreaEvcsDomestic: Number(f.bundangAreaEvcsDomestic) || 0,
     bundangAreaEvcsOverseas: Number(f.bundangAreaEvcsOverseas) || 0,
-    bundangAreaBusinessSolution: Number(f.bundangAreaBusinessSolution) || 0,
-    bundangAreaIto: Number(f.bundangAreaIto) || 0,
+    bundangAreaIt: Number(f.bundangAreaIt) || 0,
     bundangAreaHumaxCommon: Number(f.bundangAreaHumaxCommon) || 0,
     materialEvcsDomesticRatio: (Number(f.materialEvcsDomesticRatio) || 0) / 100,
     materialEvcsOverseasRatio: (Number(f.materialEvcsOverseasRatio) || 0) / 100,
@@ -86,8 +81,7 @@ function inputOfRow(row: BuildingBasisRow): BuildingBasisInput {
   return {
     bundangAreaEvcsDomestic: row.bundang_area_evcs_domestic,
     bundangAreaEvcsOverseas: row.bundang_area_evcs_overseas,
-    bundangAreaBusinessSolution: row.bundang_area_business_solution,
-    bundangAreaIto: row.bundang_area_ito,
+    bundangAreaIt: row.bundang_area_it,
     bundangAreaHumaxCommon: row.bundang_area_humax_common,
     materialEvcsDomesticRatio: row.material_evcs_domestic_ratio,
     materialEvcsOverseasRatio: row.material_evcs_overseas_ratio,
@@ -113,8 +107,7 @@ function buildingInputProblem(input: BuildingBasisInput): string | null {
   if (Object.values(input).some((v) => v < 0)) return "면적과 재료비 비중은 0 이상이어야 합니다.";
   const area = input.bundangAreaEvcsDomestic +
     input.bundangAreaEvcsOverseas +
-    input.bundangAreaBusinessSolution +
-    input.bundangAreaIto +
+    input.bundangAreaIt +
     input.bundangAreaHumaxCommon;
   if (area <= 0) return "분당 면적을 입력해 주세요.";
   if (input.materialEvcsDomesticRatio + input.materialEvcsOverseasRatio <= 0) return "용인 재료비 비중을 입력해 주세요.";
@@ -139,8 +132,7 @@ function useBuildingEntry(period: string, initial: BuildingBasisRow | null) {
       quarter: period,
       bundang_area_evcs_domestic: input.bundangAreaEvcsDomestic,
       bundang_area_evcs_overseas: input.bundangAreaEvcsOverseas,
-      bundang_area_business_solution: input.bundangAreaBusinessSolution,
-      bundang_area_ito: input.bundangAreaIto,
+      bundang_area_it: input.bundangAreaIt,
       bundang_area_humax_common: input.bundangAreaHumaxCommon,
       material_evcs_domestic_ratio: input.materialEvcsDomesticRatio,
       material_evcs_overseas_ratio: input.materialEvcsOverseasRatio,

@@ -35,9 +35,8 @@ export const FIXED_RATES: FixedRateDef[] = [
   { division: "직접비", basis: "Mobility 100%", rates: { mobility: 1 } },
   { division: "직접비", basis: "EVCS(국내) 100%", rates: { evcs_domestic: 1 } },
   { division: "직접비", basis: "EVCS(해외) 100%", rates: { evcs_overseas: 1 } },
-  // IT 사업은 2026-Q4부터 비즈니스솔루션·ITO에 각각 100% 귀속한다 (예전 'IT사업부 = IT 100%' 한 행을 대신한다).
-  { division: "직접비", basis: "비즈니스솔루션", rates: { business_solution: 1 }, from: "2026-Q4" },
-  { division: "직접비", basis: "ITO", rates: { ito: 1 }, from: "2026-Q4" },
+  // IT 사업은 2026-Q4부터 IT에 100% 귀속한다 (비즈니스솔루션·ITO 두 행을 합쳤다 — 2026-11-11 지침 변경).
+  { division: "직접비", basis: "IT 100%", rates: { it: 1 }, from: "2026-Q4" },
   { division: "직접비", basis: "H.Networks", rates: { h_networks: 1 } },
   { division: "직접비", basis: "H.Mobility 100%", rates: { h_mobility: 1 } },
   { division: "직접비", basis: "H.Holdings 100%", rates: { holdings: 1 } },

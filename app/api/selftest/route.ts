@@ -519,25 +519,24 @@ function runCases(): Case[] {
     const rows = computeBuildingRates({
       bundangAreaEvcsDomestic: 10,
       bundangAreaEvcsOverseas: 30,
-      bundangAreaBusinessSolution: 15,
-      bundangAreaIto: 5,
+      bundangAreaIt: 20,
       bundangAreaHumaxCommon: 40,
       materialEvcsDomesticRatio: 0.25,
       materialEvcsOverseasRatio: 0.75,
     });
     c.push(eq("buildingBasis: 행 이름", rows.map((r) => r.basis), ["건물(분당)", "건물(용인)"]));
-    c.push(eq("buildingBasis: 분당 = 면적 비중", rows[0].rates, { evcs_domestic: 0.1, evcs_overseas: 0.3, business_solution: 0.15, ito: 0.05, humax_common: 0.4 }));
+    c.push(eq("buildingBasis: 분당 = 면적 비중", rows[0].rates, { evcs_domestic: 0.1, evcs_overseas: 0.3, it: 0.2, humax_common: 0.4 }));
     c.push(eq("buildingBasis: 용인 = 재료비 비중", rows[1].rates, { evcs_domestic: 0.25, evcs_overseas: 0.75 }));
     c.push(ok("buildingBasis: 건물 몫은 없다", rows.every((r) => r.rates.building == null)));
   }
 
   // ── IT: 2026-Q4부터 배부 대상 (EVCS(해외)와 Humax(공통) 사이) ──
-  c.push(eq("bs/ito: 3Q까지는 비즈니스솔루션·ITO가 막힌다", inactiveTargetKeys("2026-Q3"), ["business_solution", "ito"]));
-  c.push(ok("it: IT는 배부 대상 목록에 없다(비즈니스솔루션·ITO로 나눴다)", !TARGETS.some((t) => (t.key as string) === "it")));
+  c.push(eq("it: 3Q까지는 IT가 막힌다", inactiveTargetKeys("2026-Q3"), ["it"]));
+  c.push(ok("it: 비즈니스솔루션·ITO는 배부 대상 목록에 없다(IT로 합쳤다)", !TARGETS.some((t) => ["business_solution", "ito"].includes(t.key as string))));
   c.push(
     ok(
-      "bs/ito: 4Q부터 대상",
-      isTargetActiveIn("business_solution", "2026-Q4") && isTargetActiveIn("ito", "2026-Q4") && isTargetActiveIn("business_solution", "2027-BP")
+      "it: 4Q부터 대상",
+      isTargetActiveIn("it", "2026-Q4") && isTargetActiveIn("it", "2027-BP") && !isTargetActiveIn("it", "2026-Q3")
     )
   );
   c.push(ok("mobility: 4Q까지 대상, BP부터 제외", isTargetActiveIn("mobility", "2026-Q4") && !isTargetActiveIn("mobility", "2027-BP")));
@@ -545,25 +544,25 @@ function runCases(): Case[] {
     eq(
       "it: 열 순서",
       TARGETS.slice(0, 8).map((t) => t.label),
-      ["STB", "Mobility", "EVCS(국내)", "EVCS(해외)", "비즈니스솔루션", "ITO", "Humax(공통)", "건물"]
+      ["STB", "Mobility", "EVCS(국내)", "EVCS(해외)", "IT", "Humax(공통)", "건물", "H.Mobility"]
     )
   );
-  c.push(eq("bs: 3Q 저장값은 0", parseTargetRates({ stb: "0.9", business_solution: "0.1" }, "2026-Q3").business_solution, 0));
-  c.push(eq("bs: 4Q 저장값은 그대로", parseTargetRates({ stb: "0.9", business_solution: "0.1" }, "2026-Q4").business_solution, 0.1));
+  c.push(eq("it: 3Q 저장값은 0", parseTargetRates({ stb: "0.9", it: "0.1" }, "2026-Q3").it, 0));
+  c.push(eq("it: 4Q 저장값은 그대로", parseTargetRates({ stb: "0.9", it: "0.1" }, "2026-Q4").it, 0.1));
   // 화면에 그릴 열: 나오는 분기 중 하나라도 대상이면 그린다.
-  c.push(ok("cols: 1Q~3Q만 보이면 비즈니스솔루션 열 없음", !visibleTargets(["2026-Q1", "2026-Q2", "2026-Q3"]).some((t) => t.key === "business_solution")));
-  c.push(ok("cols: 4Q가 끼면 비즈니스솔루션 열 있음", visibleTargets(["2026-Q3", "2026-Q4"]).some((t) => t.key === "business_solution")));
+  c.push(ok("cols: 1Q~3Q만 보이면 IT 열 없음", !visibleTargets(["2026-Q1", "2026-Q2", "2026-Q3"]).some((t) => t.key === "it")));
+  c.push(ok("cols: 4Q가 끼면 IT 열 있음", visibleTargets(["2026-Q3", "2026-Q4"]).some((t) => t.key === "it")));
   c.push(ok("cols: 3Q 이력이 있으면 홀딩스 열은 남는다", visibleTargets(["2026-Q3", "2026-Q4"]).some((t) => t.key === "holdings")));
   c.push(ok("cols: 27년 BP 화면이라도 26년 이력이 있으면 홀딩스 열이 남는다", visibleTargets(["2026-Q1", "2026-Q3", "2027-BP"], "2027-BP").some((t) => t.key === "holdings")));
   c.push(ok("cols: 26년 4Q 입력 화면은 3Q 이력과 함께 홀딩스 열을 남긴다", visibleTargets(["2026-Q3", "2026-Q4"], "2026-Q4").some((t) => t.key === "holdings")));
-  c.push(ok("cols: 27년 BP 화면에는 비즈니스솔루션·ITO 열이 있다", ["business_solution", "ito"].every((k) => visibleTargets(["2026-Q3", "2027-BP"], "2027-BP").some((t) => t.key === k))));
+  c.push(ok("cols: 27년 BP 화면에는 IT 열이 있다", visibleTargets(["2026-Q3", "2027-BP"], "2027-BP").some((t) => t.key === "it")));
   c.push(ok("cols: BP만 보이면 Mobility 열 없음", !visibleTargets(["2027-BP"]).some((t) => t.key === "mobility")));
   c.push(ok("cols: 4Q만 보이면 홀딩스 열 없음", !visibleTargets(["2026-Q4"]).some((t) => t.key === "holdings")));
   // 대상이 아닌 기간의 열은 0이 아니라 빈칸(null)으로 저장한다 — 그 기간에는 없는 열이다.
-  c.push(eq("db: 3Q의 비즈니스솔루션은 null", toDbTargets({ stb: 1 }, "2026-Q3").business_solution, null));
+  c.push(eq("db: 3Q의 IT는 null", toDbTargets({ stb: 1 }, "2026-Q3").it, null));
   c.push(eq("db: 3Q의 홀딩스는 숫자", toDbTargets({ stb: 1 }, "2026-Q3").holdings, 0));
   c.push(eq("db: 4Q의 홀딩스는 null", toDbTargets({ stb: 1 }, "2026-Q4").holdings, null));
-  c.push(eq("db: 4Q의 ITO는 숫자", toDbTargets({ stb: 0.9, ito: 0.1 }, "2026-Q4").ito, 0.1));
+  c.push(eq("db: 4Q의 IT는 숫자", toDbTargets({ stb: 0.9, it: 0.1 }, "2026-Q4").it, 0.1));
   c.push(eq("holdings: 4Q 저장값은 0", parseTargetRates({ stb: "0.9", holdings: "0.1" }, "2026-Q4").holdings, 0));
   c.push(eq("holdings: 3Q 저장값은 그대로", parseTargetRates({ stb: "0.9", holdings: "0.1" }, "2026-Q3").holdings, 0.1));
   c.push(eq("holdings: 전분기 값을 불러오면 비운다(문자열)", stripInactiveTargets({ stb: "0.9", holdings: "0.1" }, "2026-Q4").holdings, "0"));
@@ -589,7 +588,7 @@ function runCases(): Case[] {
   c.push(eq("link: 본사 링크는 둘 다", linkPeriodsFor("본사", ["2026-Q4", "2027-BP"]), ["2026-Q4", "2027-BP"]));
   c.push(eq("link: 해외법인의 BP 제출은 거절", resolveSurveyPeriod({ current_period: "2026-Q4+2027-BP" }, "2027-BP", "법인"), null));
   c.push(eq("round: 기간 없는 옛 요청은 첫 기간", resolveSurveyPeriod({ current_period: "2026-Q4+2027-BP" }, undefined), "2026-Q4"));
-  c.push(ok("bs/ito: 3Q에는 고정 행이 없다", !fixedRatesFor("2026-Q3").some((d) => d.basis === "비즈니스솔루션" || d.basis === "ITO")));
+  c.push(ok("it: 3Q에는 IT 고정 행이 없다", !fixedRatesFor("2026-Q3").some((d) => d.basis === "IT 100%")));
   c.push(
     ok(
       "it사업부: IT사업부는 고정비율 행이 아니다 (조사하는 그룹이다)",
@@ -598,11 +597,11 @@ function runCases(): Case[] {
   );
   c.push(
     ok(
-      "bs/ito: 4Q·BP 모두 비즈니스솔루션·ITO 각 100% 행 (고정비율/직접비)",
+      "it: 4Q·BP 모두 IT 100% 행 (고정비율/직접비), 비즈니스솔루션·ITO 행은 없다",
       ["2026-Q4", "2027-BP"].every(
         (q) =>
-          fixedRatesFor(q).some((d) => d.basis === "비즈니스솔루션" && !d.type && d.division === "직접비" && d.rates.business_solution === 1) &&
-          fixedRatesFor(q).some((d) => d.basis === "ITO" && !d.type && d.division === "직접비" && d.rates.ito === 1)
+          fixedRatesFor(q).some((d) => d.basis === "IT 100%" && !d.type && d.division === "직접비" && d.rates.it === 1) &&
+          !fixedRatesFor(q).some((d) => d.basis === "비즈니스솔루션" || d.basis === "ITO")
       )
     )
   );

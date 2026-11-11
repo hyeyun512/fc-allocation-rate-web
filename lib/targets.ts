@@ -9,8 +9,7 @@ export type TargetKey =
   | "mobility"
   | "evcs_domestic"
   | "evcs_overseas"
-  | "business_solution"
-  | "ito"
+  | "it"
   | "humax_common"
   | "building"
   | "h_mobility"
@@ -34,8 +33,7 @@ export const TARGETS: TargetDef[] = [
   { key: "mobility", label: "Mobility", labelEn: "Mobility", group: "humax" },
   { key: "evcs_domestic", label: "EVCS(국내)", labelEn: "EVCS (Domestic)", group: "humax" },
   { key: "evcs_overseas", label: "EVCS(해외)", labelEn: "EVCS (Overseas)", group: "humax" },
-  { key: "business_solution", label: "비즈니스솔루션", labelEn: "Business Solutions", group: "humax" },
-  { key: "ito", label: "ITO", labelEn: "ITO", group: "humax" },
+  { key: "it", label: "IT", labelEn: "IT", group: "humax" },
   { key: "humax_common", label: "Humax(공통)", labelEn: "Humax (Common)", group: "humax" },
   { key: "building", label: "건물", labelEn: "Building", group: "humax" },
   { key: "h_mobility", label: "H.Mobility", labelEn: "H.Mobility", group: "affiliate" },
@@ -57,10 +55,9 @@ export const TARGETS: TargetDef[] = [
 export const TARGET_LIFESPAN: Partial<Record<TargetKey, { from?: string; to?: string }>> = {
   // 27년 BP부터 Mobility에는 배부하지 않는다.
   mobility: { to: "2026-Q4" },
-  // IT 사업은 2026-Q4부터 비즈니스솔루션·ITO 둘로 나눠 배부한다.
-  // (처음엔 IT 한 대상으로 두려 했으나 4Q부터 나누기로 했다 — DB의 it 컬럼은 쓰지 않고 비워 둔다.)
-  business_solution: { from: "2026-Q4" },
-  ito: { from: "2026-Q4" },
+  // IT 사업은 2026-Q4부터 'IT' 한 대상으로 배부한다.
+  // (한때 비즈니스솔루션·ITO 둘로 나눴다가 2026-11-11 지침 변경으로 다시 합쳤다 — DB의 business_solution·ito 컬럼은 쓰지 않는다.)
+  it: { from: "2026-Q4" },
   // 홀딩스가 회사에 합병되어 2026-Q4부터 배부하지 않는다.
   holdings: { to: "2026-Q3" },
   // 27년 BP부터 자가사용(건물) 배부를 없애고 건물(분당)/건물(용인) 배부기준에서 사업으로 바로 나누므로
