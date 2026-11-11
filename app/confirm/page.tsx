@@ -2,6 +2,7 @@ import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { TARGETS, TargetKey } from "@/lib/targets";
 import { latestByPerson, latestByPersonAndPeriod, latestOrgByPeriod, computeRollup, SubmissionRow } from "@/lib/rollup";
 import { HIDDEN_IN_CONFIRM } from "@/lib/autoAggregate";
+import { keepsTeamRates } from "@/lib/confirmRate";
 import { isOrgActiveIn } from "@/lib/orgLifespan";
 import { resolveManagerPair, OrgManagerRow } from "@/lib/orgManager";
 import { linkTokenOf, isTokenOwner, OrgLite } from "@/lib/orgLink";
@@ -164,7 +165,11 @@ export default async function AdminConfirmPage() {
       }, null);
       const submittedBy = orgLevelRow?.submitted_by ?? personRows[0]?.submitted_by ?? null;
       // 확정도 값이 있어야 확정으로 본다 (0%만 저장된 건 확정 표기하지 않는다).
-      const confirmedThisPeriod = orgRateRows.some((r) => r.quarter === period && (Number(r.total) || 0) > 0);
+      // 집계 조직의 하위 팀(재무팀·SW팀·업무지원팀 등)은 배부율 표에 행을 남기지 않는다(상위 조직 한 줄에만 반영) —
+      // 그래서 표만 보면 저장해도 늘 '미반영'으로 열려 있었다(사용자 지적). 하위 팀은 그 기간에 저장된 값이 있으면 반영된 것으로 본다.
+      const isUnlistedChild = !!org.parent_basis && !keepsTeamRates(org.parent_basis);
+      const confirmedThisPeriod =
+        orgRateRows.some((r) => r.quarter === period && (Number(r.total) || 0) > 0) || (isUnlistedChild && hasAnyValue);
 
       const orgPersonHistory = latestByPersonAndPeriod(personSubList.filter((s) => s.org_id === org.id))
         // 분기 순으로 묶되, 같은 분기 안에서는 이름순이 아니라 입력한 순서(id)를 유지한다.
