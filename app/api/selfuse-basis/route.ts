@@ -4,12 +4,13 @@ import {
   computeSelfuseRates,
   hasBundangSelfuse2,
   usesBuildingBasis,
+  autoHqHeadcountIn,
   computeBuildingRates,
   BUILDING_TYPE,
   SELFUSE_TYPE,
 } from "@/lib/selfuseBasis";
 import { TARGETS, TargetKey, sumTargets, normalizeTargets, RATE_TOTAL_TOLERANCE, toDbTargets } from "@/lib/targets";
-import { evcsResourceAverage } from "@/lib/autoAggregate";
+import { evcsResourceAverage, hqHeadcounts } from "@/lib/autoAggregate";
 
 export async function POST(req: NextRequest) {
   const { quarter, input, submittedBy, note } = await req.json();
@@ -24,15 +25,17 @@ export async function POST(req: NextRequest) {
     return saveBuildingBasis(supabase, quarter, input, submittedBy, note);
   }
 
+  // 2026-Q4부터 본사 인원수는 조사 데이터에서 자동 계산한다 — 화면이 보낸 값 대신 여기서 다시 센다.
+  const hq = autoHqHeadcountIn(quarter) ? await hqHeadcounts(supabase, quarter) : null;
   const parsedInput = {
     bundangSelfuseRatio: Number(input.bundangSelfuseRatio) || 0,
     // null(입력 안 함)을 0으로 뭉개지 않는다 — 뭉개면 분당(자가사용)2가 건물 100%로 저장된다.
     bundangSelfuseRatio2:
       input.bundangSelfuseRatio2 == null ? null : Number(input.bundangSelfuseRatio2) || 0,
     yonginSelfuseRatio: Number(input.yonginSelfuseRatio) || 0,
-    bizDevMediaHeadcount: Number(input.bizDevMediaHeadcount) || 0,
-    staffHeadcount: Number(input.staffHeadcount) || 0,
-    hqTotalHeadcount: Number(input.hqTotalHeadcount) || 0,
+    bizDevMediaHeadcount: hq ? hq.bizDevMedia : Number(input.bizDevMediaHeadcount) || 0,
+    staffHeadcount: hq ? hq.staff : Number(input.staffHeadcount) || 0,
+    hqTotalHeadcount: hq ? hq.total : Number(input.hqTotalHeadcount) || 0,
     materialEvcsDomesticRatio: Number(input.materialEvcsDomesticRatio) || 0,
     materialEvcsOverseasRatio: Number(input.materialEvcsOverseasRatio) || 0,
   };

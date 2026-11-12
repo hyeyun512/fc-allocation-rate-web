@@ -9,6 +9,8 @@ import {
   computeSelfuseRates,
   hasBundangSelfuse2,
   SelfuseBasisInput,
+  HqHeadcounts,
+  HQ_STAFF_ORGS,
 } from "@/lib/selfuseBasis";
 import { RateTableHead, ReadOnlyRateRow, NoteTip, fieldGroupTone, isGroupStart } from "@/components/RateParts";
 import { readPasteGrid, shouldHandlePaste } from "@/lib/paste";
@@ -126,7 +128,7 @@ function cellText(f: FieldDef, row: SelfuseBasisRow): string {
  * 26년 4Q와 27년 BP처럼 두 기간을 함께 검토하면 같은 표에 기간마다 입력 행이 붙고, 저장도 기간마다 따로 된다
  * (/api/selfuse-basis의 quarter).
  */
-function useSelfuseEntry(period: string, initial: SelfuseBasisRow | null) {
+function useSelfuseEntry(period: string, initial: SelfuseBasisRow | null, auto: HqHeadcounts | null) {
   const [form, setForm] = useState<FormState>(() => fromRow(initial));
   // 기준정보 표의 맨 오른쪽 코멘트. IT 탭과 달리 저장 버튼이 하나뿐이라 값과 함께 저장한다.
   const [note, setNote] = useState(initial?.note ?? "");
@@ -136,17 +138,25 @@ function useSelfuseEntry(period: string, initial: SelfuseBasisRow | null) {
   const [unlocked, setUnlocked] = useState(false);
   const editable = !confirmed || unlocked;
 
+  // 2026-Q4부터 본사 인원수(Staff부문·본사 총)는 조사 데이터에서 자동 계산한다(사용자 지시) — 입력 중일 때 그 값을 쓴다.
+  // 확정된 행은 저장된 값 그대로 보인다 (저장할 때 서버가 다시 센다).
+  const autoHc = auto && editable ? auto : null;
+  const hcForm = autoHc ? { ...form, staffHeadcount: String(autoHc.staff), hqTotalHeadcount: String(autoHc.total) } : form;
   // 사업+개발+Media그룹 인원수 = 본사 총 인원수 - Staff부문 인원수 (음수는 0으로).
-  const derivedBizDevMedia = String(Math.max(0, (Number(form.hqTotalHeadcount) || 0) - (Number(form.staffHeadcount) || 0)));
-  const input = toBasisInput({ ...form, bizDevMediaHeadcount: derivedBizDevMedia });
+  const derivedBizDevMedia = String(Math.max(0, (Number(hcForm.hqTotalHeadcount) || 0) - (Number(hcForm.staffHeadcount) || 0)));
+  const input = toBasisInput({ ...hcForm, bizDevMediaHeadcount: derivedBizDevMedia });
   const preview = useMemo(() => computeSelfuseRates(input, period), [JSON.stringify(input), period]);
 
   // 지금 입력 중인 분기가 이사 기간인가 — 열은 서 있어도 이 분기 것이 아니면 입력칸을 두지 않는다.
   const hasBundang2 = hasBundangSelfuse2(period);
-  const canEditField = (f: FieldDef) => !f.derived && !(f.bundang2 && !hasBundang2);
+  const isAutoHc = (f: FieldDef) => !!autoHc && (f.key === "staffHeadcount" || f.key === "hqTotalHeadcount");
+  const canEditField = (f: FieldDef) => !f.derived && !isAutoHc(f) && !(f.bundang2 && !hasBundang2);
   // 빈 화면에서 저장이 눌리면 자가사용비율 0 → '건물 100%'짜리 배부율이 만들어져,
   // 열어본 적도 없는 분기가 View에 확정된 것처럼 남는다.
-  const hasInput = Object.values(input).some((v) => (v ?? 0) > 0);
+  // 자동으로 채워지는 인원수는 '입력했다'로 치지 않는다 (빈 기간이 저장되지 않게).
+  const hasInput = Object.entries(input).some(
+    ([k, v]) => (v ?? 0) > 0 && !(autoHc && ["staffHeadcount", "hqTotalHeadcount", "bizDevMediaHeadcount"].includes(k))
+  );
 
   /** 이 분기의 입력값을 과거 행과 같은 모양으로 본 것. 확정 후 읽기 전용 행에 그대로 쓴다. */
   function asRow(submittedBy: string): SelfuseBasisRow {
@@ -189,6 +199,8 @@ function useSelfuseEntry(period: string, initial: SelfuseBasisRow | null) {
     editable,
     setUnlocked,
     derivedBizDevMedia,
+    hcForm,
+    isAutoHc,
     preview,
     hasBundang2,
     canEditField,
@@ -203,15 +215,18 @@ type SelfuseEntry = ReturnType<typeof useSelfuseEntry>;
 export default function SelfUsePanel({
   periods,
   history,
+  autoHeadcounts = {},
 }: {
   /** 이번 라운드의 기간들 (기간 순서대로). 묶음 라운드(26년 4Q & 27년 BP)면 기간마다 입력 행이 붙는다. */
   periods: string[];
   history: SelfuseBasisRow[];
+  /** 기간별 자동 계산 본사 인원수 (2026-Q4~, 서버가 조사 데이터로 센다). */
+  autoHeadcounts?: Record<string, HqHeadcounts | null>;
 }) {
   const initialOf = (p: string) => history.find((h) => h.quarter === p) ?? null;
   // 기간 수는 라운드가 정하고 화면을 여는 동안 바뀌지 않으므로, 훅을 기간마다 한 번씩 불러도 순서가 고정된다.
   // eslint-disable-next-line react-hooks/rules-of-hooks
-  const entries: SelfuseEntry[] = periods.map((p) => useSelfuseEntry(p, initialOf(p)));
+  const entries: SelfuseEntry[] = periods.map((p) => useSelfuseEntry(p, initialOf(p), autoHeadcounts[p] ?? null));
   // 다른 표와 함께 저장 규칙을 지켜야 하면(4Q 자가사용 + BP 건물) 기간이 하나여도 여러 기간 라운드로 본다.
   const multi = entries.length > 1;
   // 입력자는 한 사람이 라운드의 기간을 함께 입력하므로 하나만 받고, 이번에 저장하는 기간에만 실어 보낸다.
@@ -295,6 +310,10 @@ export default function SelfUsePanel({
               // 본사 총 - Staff 로 계산되는 값이라 직접 고치지 않는다.
               <span title="본사 총 인원수 - Staff부문 인원수" style={{ color: "#475569", fontWeight: 600 }}>
                 {e.derivedBizDevMedia}
+              </span>
+            ) : e.isAutoHc(f) ? (
+              <span title="조사 데이터로 자동 계산 — 입력하지 않습니다" style={{ color: "#475569", fontWeight: 600 }}>
+                {e.hcForm[f.key]}
               </span>
             ) : !e.canEditField(f) ? (
               // 열은 다른 분기 때문에 서 있지만 이 분기에는 해당이 없다.
@@ -438,7 +457,8 @@ export default function SelfUsePanel({
       )}
       {/* 입력 형식·최근 입력자 같은 설명은 표에 이미 드러나므로 빼고, 자동계산 규칙만 각주로 남긴다. */}
       <div className="field-hint" style={{ marginBottom: 12 }}>
-        ※ 사업+개발+Media그룹 인원수 = 본사 총 인원수 − Staff부문 인원수
+        ※ 사업+개발+Media그룹 인원수 = 본사 총 인원수 − Staff부문 인원수. 2026-Q4부터 본사 인원수는 조사 데이터로 자동 계산됩니다
+        (Staff부문 = {HQ_STAFF_ORGS.join("·")}, 본사 총 = IT사업부를 뺀 본사 전체).
         {showBundang2 && (
           <>
             <br />※ 분당 자가사용비율2는 이사로 분당 건물이 둘인 분기({BUNDANG_SELFUSE_2_QUARTERS.join(", ")})에만 입력합니다.

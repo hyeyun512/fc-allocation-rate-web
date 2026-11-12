@@ -7,8 +7,9 @@ import { isOrgActiveIn } from "@/lib/orgLifespan";
 import { resolveManagerPair, OrgManagerRow } from "@/lib/orgManager";
 import { linkTokenOf, isTokenOwner, OrgLite } from "@/lib/orgLink";
 import { bundleOfOrg } from "@/lib/linkBundles";
-import { evcsResourceAverage } from "@/lib/autoAggregate";
-import type { EvcsAverage } from "@/lib/selfuseBasis";
+import { evcsResourceAverage, hqHeadcounts } from "@/lib/autoAggregate";
+import { autoHqHeadcountIn } from "@/lib/selfuseBasis";
+import type { EvcsAverage, HqHeadcounts } from "@/lib/selfuseBasis";
 
 /** 관리자 검토 화면에서 저장한 제출 행의 submitted_by (api/confirm). */
 const ADMIN_SUBMITTER = "관리자 수정 (검토및확정)";
@@ -381,6 +382,10 @@ export default async function AdminConfirmPage() {
         note: p.note ?? null,
       };
     });
+  // 자가사용(건물) 본사 인원수 — 2026-Q4부터 조사 데이터로 자동 계산한다.
+  const autoHeadcounts: Record<string, HqHeadcounts | null> = Object.fromEntries(
+    await Promise.all(periods.filter(autoHqHeadcountIn).map(async (p) => [p, await hqHeadcounts(supabase, p)] as const))
+  );
   // 건물 기간(27년 BP~)의 EVCS리소스평균 — 다섯 조직의 지금 값으로 계산한다 (입력받지 않는 자동 칸).
   const evcsAverages: Record<string, EvcsAverage | null> = Object.fromEntries(
     await Promise.all(
@@ -484,6 +489,7 @@ export default async function AdminConfirmPage() {
       selfuseHistory={selfuseHistory}
       buildingHistory={buildingHistory}
       evcsAverages={evcsAverages}
+      autoHeadcounts={autoHeadcounts}
     />
   );
 }

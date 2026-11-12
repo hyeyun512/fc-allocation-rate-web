@@ -98,6 +98,28 @@ export function buildingInputFromPayload(p: Record<string, any>, avg: EvcsAverag
   };
 }
 
+/**
+ * 자가사용(건물) 본사 인원수 — 2026-Q4부터 조사 데이터에서 자동 계산한다 (사용자 지시 2026-11-12).
+ *   · Staff부문 = HQ_STAFF_ORGS 조직 인원 합 (3Q 입력값 28명이 이 합과 정확히 같았다)
+ *   · 본사 총   = 본사 최상위 조직 인원 합 (HQ_HEADCOUNT_EXCLUDED 제외 — IT사업부는 자가사용 계산 대상이 아니다)
+ *   · 사업+개발+Media그룹 = 본사 총 − Staff부문 (예전과 같은 식)
+ * 집계 조직(경영지원실·HR실 등)은 하위 팀 인원 합으로 센다 — 재계산과 같은 계산(lib/autoAggregate.ts의 hqHeadcounts).
+ */
+export const HQ_HEADCOUNT_AUTO_FROM = "2026-Q4";
+export const HQ_STAFF_ORGS = ["CEO", "Staff(CEO)", "경영지원실", "HR실", "지식재산팀", "SCM실"];
+export const HQ_HEADCOUNT_EXCLUDED = ["IT사업부"];
+
+export interface HqHeadcounts {
+  staff: number;
+  total: number;
+  bizDevMedia: number;
+}
+
+export function autoHqHeadcountIn(period: string): boolean {
+  const r = quarterRank(period);
+  return r >= 0 && r >= quarterRank(HQ_HEADCOUNT_AUTO_FROM) && !usesBuildingBasis(period);
+}
+
 export interface SelfuseBasisInput {
   bundangSelfuseRatio: number;
   /**
@@ -126,7 +148,8 @@ export interface SelfuseBasisInput {
  *
  * 이사가 더 길어지면 이 배열에 분기를 추가하면 된다(화면·저장·계산이 모두 여기를 본다).
  */
-export const BUNDANG_SELFUSE_2_QUARTERS: readonly string[] = ["2026-Q3"];
+// 2026-Q4도 이사가 이어져 분당2를 받는다 (사용자 지시 2026-11-12).
+export const BUNDANG_SELFUSE_2_QUARTERS: readonly string[] = ["2026-Q3", "2026-Q4"];
 
 export function hasBundangSelfuse2(quarter: string): boolean {
   return BUNDANG_SELFUSE_2_QUARTERS.includes(quarter);

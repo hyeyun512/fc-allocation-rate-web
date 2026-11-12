@@ -402,7 +402,7 @@ function runCases(): Case[] {
     materialEvcsDomesticRatio: 0.3,
     materialEvcsOverseasRatio: 0.7,
   };
-  c.push(ok("selfuse: 2026-Q3만 분당이 둘", hasBundangSelfuse2("2026-Q3") && !hasBundangSelfuse2("2026-Q2") && !hasBundangSelfuse2("2026-Q4")));
+  c.push(ok("selfuse: 2026-Q3·Q4만 분당이 둘", hasBundangSelfuse2("2026-Q3") && hasBundangSelfuse2("2026-Q4") && !hasBundangSelfuse2("2026-Q2") && !hasBundangSelfuse2("2027-BP")));
   c.push(
     eq(
       "selfuse: 이사 분기는 3행, 분당2가 분당과 용인 사이",
@@ -413,7 +413,7 @@ function runCases(): Case[] {
   c.push(
     eq(
       "selfuse: 다른 분기는 종전대로 2행",
-      computeSelfuseRates(SELFUSE, "2026-Q4").map((r) => r.basis),
+      computeSelfuseRates(SELFUSE, "2026-Q2").map((r) => r.basis),
       ["분당(자가사용)", "용인(자가사용)"]
     )
   );

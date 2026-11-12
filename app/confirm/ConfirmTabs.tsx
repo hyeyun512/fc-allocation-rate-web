@@ -10,7 +10,7 @@ import ConfirmReview, { OrgReviewData, RateHistoryEntry, ReviewRound } from "./C
 import ItPanel, { ItBasisRow } from "./ItPanel";
 import SelfUsePanel, { SelfuseBasisRow } from "./SelfUsePanel";
 import BuildingPanel, { BuildingBasisRow } from "./BuildingPanel";
-import type { EvcsAverage } from "@/lib/selfuseBasis";
+import type { EvcsAverage, HqHeadcounts } from "@/lib/selfuseBasis";
 import { usesBuildingBasis } from "@/lib/selfuseBasis";
 import { quarterRank } from "@/lib/quarter";
 
@@ -58,6 +58,7 @@ export default function ConfirmTabs({
   selfuseHistory,
   buildingHistory,
   evcsAverages,
+  autoHeadcounts,
 }: {
   /**
    * 지금 라운드의 기간들 (기간 순서대로). 묶음 라운드(26년 4Q & 27년 BP)면 둘이고,
@@ -82,6 +83,8 @@ export default function ConfirmTabs({
   buildingHistory: BuildingBasisRow[];
   /** 건물 기간별 EVCS리소스평균 (자동 계산). */
   evcsAverages: Record<string, EvcsAverage | null>;
+  /** 자가사용(건물) 기간별 자동 계산 본사 인원수 (2026-Q4~). */
+  autoHeadcounts: Record<string, HqHeadcounts | null>;
 }) {
   // 처음 열리는 탭은 언제나 맨 앞 탭이다. 순서를 바꾸면 첫 화면도 따라오게 두어,
   // 탭 목록과 기본값이 따로 놀지 않게 한다.
@@ -217,6 +220,7 @@ export default function ConfirmTabs({
               key={selfusePeriods.join("+")}
               periods={selfusePeriods}
               history={selfuseHistory}
+              autoHeadcounts={autoHeadcounts}
             />
           )}
           {hasBuilding && (

@@ -6,6 +6,9 @@ import { keepsTeamRates } from "./confirmRate";
 import {
   EVCS_AVERAGE_ORGS,
   EvcsAverage,
+  HQ_STAFF_ORGS,
+  HQ_HEADCOUNT_EXCLUDED,
+  HqHeadcounts,
   usesBuildingBasis,
   computeBuildingRates,
   buildingInputFromPayload,
@@ -217,6 +220,16 @@ export async function recomputeAggregates(supabase: any, period: string, version
 export async function evcsResourceAverage(supabase: any, period: string): Promise<EvcsAverage | null> {
   const { orgs, stateById } = await runAggregates(supabase, period, undefined, false);
   return evcsAverageFromStates(orgs, stateById);
+}
+
+/** 자가사용(건물) 본사 인원수 (규칙은 lib/selfuseBasis.ts의 HQ_STAFF_ORGS 설명). 저장하지 않고 계산만 한다. */
+export async function hqHeadcounts(supabase: any, period: string): Promise<HqHeadcounts> {
+  const { orgs, stateById } = await runAggregates(supabase, period, undefined, false);
+  const top = orgs.filter((o: any) => o.division === "본사" && !o.parent_basis && !HQ_HEADCOUNT_EXCLUDED.includes(o.basis));
+  const weight = (o: any) => stateById.get(o.id)?.weight ?? 0;
+  const total = top.reduce((s: number, o: any) => s + weight(o), 0);
+  const staff = top.filter((o: any) => HQ_STAFF_ORGS.includes(o.basis)).reduce((s: number, o: any) => s + weight(o), 0);
+  return { staff, total, bizDevMedia: Math.max(0, total - staff) };
 }
 
 function evcsAverageFromStates(orgs: any[], stateById: Map<number, OrgState>): EvcsAverage | null {
