@@ -466,23 +466,7 @@ export default function SelfUsePanel({
         )}
       </div>
 
-      {entries.map((e) => (
-        <div key={e.period}>
-          <div className="panel-sub" style={{ fontWeight: 700, color: "#1a202c", margin: "0 0 8px" }}>
-            ■ 자동계산 미리보기 ({e.period})
-          </div>
-          <div className="tbl-scroll" style={{ marginBottom: 12 }}>
-            <table className="rate-tbl">
-              <RateTableHead />
-              <tbody>
-                {e.preview.map((row) => (
-                  <ReadOnlyRateRow key={row.basis} label={row.basis} period={e.period} rec={toFullRec(row.rates)} />
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      ))}
+      {/* '자동계산 미리보기'는 아래 '확정 이력'과 같아 지웠다(사용자 지시). */}
 
       {error && <div className="callout alert" style={{ marginBottom: 12 }}>{error}</div>}
       {/* 확정된 분기에는 저장 버튼을 감춘다 — 다시 열려면 기준정보 표 아래의 '수정'을 누른다.
