@@ -7,6 +7,8 @@ import { isOrgActiveIn } from "@/lib/orgLifespan";
 import { resolveManagerPair, OrgManagerRow } from "@/lib/orgManager";
 import { linkTokenOf, isTokenOwner, OrgLite } from "@/lib/orgLink";
 import { bundleOfOrg } from "@/lib/linkBundles";
+import { evcsResourceAverage } from "@/lib/autoAggregate";
+import type { EvcsAverage } from "@/lib/selfuseBasis";
 
 /** 관리자 검토 화면에서 저장한 제출 행의 submitted_by (api/confirm). */
 const ADMIN_SUBMITTER = "관리자 수정 (검토및확정)";
@@ -379,14 +381,21 @@ export default async function AdminConfirmPage() {
         note: p.note ?? null,
       };
     });
+  // 건물 기간(27년 BP~)의 EVCS리소스평균 — 다섯 조직의 지금 값으로 계산한다 (입력받지 않는 자동 칸).
+  const evcsAverages: Record<string, EvcsAverage | null> = Object.fromEntries(
+    await Promise.all(
+      periods.filter(usesBuildingBasis).map(async (p) => [p, await evcsResourceAverage(supabase, p)] as const)
+    )
+  );
   const buildingHistory: BuildingBasisRow[] = basisInputs
     .filter((r) => r.category === "selfuse" && usesBuildingBasis(r.quarter as string))
     .map((r) => {
       const p = r.payload as Record<string, any>;
       return {
         quarter: r.quarter as string,
-        bundang_area_evcs_domestic: Number(p.bundang_area_evcs_domestic) || 0,
-        bundang_area_evcs_overseas: Number(p.bundang_area_evcs_overseas) || 0,
+        evcs_avg_domestic: Number(p.evcs_avg_domestic) || 0,
+        evcs_avg_overseas: Number(p.evcs_avg_overseas) || 0,
+        bundang_area_evcs: Number(p.bundang_area_evcs) || 0,
         bundang_area_it: Number(p.bundang_area_it) || 0,
         bundang_area_humax_common: Number(p.bundang_area_humax_common) || 0,
         material_evcs_domestic_ratio: Number(p.material_evcs_domestic_ratio) || 0,
@@ -474,6 +483,7 @@ export default async function AdminConfirmPage() {
       itHistory={itHistory}
       selfuseHistory={selfuseHistory}
       buildingHistory={buildingHistory}
+      evcsAverages={evcsAverages}
     />
   );
 }

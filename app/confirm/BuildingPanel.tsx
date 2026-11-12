@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { TARGETS, TargetKey } from "@/lib/targets";
 import { prettyQuarterLabel, sortQuarters } from "@/lib/quarter";
-import { computeBuildingRates, BuildingBasisInput } from "@/lib/selfuseBasis";
+import { computeBuildingRates, BuildingBasisInput, EvcsAverage, EVCS_AVERAGE_ORGS } from "@/lib/selfuseBasis";
 import { RateTableHead, ReadOnlyRateRow, NoteTip, fieldGroupTone, isGroupStart } from "@/components/RateParts";
 import { readPasteGrid, shouldHandlePaste } from "@/lib/paste";
 
@@ -15,8 +15,10 @@ import { readPasteGrid, shouldHandlePaste } from "@/lib/paste";
  */
 export interface BuildingBasisRow {
   quarter: string;
-  bundang_area_evcs_domestic: number;
-  bundang_area_evcs_overseas: number;
+  /** 저장 시점의 EVCS리소스평균 (소수). 이후 다섯 조직 값이 바뀌면 재계산이 함께 고친다. */
+  evcs_avg_domestic: number;
+  evcs_avg_overseas: number;
+  bundang_area_evcs: number;
   bundang_area_it: number;
   bundang_area_humax_common: number;
   material_evcs_domestic_ratio: number;
@@ -27,12 +29,16 @@ export interface BuildingBasisRow {
 }
 
 type FieldKey = keyof BuildingBasisInput;
-type FormState = Record<FieldKey, string>;
+/** 입력받는 칸만 (EVCS리소스평균은 자동 계산이라 입력 상태에 두지 않는다). */
+type InputKey = Exclude<FieldKey, "evcsAvgDomestic" | "evcsAvgOverseas">;
+type FormState = Record<InputKey, string>;
 
 // 머리글은 두 줄이다 — 윗줄에 묶음(group), 아랫줄에 배부 대상(label). 같은 group이 이어지면 윗줄 칸을 합친다.
-const FIELDS: { key: FieldKey; group: string; label: string; pct?: boolean }[] = [
-  { key: "bundangAreaEvcsDomestic", group: "분당 면적 비율(%)", label: "EVCS(국내)" },
-  { key: "bundangAreaEvcsOverseas", group: "분당 면적 비율(%)", label: "EVCS(해외)" },
+// 열 구성(사용자 지시 2026-11-12): EVCS리소스평균(자동) / 분당 면적 비율 / 용인 재료비 비율.
+const FIELDS: { key: FieldKey; group: string; label: string; pct?: boolean; auto?: boolean }[] = [
+  { key: "evcsAvgDomestic", group: "EVCS리소스평균(자동)", label: "EVCS(국내)", pct: true, auto: true },
+  { key: "evcsAvgOverseas", group: "EVCS리소스평균(자동)", label: "EVCS(해외)", pct: true, auto: true },
+  { key: "bundangAreaEvcs", group: "분당 면적 비율(%)", label: "EVCS" },
   { key: "bundangAreaIt", group: "분당 면적 비율(%)", label: "IT" },
   { key: "bundangAreaHumaxCommon", group: "분당 면적 비율(%)", label: "Humax(공통)" },
   { key: "materialEvcsDomesticRatio", group: "용인 재료비 비율(%)", label: "EVCS(국내)", pct: true },
@@ -46,8 +52,7 @@ const FIELD_GROUPS = FIELDS.reduce<{ group: string; span: number }[]>((acc, f) =
 }, []);
 
 const EMPTY_FORM: FormState = {
-  bundangAreaEvcsDomestic: "",
-  bundangAreaEvcsOverseas: "",
+  bundangAreaEvcs: "",
   bundangAreaIt: "",
   bundangAreaHumaxCommon: "",
   materialEvcsDomesticRatio: "",
@@ -57,8 +62,7 @@ const EMPTY_FORM: FormState = {
 function fromRow(row: BuildingBasisRow | null): FormState {
   if (!row) return { ...EMPTY_FORM };
   return {
-    bundangAreaEvcsDomestic: String(row.bundang_area_evcs_domestic ?? ""),
-    bundangAreaEvcsOverseas: String(row.bundang_area_evcs_overseas ?? ""),
+    bundangAreaEvcs: String(row.bundang_area_evcs ?? ""),
     bundangAreaIt: String(row.bundang_area_it ?? ""),
     bundangAreaHumaxCommon: String(row.bundang_area_humax_common ?? ""),
     materialEvcsDomesticRatio: String((row.material_evcs_domestic_ratio ?? 0) * 100),
@@ -66,10 +70,11 @@ function fromRow(row: BuildingBasisRow | null): FormState {
   };
 }
 
-function toInput(f: FormState): BuildingBasisInput {
+function toInput(f: FormState, avg: EvcsAverage | null): BuildingBasisInput {
   return {
-    bundangAreaEvcsDomestic: Number(f.bundangAreaEvcsDomestic) || 0,
-    bundangAreaEvcsOverseas: Number(f.bundangAreaEvcsOverseas) || 0,
+    evcsAvgDomestic: avg?.domestic ?? 0,
+    evcsAvgOverseas: avg?.overseas ?? 0,
+    bundangAreaEvcs: Number(f.bundangAreaEvcs) || 0,
     bundangAreaIt: Number(f.bundangAreaIt) || 0,
     bundangAreaHumaxCommon: Number(f.bundangAreaHumaxCommon) || 0,
     materialEvcsDomesticRatio: (Number(f.materialEvcsDomesticRatio) || 0) / 100,
@@ -79,8 +84,9 @@ function toInput(f: FormState): BuildingBasisInput {
 
 function inputOfRow(row: BuildingBasisRow): BuildingBasisInput {
   return {
-    bundangAreaEvcsDomestic: row.bundang_area_evcs_domestic,
-    bundangAreaEvcsOverseas: row.bundang_area_evcs_overseas,
+    evcsAvgDomestic: row.evcs_avg_domestic,
+    evcsAvgOverseas: row.evcs_avg_overseas,
+    bundangAreaEvcs: row.bundang_area_evcs,
     bundangAreaIt: row.bundang_area_it,
     bundangAreaHumaxCommon: row.bundang_area_humax_common,
     materialEvcsDomesticRatio: row.material_evcs_domestic_ratio,
@@ -105,17 +111,16 @@ function cellText(key: FieldKey, pct: boolean | undefined, input: BuildingBasisI
  */
 function buildingInputProblem(input: BuildingBasisInput): string | null {
   if (Object.values(input).some((v) => v < 0)) return "면적과 재료비 비중은 0 이상이어야 합니다.";
-  const area = input.bundangAreaEvcsDomestic +
-    input.bundangAreaEvcsOverseas +
-    input.bundangAreaIt +
-    input.bundangAreaHumaxCommon;
+  if (input.evcsAvgDomestic + input.evcsAvgOverseas <= 0)
+    return "EVCS리소스평균을 계산할 값이 없습니다. 사업 그룹·개발 그룹 등 다섯 조직의 배부율을 먼저 저장해 주세요.";
+  const area = input.bundangAreaEvcs + input.bundangAreaIt + input.bundangAreaHumaxCommon;
   if (area <= 0) return "분당 면적을 입력해 주세요.";
   if (input.materialEvcsDomesticRatio + input.materialEvcsOverseasRatio <= 0) return "용인 재료비 비중을 입력해 주세요.";
   return null;
 }
 
 /** 기간 하나의 건물 기준정보 입력 상태 (SelfUsePanel의 useSelfuseEntry와 같은 구성). */
-function useBuildingEntry(period: string, initial: BuildingBasisRow | null) {
+function useBuildingEntry(period: string, initial: BuildingBasisRow | null, avg: EvcsAverage | null) {
   const [form, setForm] = useState<FormState>(() => fromRow(initial));
   const [note, setNote] = useState(initial?.note ?? "");
   // 이미 확정된 기간은 읽기 전용으로 두고 '수정'을 눌렀을 때만 다시 입력한다.
@@ -123,15 +128,17 @@ function useBuildingEntry(period: string, initial: BuildingBasisRow | null) {
   const [unlocked, setUnlocked] = useState(false);
   const editable = !confirmed || unlocked;
 
-  const input = toInput(form);
+  const input = toInput(form, avg);
   const preview = useMemo(() => computeBuildingRates(input), [JSON.stringify(input)]);
-  const hasInput = Object.values(input).some((v) => v > 0);
+  // EVCS리소스평균은 자동으로 늘 채워지므로 '입력했는가'는 입력 칸만 본다.
+  const hasInput = (Object.keys(form) as InputKey[]).some((k) => (Number(form[k]) || 0) > 0);
 
   function asRow(submittedBy: string): BuildingBasisRow {
     return {
       quarter: period,
-      bundang_area_evcs_domestic: input.bundangAreaEvcsDomestic,
-      bundang_area_evcs_overseas: input.bundangAreaEvcsOverseas,
+      evcs_avg_domestic: input.evcsAvgDomestic,
+      evcs_avg_overseas: input.evcsAvgOverseas,
+      bundang_area_evcs: input.bundangAreaEvcs,
       bundang_area_it: input.bundangAreaIt,
       bundang_area_humax_common: input.bundangAreaHumaxCommon,
       material_evcs_domestic_ratio: input.materialEvcsDomesticRatio,
@@ -164,6 +171,7 @@ export default function BuildingPanel({
   periods,
   history,
   materialSource,
+  evcsAverages,
 }: {
   /** 이번 라운드에서 건물 기준정보를 쓰는 기간들 (27년 BP~). */
   periods: string[];
@@ -173,11 +181,13 @@ export default function BuildingPanel({
    * 같은 값이라 이어 쓸 수 있다 — 분당은 인원수에서 면적으로 바뀌어 가져올 것이 없다.
    */
   materialSource: { quarter: string; material_evcs_domestic_ratio: number; material_evcs_overseas_ratio: number } | null;
+  /** 기간별 EVCS리소스평균 — 서버가 지금 값으로 계산해 내려준다 (아무도 입력 전이면 null). */
+  evcsAverages: Record<string, EvcsAverage | null>;
 }) {
   const initialOf = (p: string) => history.find((h) => h.quarter === p) ?? null;
   // 기간 수는 라운드가 정하고 화면을 여는 동안 바뀌지 않으므로, 훅을 기간마다 한 번씩 불러도 순서가 고정된다.
   // eslint-disable-next-line react-hooks/rules-of-hooks
-  const entries: BuildingEntry[] = periods.map((p) => useBuildingEntry(p, initialOf(p)));
+  const entries: BuildingEntry[] = periods.map((p) => useBuildingEntry(p, initialOf(p), evcsAverages[p] ?? null));
   // 다른 표와 함께 저장 규칙을 지켜야 하면(4Q 자가사용 + BP 건물) 기간이 하나여도 여러 기간 라운드로 본다.
   const multi = entries.length > 1;
   // 기간마다 저장된 입력자가 다르면 어느 쪽인지 알 수 없으므로 비워 두고 새로 적게 한다.
@@ -243,12 +253,17 @@ export default function BuildingPanel({
     return (
       <tr key={e.period}>
         <td style={{ textAlign: "left" }}>{e.period}</td>
-        {FIELDS.map((f, i) => (
+        {FIELDS.map((f, i) =>
+          f.auto ? (
+            <td key={f.key} className={isGroupStart(FIELDS, i) ? "fg-start" : undefined} title="자동 계산 — 입력하지 않습니다">
+              {e.input.evcsAvgDomestic + e.input.evcsAvgOverseas > 0 ? cellText(f.key, f.pct, e.input) : "-"}
+            </td>
+          ) : (
           <td key={f.key} className={isGroupStart(FIELDS, i) ? "fg-start" : undefined}>
             <input
               type="number"
               min="0"
-              value={e.form[f.key]}
+              value={e.form[f.key as InputKey]}
               onChange={(ev) => e.setForm((s) => ({ ...s, [f.key]: ev.target.value }))}
               style={{ width: 80 }}
               onPaste={(ev) => {
@@ -260,14 +275,15 @@ export default function BuildingPanel({
                   const next = { ...s };
                   row.forEach((tok, offset) => {
                     const target = FIELDS[i + offset];
-                    if (target) next[target.key] = tok;
+                    if (target && !target.auto) next[target.key as InputKey] = tok;
                   });
                   return next;
                 });
               }}
             />
           </td>
-        ))}
+          )
+        )}
         <td>
           <input value={e.note} onChange={(ev) => e.setNote(ev.target.value)} placeholder="코멘트" style={{ width: 160, textAlign: "left" }} />
         </td>
@@ -300,9 +316,9 @@ export default function BuildingPanel({
     <div className="panel" style={{ marginTop: 16 }}>
       <div className="panel-title">건물 (27년 BP~) — 기준정보 입력</div>
       <div className="panel-sub" style={{ marginBottom: 12 }}>
-        27년 BP부터는 자가사용(건물) 대신 건물(분당)·건물(용인) 배부기준을 씁니다. 분당은 사업별 사용 면적 비중으로,
-        용인은 재료비 비중(EVCS 국내/해외)으로 나눕니다. 배부 대상 &apos;건물&apos;은 이 기간부터 없습니다. 확정 시 운영
-        allocation_rate에 반영됩니다.
+        27년 BP부터는 자가사용(건물) 대신 건물(분당)·건물(용인) 배부기준을 씁니다. 분당은 면적 비율(EVCS·IT·Humax(공통))로 나누고,
+        EVCS 몫은 EVCS리소스평균으로 국내/해외에 다시 나눕니다. 용인은 재료비 비중(EVCS 국내/해외)으로 나눕니다.
+        배부 대상 &apos;건물&apos;은 이 기간부터 없습니다. 확정 시 운영 allocation_rate에 반영됩니다.
       </div>
 
       <div style={{ marginBottom: 12, display: "flex", gap: 16, flexWrap: "wrap" }}>
@@ -368,7 +384,9 @@ export default function BuildingPanel({
         </div>
       )}
       <div className="field-hint" style={{ marginBottom: 12 }}>
-        ※ 분당 면적은 단위와 상관없이 네 칸의 비중만 씁니다 (건물(분당) = 각 면적 ÷ 네 면적 합계).
+        ※ EVCS리소스평균은 {EVCS_AVERAGE_ORGS.join(" · ")}의 인원수 가중평균에서 EVCS(국내)·EVCS(해외)만 떼어 합이 100%가 되게
+        맞춘 값으로, 언제나 자동 계산됩니다(이 조직들 값이 바뀌면 건물(분당)도 다시 계산). 분당 면적은 단위와 상관없이 세 칸의
+        비중만 씁니다 (건물(분당) EVCS(국내) = EVCS 면적 비중 × EVCS리소스평균 국내).
       </div>
 
       {entries.map((e) => (

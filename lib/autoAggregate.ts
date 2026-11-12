@@ -3,6 +3,14 @@ import { latestByPerson, computeRollup, countedPersonRows, SubmissionRow } from 
 import { ensureFixedRates } from "./fixedRates";
 import { isOrgActiveIn } from "./orgLifespan";
 import { keepsTeamRates } from "./confirmRate";
+import {
+  EVCS_AVERAGE_ORGS,
+  EvcsAverage,
+  usesBuildingBasis,
+  computeBuildingRates,
+  buildingInputFromPayload,
+  BUILDING_TYPE,
+} from "./selfuseBasis";
 
 /**
  * 자동계산 조직(상위 집계 조직 · HKR)의 배부율을 서버에서 다시 계산해 allocation_rate에 반영한다.
@@ -197,41 +205,68 @@ async function upsertRate(
  * 상위 집계 조직 + HKR을 다시 계산해 저장한다.
  * 실패해도 호출한 저장 자체는 이미 끝난 상태이므로, 오류는 문자열 배열로 돌려주고 예외는 던지지 않는다.
  */
-export async function recomputeAggregates(
+export async function recomputeAggregates(supabase: any, period: string, version?: string): Promise<string[]> {
+  return (await runAggregates(supabase, period, version, true)).problems;
+}
+
+/**
+ * EVCS리소스평균 — EVCS_AVERAGE_ORGS 다섯 조직의 인원수 가중평균에서 EVCS(국내)·EVCS(해외)만 떼어
+ * 둘의 합이 1이 되게 맞춘다. 아무도 입력하지 않았거나 EVCS 몫이 0이면 null.
+ * 상위 조직(사업 그룹·개발 그룹)은 하위 팀 가중평균과 인원 합계로 들어간다 — 재계산과 같은 계산을 쓰되 저장하지 않는다.
+ */
+export async function evcsResourceAverage(supabase: any, period: string): Promise<EvcsAverage | null> {
+  const { orgs, stateById } = await runAggregates(supabase, period, undefined, false);
+  return evcsAverageFromStates(orgs, stateById);
+}
+
+function evcsAverageFromStates(orgs: any[], stateById: Map<number, OrgState>): EvcsAverage | null {
+  const states = EVCS_AVERAGE_ORGS.map((b) => orgs.find((o: any) => o.basis === b))
+    .map((o: any) => (o ? stateById.get(o.id) : undefined))
+    .filter((st): st is OrgState => !!st && st.hasSubmission);
+  if (states.length === 0) return null;
+  const avg = weightedAvg(states);
+  const sum = (avg.evcs_domestic || 0) + (avg.evcs_overseas || 0);
+  if (sum <= 0) return null;
+  return { domestic: (avg.evcs_domestic || 0) / sum, overseas: (avg.evcs_overseas || 0) / sum };
+}
+
+async function runAggregates(
   supabase: any,
   period: string,
-  version?: string
-): Promise<string[]> {
+  version: string | undefined,
+  write: boolean
+): Promise<{ problems: string[]; orgs: any[]; stateById: Map<number, OrgState> }> {
   const problems: string[] = [];
 
   // 저장이 느렸다(사용자 지적) — DB 쓰기를 하나씩 기다리지 않고 모아 두었다가 한꺼번에 보낸다.
   // 쓰는 행(분기·유형·구분·기준)이 서로 겹치지 않으므로 순서가 결과에 영향을 주지 않는다.
+  // write=false(계산만)면 아무것도 쓰지 않는다 — 그래서 쓰기는 미리 시작하지 않고 함수로 받는다.
   const pending: Promise<void>[] = [];
-  const track = (label: string, p: Promise<any>) =>
+  const track = (label: string, run: () => Promise<any>) => {
+    if (!write) return;
     pending.push(
-      p.then((err) => {
+      run().then((err) => {
         if (err) problems.push(`${label}: ${err.message}`);
       })
     );
+  };
 
   // 고정비율은 조사로 받는 값이 아니라 정의상 고정된 비율이라 분기마다 그대로 복제한다.
   // 아래 계산은 고정비율 행을 읽지 않으므로 조회와 동시에 돌린다.
   const [fixedProblems, { data: allOrgs }, { data: subs }, { data: rateRows }] = await Promise.all([
-    ensureFixedRates(supabase, period),
+    write ? ensureFixedRates(supabase, period) : Promise.resolve([] as string[]),
     supabase.from("allocation_orgs").select("*").eq("active", true),
     supabase.from("allocation_submissions").select("*").eq("period", period).order("submitted_at", { ascending: false }),
     // 이번 분기 행만 쓴다 (buildOrgState는 r.quarter === period만 본다).
     supabase.from("allocation_rate").select("*").eq("quarter", period),
   ]);
   problems.push(...fixedProblems);
-  if (!allOrgs?.length) return problems;
+  if (!allOrgs?.length) return { problems, orgs: [], stateById: new Map() };
 
   // 그 분기에 존재하지 않았던 조직은 계산에서 빼고, 남아 있던 배부율 행도 지운다.
   const orgs = allOrgs.filter((o: any) => isOrgActiveIn(o.basis, period));
   for (const o of allOrgs.filter((o: any) => !isOrgActiveIn(o.basis, period))) {
-    track(
-      `${o.basis} 정리`,
-      deleteRate(supabase, { quarter: period, type: o.type, division: o.division, basis: o.basis })
+    track(`${o.basis} 정리`, () => deleteRate(supabase, { quarter: period, type: o.type, division: o.division, basis: o.basis })
     );
   }
 
@@ -302,9 +337,7 @@ export async function recomputeAggregates(
     // 이번 분기에 아무 하위 조직도 입력하지 않았으면 계산할 근거가 없다 —
     // 남아 있던 행이 있으면 지운다 (입력한 적 없는 분기가 목록에 남지 않도록).
     if (!childStates.some((s) => s.hasSubmission)) {
-      track(
-        parent.basis,
-        deleteRate(supabase, { quarter: period, type: parent.type, division: parent.division, basis: parent.basis })
+      track(parent.basis, () => deleteRate(supabase, { quarter: period, type: parent.type, division: parent.division, basis: parent.basis })
       );
       continue;
     }
@@ -313,9 +346,7 @@ export async function recomputeAggregates(
     const own = stateById.get(parent.id);
     if (own) stateById.set(parent.id, { ...own, rate: avg, hasSubmission: true });
 
-    track(
-      parent.basis,
-      upsertRate(supabase, {
+    track(parent.basis, () => upsertRate(supabase, {
         quarter: period,
         type: parent.type,
         division: parent.division,
@@ -335,10 +366,10 @@ export async function recomputeAggregates(
       if (!dst) continue;
       const key = { quarter: period, type: dst.type, division: dst.division, basis: dst.basis };
       if (!st?.hasSubmission || !keepsTeamRates(rule.group)) {
-        track(basis, deleteRate(supabase, key));
+        track(basis, () => deleteRate(supabase, key));
         continue;
       }
-      track(basis, upsertRate(supabase, { ...key, rates: st.rate, version }));
+      track(basis, () => upsertRate(supabase, { ...key, rates: st.rate, version }));
     }
   }
 
@@ -350,12 +381,10 @@ export async function recomputeAggregates(
     // (지난 분기 확정값이 이번 분기 값으로 둔갑하는 걸 막는다). 남아 있던 행은 지운다.
     if (!dst) continue;
     if (!dstState?.hasSubmission) {
-      track(dst.basis, deleteRate(supabase, { quarter: period, type: dst.type, division: dst.division, basis: dst.basis }));
+      track(dst.basis, () => deleteRate(supabase, { quarter: period, type: dst.type, division: dst.division, basis: dst.basis }));
       continue;
     }
-    track(
-      dst.basis,
-      upsertRate(supabase, {
+    track(dst.basis, () => upsertRate(supabase, {
         quarter: period,
         type: dst.type,
         division: dst.division,
@@ -374,11 +403,44 @@ export async function recomputeAggregates(
   const hkrKey = { quarter: period, type: "리소스배부율", division: "본사", basis: "HKR(관계사제외)" };
   if (honsaStates.some((s) => s.hasSubmission)) {
     const hkr = renormalizeExcludingAffiliates(weightedAvg(honsaStates));
-    track("HKR(관계사제외)", upsertRate(supabase, { ...hkrKey, rates: hkr, version }));
+    track("HKR(관계사제외)", () => upsertRate(supabase, { ...hkrKey, rates: hkr, version }));
   } else {
-    track("HKR(관계사제외) 정리", deleteRate(supabase, hkrKey));
+    track("HKR(관계사제외) 정리", () => deleteRate(supabase, hkrKey));
+  }
+
+  // 4) 건물(분당) — EVCS 몫을 EVCS리소스평균으로 나누므로, 그 다섯 조직 값이 바뀌면 함께 다시 계산한다.
+  //    그 기간 건물 기준정보가 저장돼 있을 때만 (아직 입력 전이면 만들 것이 없다).
+  if (write && usesBuildingBasis(period)) {
+    const { data: basis } = await supabase
+      .from("allocation_basis_inputs")
+      .select("payload")
+      .eq("quarter", period)
+      .eq("category", "selfuse")
+      .maybeSingle();
+    const avg = evcsAverageFromStates(orgs, stateById);
+    if (basis?.payload && avg) {
+      const bundang = computeBuildingRates(buildingInputFromPayload(basis.payload, avg))[0];
+      track("건물(분당)", () =>
+        upsertRate(supabase, {
+          quarter: period,
+          type: BUILDING_TYPE,
+          division: bundang.division,
+          basis: bundang.basis,
+          rates: { ...zeroRec(), ...bundang.rates } as Rec,
+          version,
+        })
+      );
+      track("건물 기준정보(EVCS리소스평균)", async () => {
+        const { error } = await supabase
+          .from("allocation_basis_inputs")
+          .update({ payload: { ...basis.payload, evcs_avg_domestic: avg.domestic, evcs_avg_overseas: avg.overseas } })
+          .eq("quarter", period)
+          .eq("category", "selfuse");
+        return error;
+      });
+    }
   }
 
   await Promise.all(pending);
-  return problems;
+  return { problems, orgs, stateById };
 }

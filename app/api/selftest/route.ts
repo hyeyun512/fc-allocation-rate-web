@@ -516,16 +516,18 @@ function runCases(): Case[] {
   c.push(ok("buildingBasis: 못 읽는 기간은 예전 방식", !usesBuildingBasis("2026-Q1(청구)x")));
   c.push(eq("buildingBasis: type", [selfuseTypeFor("2026-Q4"), selfuseTypeFor("2027-BP")], ["자가사용(건물)", "건물"]));
   {
+    // 분당 면적 EVCS 40 / IT 20 / 공통 40, EVCS리소스평균 국내 25% · 해외 75% → EVCS 몫 40%를 10% / 30%로 나눈다.
     const rows = computeBuildingRates({
-      bundangAreaEvcsDomestic: 10,
-      bundangAreaEvcsOverseas: 30,
+      evcsAvgDomestic: 0.25,
+      evcsAvgOverseas: 0.75,
+      bundangAreaEvcs: 40,
       bundangAreaIt: 20,
       bundangAreaHumaxCommon: 40,
       materialEvcsDomesticRatio: 0.25,
       materialEvcsOverseasRatio: 0.75,
     });
     c.push(eq("buildingBasis: 행 이름", rows.map((r) => r.basis), ["건물(분당)", "건물(용인)"]));
-    c.push(eq("buildingBasis: 분당 = 면적 비중", rows[0].rates, { evcs_domestic: 0.1, evcs_overseas: 0.3, it: 0.2, humax_common: 0.4 }));
+    c.push(eq("buildingBasis: 분당 = 면적 비중 (EVCS는 리소스평균으로 국내/해외)", Object.fromEntries(Object.entries(rows[0].rates).map(([k, v]) => [k, Math.round((v as number) * 1e9) / 1e9])), { evcs_domestic: 0.1, evcs_overseas: 0.3, it: 0.2, humax_common: 0.4 }));
     c.push(eq("buildingBasis: 용인 = 재료비 비중", rows[1].rates, { evcs_domestic: 0.25, evcs_overseas: 0.75 }));
     c.push(ok("buildingBasis: 건물 몫은 없다", rows.every((r) => r.rates.building == null)));
   }

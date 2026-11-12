@@ -10,6 +10,7 @@ import ConfirmReview, { OrgReviewData, RateHistoryEntry, ReviewRound } from "./C
 import ItPanel, { ItBasisRow } from "./ItPanel";
 import SelfUsePanel, { SelfuseBasisRow } from "./SelfUsePanel";
 import BuildingPanel, { BuildingBasisRow } from "./BuildingPanel";
+import type { EvcsAverage } from "@/lib/selfuseBasis";
 import { usesBuildingBasis } from "@/lib/selfuseBasis";
 import { quarterRank } from "@/lib/quarter";
 
@@ -38,7 +39,7 @@ function shownPeriods(periods: string[], orgs: OrgReviewData[], hkrHistory: Rate
 
 const SUB_TABS: { key: SubTab; label: string }[] = [
   { key: "resource", label: "리소스배부율" },
-  { key: "selfuse", label: "자가사용(건물)" },
+  { key: "selfuse", label: "건물" },
   { key: "it", label: "IT" },
   { key: "survey", label: "조사" },
 ];
@@ -56,6 +57,7 @@ export default function ConfirmTabs({
   itHistory,
   selfuseHistory,
   buildingHistory,
+  evcsAverages,
 }: {
   /**
    * 지금 라운드의 기간들 (기간 순서대로). 묶음 라운드(26년 4Q & 27년 BP)면 둘이고,
@@ -78,6 +80,8 @@ export default function ConfirmTabs({
   selfuseHistory: SelfuseBasisRow[];
   /** 27년 BP~ 건물(분당)/건물(용인) 기준정보 이력. */
   buildingHistory: BuildingBasisRow[];
+  /** 건물 기간별 EVCS리소스평균 (자동 계산). */
+  evcsAverages: Record<string, EvcsAverage | null>;
 }) {
   // 처음 열리는 탭은 언제나 맨 앞 탭이다. 순서를 바꾸면 첫 화면도 따라오게 두어,
   // 탭 목록과 기본값이 따로 놀지 않게 한다.
@@ -176,8 +180,8 @@ export default function ConfirmTabs({
             className={`admin-subtab ${subTab === t.key ? "active" : ""}`}
             onClick={() => setSubTab(t.key)}
           >
-            {/* 27년 BP가 끼면 이 탭에서 건물(분당)/건물(용인)도 받는다 — 이름에 함께 드러낸다. */}
-            {t.key === "selfuse" && hasBuilding ? "자가사용·건물" : t.label}
+            {/* 탭 이름은 '건물'로 고정한다(사용자 지시) — 26년 4Q까지의 자가사용(건물)도 이 탭에서 받는다. */}
+            {t.label}
           </button>
         ))}
       </div>
@@ -221,6 +225,7 @@ export default function ConfirmTabs({
               periods={buildingPeriods}
               history={buildingHistory}
               materialSource={materialSource}
+              evcsAverages={evcsAverages}
             />
           )}
         </TargetColumns>

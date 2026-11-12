@@ -5,8 +5,8 @@ import { quarterRank } from "./quarter";
 /* ─────────────────── 27년 BP부터: 건물(분당)/건물(용인) ───────────────────
    27년 BP부터 자가사용(건물) 배부를 없앤다. 건물 비용을 '건물' 대상으로 모았다가 다시 나누지 않고,
    새 배부기준 둘로 사업에 바로 나눈다.
-     · 건물(분당) — 인원수가 아니라 **면적** 기준. EVCS(국내)/EVCS(해외)/IT/Humax(공통)이 쓰는 면적을
-       각각 받아 그 비중으로 나눈다.
+     · 건물(분당) — 인원수가 아니라 **면적** 기준. EVCS/IT/Humax(공통)이 쓰는 면적의 비중으로 나누고,
+       EVCS 몫은 EVCS리소스평균(사업·개발 쪽 다섯 조직의 평균 배부율)으로 국내/해외에 다시 나눈다.
      · 건물(용인) — 지금처럼 재료비 비중(EVCS 국내/해외) 그대로.
    그래서 자가사용비율 입력은 사라지고, 배부 대상 '건물'도 27년 BP부터 없어진다 (lib/targets.ts의 TARGET_LIFESPAN). */
 
@@ -30,35 +30,72 @@ export function selfuseTypeFor(period: string): string {
   return usesBuildingBasis(period) ? BUILDING_TYPE : SELFUSE_TYPE;
 }
 
+/**
+ * EVCS리소스평균을 내는 조직 (사용자 지시 2026-11-12). 이 다섯 조직 배부율의 **인원수 가중평균**에서
+ * EVCS(국내)·EVCS(해외)만 떼어 둘의 합이 100%가 되게 맞춘 값이다. 분당 면적 중 EVCS 몫을 이 비율로 나눈다.
+ * 입력받지 않고 언제나 자동 계산된다 — 이 조직들 값이 바뀌면 건물(분당)도 다시 계산된다(lib/autoAggregate.ts).
+ */
+export const EVCS_AVERAGE_ORGS = ["Staff(휴맥스이브이)", "국내영업팀", "Platform개발팀", "사업 그룹", "개발 그룹"];
+
+export interface EvcsAverage {
+  domestic: number;
+  overseas: number;
+}
+
 export interface BuildingBasisInput {
-  /** 분당 건물에서 각 사업이 쓰는 면적 (단위는 무엇이든 같기만 하면 된다 — 비중만 쓴다). */
-  bundangAreaEvcsDomestic: number;
-  bundangAreaEvcsOverseas: number;
+  /** EVCS리소스평균 (자동 계산, 소수 — 국내+해외 = 1). */
+  evcsAvgDomestic: number;
+  evcsAvgOverseas: number;
+  /** 분당 면적 비율 — EVCS·IT·Humax(공통)이 쓰는 면적 (단위는 같기만 하면 된다 — 비중만 쓴다). */
+  bundangAreaEvcs: number;
   bundangAreaIt: number;
   bundangAreaHumaxCommon: number;
   materialEvcsDomesticRatio: number;
   materialEvcsOverseasRatio: number;
 }
 
-/** 건물(분당)·건물(용인) 두 행. 면적이 모두 0이면 분당 행은 전부 0이다(합계 0 → 저장 전에 막는다). */
+/**
+ * 건물(분당)·건물(용인) 두 행.
+ * 건물(분당) = 면적 비중. EVCS 몫은 EVCS리소스평균으로 국내/해외에 나눈다.
+ * 면적이 모두 0이면 분당 행은 전부 0이다(합계 0 → 저장 전에 막는다).
+ */
 export function computeBuildingRates(input: BuildingBasisInput): ComputedBasisRow[] {
-  const areas: [TargetKey, number][] = [
-    ["evcs_domestic", input.bundangAreaEvcsDomestic],
-    ["evcs_overseas", input.bundangAreaEvcsOverseas],
-    ["it", input.bundangAreaIt],
-    ["humax_common", input.bundangAreaHumaxCommon],
-  ];
-  const areaSum = areas.reduce((s, [, v]) => s + (v || 0), 0);
-  const bundang: Partial<Record<TargetKey, number>> = {};
-  areas.forEach(([k, v]) => (bundang[k] = areaSum > 0 ? (v || 0) / areaSum : 0));
+  const areaSum = (input.bundangAreaEvcs || 0) + (input.bundangAreaIt || 0) + (input.bundangAreaHumaxCommon || 0);
+  const share = (v: number) => (areaSum > 0 ? (v || 0) / areaSum : 0);
+  const evcs = share(input.bundangAreaEvcs);
+  const avgSum = (input.evcsAvgDomestic || 0) + (input.evcsAvgOverseas || 0);
+  const dom = avgSum > 0 ? (input.evcsAvgDomestic || 0) / avgSum : 0;
+  const ov = avgSum > 0 ? (input.evcsAvgOverseas || 0) / avgSum : 0;
   return [
-    { division: "건물", basis: "건물(분당)", rates: bundang },
+    {
+      division: "건물",
+      basis: "건물(분당)",
+      rates: {
+        evcs_domestic: evcs * dom,
+        evcs_overseas: evcs * ov,
+        it: share(input.bundangAreaIt),
+        humax_common: share(input.bundangAreaHumaxCommon),
+      },
+    },
     {
       division: "건물",
       basis: "건물(용인)",
       rates: { evcs_domestic: input.materialEvcsDomesticRatio, evcs_overseas: input.materialEvcsOverseasRatio },
     },
   ];
+}
+
+/** 저장된 건물 기준정보(payload)를 계산 입력으로. EVCS리소스평균은 따로 넘긴 값(지금 계산한 값)을 쓴다. */
+export function buildingInputFromPayload(p: Record<string, any>, avg: EvcsAverage | null): BuildingBasisInput {
+  return {
+    evcsAvgDomestic: avg ? avg.domestic : Number(p.evcs_avg_domestic) || 0,
+    evcsAvgOverseas: avg ? avg.overseas : Number(p.evcs_avg_overseas) || 0,
+    bundangAreaEvcs: Number(p.bundang_area_evcs) || 0,
+    bundangAreaIt: Number(p.bundang_area_it) || 0,
+    bundangAreaHumaxCommon: Number(p.bundang_area_humax_common) || 0,
+    materialEvcsDomesticRatio: Number(p.material_evcs_domestic_ratio) || 0,
+    materialEvcsOverseasRatio: Number(p.material_evcs_overseas_ratio) || 0,
+  };
 }
 
 export interface SelfuseBasisInput {

@@ -9,6 +9,7 @@ import {
   SELFUSE_TYPE,
 } from "@/lib/selfuseBasis";
 import { TARGETS, TargetKey, sumTargets, normalizeTargets, RATE_TOTAL_TOLERANCE, toDbTargets } from "@/lib/targets";
+import { evcsResourceAverage } from "@/lib/autoAggregate";
 
 export async function POST(req: NextRequest) {
   const { quarter, input, submittedBy, note } = await req.json();
@@ -121,9 +122,18 @@ export async function POST(req: NextRequest) {
  * 기간마다 한 벌이고, 화면은 usesBuildingBasis로 어느 필드를 읽을지 가른다.
  */
 async function saveBuildingBasis(supabase: any, quarter: string, input: any, submittedBy: any, note: any) {
+  // EVCS리소스평균은 화면이 보낸 값을 믿지 않고 여기서 다시 계산한다 (언제나 자동 계산 — 사용자 지시).
+  const avg = await evcsResourceAverage(supabase, quarter);
+  if (!avg) {
+    return NextResponse.json(
+      { error: "EVCS리소스평균을 계산할 값이 없습니다. 사업 그룹·개발 그룹 등 다섯 조직의 배부율을 먼저 저장해 주세요." },
+      { status: 400 }
+    );
+  }
   const parsed = {
-    bundangAreaEvcsDomestic: Number(input.bundangAreaEvcsDomestic) || 0,
-    bundangAreaEvcsOverseas: Number(input.bundangAreaEvcsOverseas) || 0,
+    evcsAvgDomestic: avg.domestic,
+    evcsAvgOverseas: avg.overseas,
+    bundangAreaEvcs: Number(input.bundangAreaEvcs) || 0,
     bundangAreaIt: Number(input.bundangAreaIt) || 0,
     bundangAreaHumaxCommon: Number(input.bundangAreaHumaxCommon) || 0,
     materialEvcsDomesticRatio: Number(input.materialEvcsDomesticRatio) || 0,
@@ -135,11 +145,7 @@ async function saveBuildingBasis(supabase: any, quarter: string, input: any, sub
   }
   // 예전처럼 '건물 100%'로 떨어질 자리가 없다 — 면적이나 재료비 비중이 비어 있으면 합계 0인 배부기준이
   // 확정된 것처럼 남으므로 둘 다 있어야 저장한다.
-  const areaSum =
-    parsed.bundangAreaEvcsDomestic +
-    parsed.bundangAreaEvcsOverseas +
-    parsed.bundangAreaIt +
-    parsed.bundangAreaHumaxCommon;
+  const areaSum = parsed.bundangAreaEvcs + parsed.bundangAreaIt + parsed.bundangAreaHumaxCommon;
   if (areaSum <= 0) {
     return NextResponse.json({ error: "분당 면적을 입력해 주세요." }, { status: 400 });
   }
@@ -152,8 +158,10 @@ async function saveBuildingBasis(supabase: any, quarter: string, input: any, sub
       quarter,
       category: "selfuse",
       payload: {
-        bundang_area_evcs_domestic: parsed.bundangAreaEvcsDomestic,
-        bundang_area_evcs_overseas: parsed.bundangAreaEvcsOverseas,
+        // 저장 시점의 EVCS리소스평균 — 이후 다섯 조직 값이 바뀌면 재계산이 이 값과 건물(분당)을 함께 고친다.
+        evcs_avg_domestic: parsed.evcsAvgDomestic,
+        evcs_avg_overseas: parsed.evcsAvgOverseas,
+        bundang_area_evcs: parsed.bundangAreaEvcs,
         bundang_area_it: parsed.bundangAreaIt,
         bundang_area_humax_common: parsed.bundangAreaHumaxCommon,
         material_evcs_domestic_ratio: parsed.materialEvcsDomesticRatio,
