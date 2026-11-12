@@ -41,8 +41,8 @@ const FIELDS: { key: FieldKey; group: string; label: string; pct?: boolean; auto
   { key: "bundangAreaEvcs", group: "분당 면적 비율(%)", label: "EVCS" },
   { key: "bundangAreaIt", group: "분당 면적 비율(%)", label: "IT" },
   { key: "bundangAreaHumaxCommon", group: "분당 면적 비율(%)", label: "Humax(공통)" },
-  { key: "materialEvcsDomesticRatio", group: "용인 재료비 비율(%)", label: "EVCS(국내)", pct: true },
-  { key: "materialEvcsOverseasRatio", group: "용인 재료비 비율(%)", label: "EVCS(해외)", pct: true },
+  { key: "materialEvcsDomesticRatio", group: "용인 변동비 비율(%)", label: "EVCS(국내)", pct: true },
+  { key: "materialEvcsOverseasRatio", group: "용인 변동비 비율(%)", label: "EVCS(해외)", pct: true },
 ];
 const FIELD_GROUPS = FIELDS.reduce<{ group: string; span: number }[]>((acc, f) => {
   const last = acc[acc.length - 1];
@@ -110,12 +110,12 @@ function cellText(key: FieldKey, pct: boolean | undefined, input: BuildingBasisI
  * 예전 자가사용처럼 '건물 100%'로 떨어질 자리가 없어, 한쪽이 비면 합계 0인 배부기준이 남는다.
  */
 function buildingInputProblem(input: BuildingBasisInput): string | null {
-  if (Object.values(input).some((v) => v < 0)) return "면적과 재료비 비중은 0 이상이어야 합니다.";
+  if (Object.values(input).some((v) => v < 0)) return "면적과 변동비 비율은 0 이상이어야 합니다.";
   if (input.evcsAvgDomestic + input.evcsAvgOverseas <= 0)
     return "EVCS리소스평균을 계산할 값이 없습니다. 사업 그룹·개발 그룹 등 다섯 조직의 배부율을 먼저 저장해 주세요.";
   const area = input.bundangAreaEvcs + input.bundangAreaIt + input.bundangAreaHumaxCommon;
   if (area <= 0) return "분당 면적을 입력해 주세요.";
-  if (input.materialEvcsDomesticRatio + input.materialEvcsOverseasRatio <= 0) return "용인 재료비 비중을 입력해 주세요.";
+  if (input.materialEvcsDomesticRatio + input.materialEvcsOverseasRatio <= 0) return "용인 변동비 비율을 입력해 주세요.";
   return null;
 }
 
@@ -307,7 +307,7 @@ export default function BuildingPanel({
         }
       >
         {multi ? `${prettyQuarterLabel(e.period)}: ` : ""}
-        {prettyQuarterLabel(materialSource.quarter)} 재료비 비중 가져오기
+        {prettyQuarterLabel(materialSource.quarter)} 변동비 비율 가져오기
       </button>
     );
   }
@@ -317,7 +317,7 @@ export default function BuildingPanel({
       <div className="panel-title">건물 (27년 BP~) — 기준정보 입력</div>
       <div className="panel-sub" style={{ marginBottom: 12 }}>
         27년 BP부터는 자가사용(건물) 대신 건물(분당)·건물(용인) 배부기준을 씁니다. 분당은 면적 비율(EVCS·IT·Humax(공통))로 나누고,
-        EVCS 몫은 EVCS리소스평균으로 국내/해외에 다시 나눕니다. 용인은 재료비 비중(EVCS 국내/해외)으로 나눕니다.
+        EVCS 몫은 EVCS리소스평균으로 국내/해외에 다시 나눕니다. 용인은 변동비 비율(EVCS 국내/해외)로 나눕니다.
         배부 대상 &apos;건물&apos;은 이 기간부터 없습니다. 확정 시 운영 allocation_rate에 반영됩니다.
       </div>
 

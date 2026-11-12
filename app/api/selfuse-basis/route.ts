@@ -144,7 +144,7 @@ async function saveBuildingBasis(supabase: any, quarter: string, input: any, sub
   };
   // 음수 면적·비중은 비중 계산을 뒤집는다(합계는 100%여도 한 사업이 마이너스 배부를 받는다) — 받지 않는다.
   if (Object.values(parsed).some((v) => v < 0)) {
-    return NextResponse.json({ error: "면적과 재료비 비중은 0 이상이어야 합니다." }, { status: 400 });
+    return NextResponse.json({ error: "면적과 변동비 비율은 0 이상이어야 합니다." }, { status: 400 });
   }
   // 예전처럼 '건물 100%'로 떨어질 자리가 없다 — 면적이나 재료비 비중이 비어 있으면 합계 0인 배부기준이
   // 확정된 것처럼 남으므로 둘 다 있어야 저장한다.
@@ -153,7 +153,7 @@ async function saveBuildingBasis(supabase: any, quarter: string, input: any, sub
     return NextResponse.json({ error: "분당 면적을 입력해 주세요." }, { status: 400 });
   }
   if (parsed.materialEvcsDomesticRatio + parsed.materialEvcsOverseasRatio <= 0) {
-    return NextResponse.json({ error: "용인 재료비 비중을 입력해 주세요." }, { status: 400 });
+    return NextResponse.json({ error: "용인 변동비 비율을 입력해 주세요." }, { status: 400 });
   }
 
   const { error: basisError } = await supabase.from("allocation_basis_inputs").upsert(
