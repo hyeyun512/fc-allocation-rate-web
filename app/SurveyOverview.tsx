@@ -6,6 +6,7 @@ import { useEffect, useRef } from "react";
 import { isValidEmail, mailTemplateProblem, LINK_PLACEHOLDER, MAIL_FONT_CSS } from "@/lib/linkMail";
 import type { ResolvedManager } from "@/lib/orgManager";
 import { shortQuarterLabel } from "@/lib/quarter";
+import { LINK_BUNDLES, bundlePathOf } from "@/lib/linkBundles";
 
 /** 조직 하나의 기간 하나 제출 현황. 묶음 라운드(26년 4Q & 27년 BP)면 기간마다 하나씩 온다. */
 export interface SurveyPeriodStatus {
@@ -718,6 +719,69 @@ function DivisionTable({
   );
 }
 
+/* ─────────────────── 묶음 링크 ───────────────────
+   담당자 한 명이 여러 조직을 한 링크에서 검토할 때 쓴다 (lib/linkBundles.ts에 묶음을 적는다).
+   열면 위쪽 버튼으로 조직을 고르고, 아래에 그 조직의 조사 링크 화면이 그대로 나온다. */
+
+function BundleCopyButton({ path }: { path: string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <button
+      className="btn btn-secondary btn-sm"
+      onClick={async () => {
+        await navigator.clipboard?.writeText(`${window.location.origin}${path}`);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 1500);
+      }}
+    >
+      {copied ? "복사됨" : "복사"}
+    </button>
+  );
+}
+
+function BundleLinks({ items }: { items: SurveyOrgData[] }) {
+  if (LINK_BUNDLES.length === 0) return null;
+  return (
+    <div className="panel survey-panel">
+      <div className="survey-panel-head">
+        <span className="survey-panel-title">묶음 링크</span>
+        <span className="survey-panel-count">여러 조직을 한 링크에서 검토</span>
+      </div>
+      <table className="survey-tbl">
+        <thead>
+          <tr>
+            <th>묶음</th>
+            <th className="col-link">입력 링크 복사</th>
+            <th className="col-manager">포함 조직</th>
+          </tr>
+        </thead>
+        <tbody>
+          {LINK_BUNDLES.map((b) => {
+            const found = b.orgs.map((name) => items.find((i) => i.org.basis === name) ?? null);
+            const tokens = found.filter((i): i is SurveyOrgData => !!i).map((i) => i.linkToken);
+            const missing = b.orgs.filter((_, i) => !found[i]);
+            return (
+              <tr key={b.title}>
+                <td className="col-org">{b.title}</td>
+                <td className="col-link">{tokens.length > 0 && <BundleCopyButton path={bundlePathOf(tokens)} />}</td>
+                <td className="col-manager" style={{ fontSize: 12.5, color: "#475569" }}>
+                  {found
+                    .filter((i): i is SurveyOrgData => !!i)
+                    .map((i) => i.org.basis)
+                    .join(" · ")}
+                  {missing.length > 0 && (
+                    <span style={{ color: "#dc2626", marginLeft: 8 }}>(이번 기간에 없는 조직: {missing.join(", ")})</span>
+                  )}
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 /* ─────────────────── 메일 문구 ───────────────────
    제목 한 줄과 본문 한 칸. 분기·제출 기한도 손으로 적으므로 자리표시자는 두지 않았다.
    본문은 서식(굵게·기울임꼴·글자색·배경색)을 쓸 수 있어야 해서 contenteditable로 받아 HTML로 저장한다.
@@ -1060,6 +1124,8 @@ export default function SurveyOverview({
           hasTemplate={hasTemplate}
         />
       ))}
+
+      <BundleLinks items={flatten(ordered)} />
 
       {send && (
         <SendDialog state={send} setState={setSend} period={period} onClose={() => setSend(null)} />
