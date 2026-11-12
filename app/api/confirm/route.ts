@@ -112,19 +112,20 @@ export async function POST(req: NextRequest) {
   }
 
   // 삭제 표식 행은 그대로 둬야 한다 (confirmed로 바꾸면 지운 사람이 다시 살아난다).
-  await supabase
-    .from("allocation_submissions")
-    .update({ status: "confirmed" })
-    .eq("org_id", orgId)
-    .eq("period", period)
-    .or(`status.is.null,status.neq.${DELETED_STATUS}`);
-
-  // 관리자가 저장한 값이 이 기간의 기준이다 — 남아 있던 링크 임시저장본은 지워 링크에도 같은 값이 보이게 한다.
-  await supabase.from("allocation_submission_drafts").delete().eq("org_id", orgId).eq("period", period);
-
-  // 상위 집계 조직·HKR·사업총괄대표는 이 조직 값에서 파생되므로 여기서 같이 갱신한다
-  // (예전에는 화면의 별도 '저장' 버튼을 눌러야 반영돼 누락되기 쉬웠다).
-  const aggregateProblems = await recomputeAggregates(supabase, period, version);
+  // 아래 셋은 서로 다른 것을 건드리므로 동시에 보낸다 (재계산은 status를 보지 않는다).
+  const [, , aggregateProblems] = await Promise.all([
+    supabase
+      .from("allocation_submissions")
+      .update({ status: "confirmed" })
+      .eq("org_id", orgId)
+      .eq("period", period)
+      .or(`status.is.null,status.neq.${DELETED_STATUS}`),
+    // 관리자가 저장한 값이 이 기간의 기준이다 — 남아 있던 링크 임시저장본은 지워 링크에도 같은 값이 보이게 한다.
+    supabase.from("allocation_submission_drafts").delete().eq("org_id", orgId).eq("period", period),
+    // 상위 집계 조직·HKR·사업총괄대표는 이 조직 값에서 파생되므로 여기서 같이 갱신한다
+    // (예전에는 화면의 별도 '저장' 버튼을 눌러야 반영돼 누락되기 쉬웠다).
+    recomputeAggregates(supabase, period, version),
+  ]);
 
   return NextResponse.json({ ok: true, aggregateProblems, correctedFrom, basis: org.basis });
 }

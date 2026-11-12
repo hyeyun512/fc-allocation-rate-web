@@ -204,34 +204,36 @@ export async function recomputeAggregates(
 ): Promise<string[]> {
   const problems: string[] = [];
 
-  // 고정비율은 조사로 받는 값이 아니라 정의상 고정된 비율이라 분기마다 그대로 복제한다.
-  problems.push(...(await ensureFixedRates(supabase, period)));
+  // 저장이 느렸다(사용자 지적) — DB 쓰기를 하나씩 기다리지 않고 모아 두었다가 한꺼번에 보낸다.
+  // 쓰는 행(분기·유형·구분·기준)이 서로 겹치지 않으므로 순서가 결과에 영향을 주지 않는다.
+  const pending: Promise<void>[] = [];
+  const track = (label: string, p: Promise<any>) =>
+    pending.push(
+      p.then((err) => {
+        if (err) problems.push(`${label}: ${err.message}`);
+      })
+    );
 
-  const { data: allOrgs } = await supabase.from("allocation_orgs").select("*").eq("active", true);
+  // 고정비율은 조사로 받는 값이 아니라 정의상 고정된 비율이라 분기마다 그대로 복제한다.
+  // 아래 계산은 고정비율 행을 읽지 않으므로 조회와 동시에 돌린다.
+  const [fixedProblems, { data: allOrgs }, { data: subs }, { data: rateRows }] = await Promise.all([
+    ensureFixedRates(supabase, period),
+    supabase.from("allocation_orgs").select("*").eq("active", true),
+    supabase.from("allocation_submissions").select("*").eq("period", period).order("submitted_at", { ascending: false }),
+    // 이번 분기 행만 쓴다 (buildOrgState는 r.quarter === period만 본다).
+    supabase.from("allocation_rate").select("*").eq("quarter", period),
+  ]);
+  problems.push(...fixedProblems);
   if (!allOrgs?.length) return problems;
 
   // 그 분기에 존재하지 않았던 조직은 계산에서 빼고, 남아 있던 배부율 행도 지운다.
   const orgs = allOrgs.filter((o: any) => isOrgActiveIn(o.basis, period));
   for (const o of allOrgs.filter((o: any) => !isOrgActiveIn(o.basis, period))) {
-    const err = await deleteRate(supabase, {
-      quarter: period,
-      type: o.type,
-      division: o.division,
-      basis: o.basis,
-    });
-    if (err) problems.push(`${o.basis} 정리: ${err.message}`);
+    track(
+      `${o.basis} 정리`,
+      deleteRate(supabase, { quarter: period, type: o.type, division: o.division, basis: o.basis })
+    );
   }
-
-  const { data: subs } = await supabase
-    .from("allocation_submissions")
-    .select("*")
-    .eq("period", period)
-    .order("submitted_at", { ascending: false });
-
-  const { data: rateRows } = await supabase
-    .from("allocation_rate")
-    .select("*")
-    .order("quarter", { ascending: true });
 
   const submissions = (subs ?? []) as SubmissionRow[];
   const rates = rateRows ?? [];
@@ -300,12 +302,10 @@ export async function recomputeAggregates(
     // 이번 분기에 아무 하위 조직도 입력하지 않았으면 계산할 근거가 없다 —
     // 남아 있던 행이 있으면 지운다 (입력한 적 없는 분기가 목록에 남지 않도록).
     if (!childStates.some((s) => s.hasSubmission)) {
-      await deleteRate(supabase, {
-        quarter: period,
-        type: parent.type,
-        division: parent.division,
-        basis: parent.basis,
-      });
+      track(
+        parent.basis,
+        deleteRate(supabase, { quarter: period, type: parent.type, division: parent.division, basis: parent.basis })
+      );
       continue;
     }
     const avg = weightedAvg(childStates);
@@ -313,15 +313,17 @@ export async function recomputeAggregates(
     const own = stateById.get(parent.id);
     if (own) stateById.set(parent.id, { ...own, rate: avg, hasSubmission: true });
 
-    const err = await upsertRate(supabase, {
-      quarter: period,
-      type: parent.type,
-      division: parent.division,
-      basis: parent.basis,
-      rates: avg,
-      version,
-    });
-    if (err) problems.push(`${parent.basis}: ${err.message}`);
+    track(
+      parent.basis,
+      upsertRate(supabase, {
+        quarter: period,
+        type: parent.type,
+        division: parent.division,
+        basis: parent.basis,
+        rates: avg,
+        version,
+      })
+    );
   }
 
   // 2-0) 그룹 평균 자리의 배부율을 기록 — 팀마다 배부율을 남기는 그룹(IT사업부)이라 View에도 팀으로 보인다.
@@ -333,11 +335,10 @@ export async function recomputeAggregates(
       if (!dst) continue;
       const key = { quarter: period, type: dst.type, division: dst.division, basis: dst.basis };
       if (!st?.hasSubmission || !keepsTeamRates(rule.group)) {
-        await deleteRate(supabase, key);
+        track(basis, deleteRate(supabase, key));
         continue;
       }
-      const err = await upsertRate(supabase, { ...key, rates: st.rate, version });
-      if (err) problems.push(`${basis}: ${err.message}`);
+      track(basis, upsertRate(supabase, { ...key, rates: st.rate, version }));
     }
   }
 
@@ -349,18 +350,20 @@ export async function recomputeAggregates(
     // (지난 분기 확정값이 이번 분기 값으로 둔갑하는 걸 막는다). 남아 있던 행은 지운다.
     if (!dst) continue;
     if (!dstState?.hasSubmission) {
-      await deleteRate(supabase, { quarter: period, type: dst.type, division: dst.division, basis: dst.basis });
+      track(dst.basis, deleteRate(supabase, { quarter: period, type: dst.type, division: dst.division, basis: dst.basis }));
       continue;
     }
-    const err = await upsertRate(supabase, {
-      quarter: period,
-      type: dst.type,
-      division: dst.division,
-      basis: dst.basis,
-      rates: dstState.rate,
-      version,
-    });
-    if (err) problems.push(`${dst.basis}: ${err.message}`);
+    track(
+      dst.basis,
+      upsertRate(supabase, {
+        quarter: period,
+        type: dst.type,
+        division: dst.division,
+        basis: dst.basis,
+        rates: dstState.rate,
+        version,
+      })
+    );
   }
 
   // 3) HKR(관계사제외) = 본사 최상위 조직들의 가중평균 → 계열사 제외 재정규화
@@ -371,12 +374,11 @@ export async function recomputeAggregates(
   const hkrKey = { quarter: period, type: "리소스배부율", division: "본사", basis: "HKR(관계사제외)" };
   if (honsaStates.some((s) => s.hasSubmission)) {
     const hkr = renormalizeExcludingAffiliates(weightedAvg(honsaStates));
-    const err = await upsertRate(supabase, { ...hkrKey, rates: hkr, version });
-    if (err) problems.push(`HKR(관계사제외): ${err.message}`);
+    track("HKR(관계사제외)", upsertRate(supabase, { ...hkrKey, rates: hkr, version }));
   } else {
-    const err = await deleteRate(supabase, hkrKey);
-    if (err) problems.push(`HKR(관계사제외) 정리: ${err.message}`);
+    track("HKR(관계사제외) 정리", deleteRate(supabase, hkrKey));
   }
 
+  await Promise.all(pending);
   return problems;
 }
