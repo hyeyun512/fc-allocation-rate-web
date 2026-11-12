@@ -662,3 +662,9 @@ input.required-input:not(:disabled):focus{background:#fff}
 /* 검토 화면 — 자동 계산 자리(IT사업대표·Staff(IT)) 상자. 입력하는 하위 팀(연한 파랑)과 구분해 연한 회색으로 둔다(사용자 지시). */
 .child-orgs > .panel.derived{background:#f4f5f7;border:1px solid #e2e8f0;box-shadow:inset 3px 0 0 #cbd5e1}
 .child-orgs > .panel.derived .panel-title .org-name{border-left-color:#cbd5e1;color:#475569}
+
+/* 묶음 링크: 처음 값과 달라진 칸은 빨갛게 (되돌리면 풀린다). 입력칸 노란색보다 앞선다. */
+.rate-tbl tbody tr td.cell-changed,
+.rate-tbl:has(> colgroup) tbody tr td.cell-changed,
+.rate-tbl tbody tr:hover td.cell-changed{background:#fee2e2 !important}
+.rate-tbl tbody tr td.cell-changed input{color:#b91c1c;font-weight:700}

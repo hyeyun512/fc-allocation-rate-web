@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
+import { isBundleOrg } from "@/lib/linkBundles";
 import { TargetKey, sumTargets, parseTargetRates, toDbTargets } from "@/lib/targets";
 import { recomputeAggregates } from "@/lib/autoAggregate";
 import { buildDeletionTombstones } from "@/lib/personTombstones";
@@ -75,7 +76,9 @@ export async function POST(req: NextRequest) {
       .maybeSingle(),
   ]);
 
-  if (hasSubmittedValue((periodRows ?? []) as SubmissionRow[]) && !unlock) {
+  // 묶음 링크(lib/linkBundles.ts)에 든 조직은 그 링크에서 보낸 제출이면 잠그지 않는다 (사용자 지시).
+  const bundleOpen = !!body?.fromBundle && isBundleOrg(org);
+  if (hasSubmittedValue((periodRows ?? []) as SubmissionRow[]) && !unlock && !bundleOpen) {
     return NextResponse.json(
       {
         error: "이미 제출된 조직입니다. 수정이 필요하면 담당자에게 문의해 주세요.",

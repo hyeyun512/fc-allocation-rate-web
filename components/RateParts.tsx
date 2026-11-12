@@ -610,6 +610,11 @@ export function ReadOnlyRateRow({
   );
 }
 
+/** 배부율(소수)이 처음 값과 다른가 — 화면 표기(소수점 둘째 자리 %)보다 작은 차이는 같은 값으로 본다. */
+function differs(a: number, b: number): boolean {
+  return Math.abs(a - b) > 0.000001;
+}
+
 export function EditableRateRow({
   label,
   rates,
@@ -627,6 +632,8 @@ export function EditableRateRow({
   onNoteEnChange,
   lockedKeys = [],
   lang = "ko",
+  baseline,
+  baselineHeadcount,
 }: {
   label: string;
   rates: RateMap;
@@ -646,10 +653,14 @@ export function EditableRateRow({
   /** 이번 분기에 배부하지 않는 대상(inactiveTargetKeys) — 열은 남기고 입력만 막는다. */
   lockedKeys?: TargetKey[];
   lang?: SubmitLang;
+  /** 묶음 링크: 처음 값. 주면 이 값과 달라진 칸을 빨갛게 칠한다(되돌리면 풀린다). */
+  baseline?: Record<TargetKey, number> | null;
+  baselineHeadcount?: number | null;
 }) {
   const s = submitStrings(lang);
   const cols = useTargetColumns();
   const total = totalOf(rates);
+  const hcChanged = baseline !== undefined && headcountEditable && differs(Number(headcountValue) || 0, baselineHeadcount ?? 0);
   const ok = Math.abs(total - 1) < 0.005 || total === 0;
   return (
     <tr>
@@ -661,7 +672,7 @@ export function EditableRateRow({
         </td>
       )}
       <td>{periodLabel(label)}</td>
-      <td>
+      <td className={hcChanged ? "cell-changed" : undefined}>
         {headcountEditable ? (
           <input
             type="number"
@@ -677,7 +688,7 @@ export function EditableRateRow({
         )}
       </td>
       {cols.map((t, i) => (
-        <td key={t.key}>
+        <td key={t.key} className={baseline !== undefined && differs(Number(rates[t.key]) || 0, baseline?.[t.key] ?? 0) ? "cell-changed" : undefined}>
           <div className="pct-input">
             <input
               type="number"
@@ -759,6 +770,7 @@ export function PersonEditTable({
   withNoteEn,
   lockedKeys = [],
   lang = "ko",
+  baselinePersons,
 }: {
   persons: PersonEditRow[];
   setPersons: (updater: (list: PersonEditRow[]) => PersonEditRow[]) => void;
@@ -768,9 +780,17 @@ export function PersonEditTable({
   /** 이번 분기에 배부하지 않는 대상(inactiveTargetKeys) — 열은 남기고 입력만 막는다. */
   lockedKeys?: TargetKey[];
   lang?: SubmitLang;
+  /** 묶음 링크: 이름별 처음 값. 주면 달라진 칸을 빨갛게 칠한다 (처음에 없던 사람은 값이 있는 칸 전부). */
+  baselinePersons?: Record<string, Record<TargetKey, number>> | null;
 }) {
   const s = submitStrings(lang);
   const cols = useTargetColumns();
+  const personChanged = (p: PersonEditRow, k: TargetKey) => {
+    if (baselinePersons === undefined) return false;
+    const cur = Number(p.rates[k]) || 0;
+    const base = baselinePersons?.[p.name.trim()];
+    return base ? differs(cur, base[k] ?? 0) : !!p.name.trim() && cur > 0;
+  };
   function updatePerson(key: string, patch: Partial<PersonEditRow>) {
     setPersons((list) => list.map((p) => (p.key === key ? { ...p, ...patch } : p)));
   }
@@ -865,7 +885,7 @@ export function PersonEditTable({
                     </td>
                   )}
                   {cols.map((t, tIdx) => (
-                    <td key={t.key}>
+                    <td key={t.key} className={personChanged(p, t.key) ? "cell-changed" : undefined}>
                       <div className="pct-input">
                         <input
                           type="number"

@@ -69,6 +69,14 @@ export interface SubmitOrgData {
   personHistory: PersonHistoryEntry[];
   draft: SubmitDraft | null;
   draftSavedAt: string | null;
+  /** 묶음 링크로 연 조직 — 제출 후에도 계속 고칠 수 있고, 처음 값과 달라진 칸은 빨갛게 보인다. */
+  bundleEdit?: boolean;
+  /** 묶음 링크를 만들 때의 값 (빨간 칸의 기준). */
+  baseline?: {
+    orgRates: Record<TargetKey, number> | null;
+    headcount: number | null;
+    persons: Record<string, Record<TargetKey, number>>;
+  } | null;
 }
 
 /** 링크에 열린 기간 하나와 그 기간의 화면 데이터. 여러 기간을 함께 조사하면 기간별 탭이 된다. */
@@ -247,7 +255,7 @@ function useOrgEntry({
         const res = await fetch("/api/submissions/draft", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ token, orgId: data.orgId, period, payload: draftPayload() }),
+          body: JSON.stringify({ token, orgId: data.orgId, period, payload: draftPayload(), fromBundle: !!data.bundleEdit }),
         });
         const json = await res.json();
         if (!res.ok) throw new Error(json.error ?? s.errDraft);
@@ -304,6 +312,7 @@ function useOrgEntry({
           token,
           orgId: data.orgId,
           period,
+          fromBundle: !!data.bundleEdit,
           submittedBy,
           headcount: currentOrgHeadcount,
           // 개인별 조직은 조직 단위 코멘트를 이 화면에서 고치지 않는다 —
@@ -532,12 +541,13 @@ function OrgSubmitSection({
           )}
           {anyEditable && (
             <span className="field-hint" style={{ margin: 0 }}>
-              {s.submitHint}
+              {data.bundleEdit ? "제출한 뒤에도 이 링크에서 다시 고칠 수 있습니다. 처음 값과 달라진 칸은 빨간색으로 표시됩니다." : s.submitHint}
             </span>
           )}
           {/* 이미 제출한 기간을 다시 연 경우에만 — 되돌아갈 '원래 값'이 있어야 취소가 뜻을 갖는다. */}
           {entries
-            .filter((e) => e.editable && e.submitted)
+            // 묶음 링크는 늘 열려 있어 '재수정 취소'로 되돌릴 잠금이 없다.
+            .filter((e) => e.editable && e.submitted && !e.data.bundleEdit)
             .map((e) => (
               <button key={e.period} className="btn btn-secondary" disabled={sending || e.cancelling} onClick={() => handleCancelEdit(e)}>
                 {e.cancelling ? s.cancelEditing : multi ? `${prettyQuarterLabel(e.period)} ${s.btnCancelEdit}` : s.btnCancelEdit}
@@ -589,6 +599,8 @@ function OrgSubmitSection({
         onNoteChange={e.setOrgNoteInput}
         lockedKeys={e.lockedKeys}
         lang={lang}
+        baseline={e.data.bundleEdit ? e.data.baseline?.orgRates ?? null : undefined}
+        baselineHeadcount={e.data.baseline?.headcount ?? null}
       />
     ) : (
       <ReadOnlyRateRow
@@ -755,7 +767,14 @@ function OrgSubmitSection({
                   {loadButton(e, i)}
                 </div>
                 {e.personsEditable ? (
-                  <PersonEditTable persons={e.persons} setPersons={e.setPersons} hasExpat={false} lockedKeys={e.lockedKeys} lang={lang} />
+                  <PersonEditTable
+                    persons={e.persons}
+                    setPersons={e.setPersons}
+                    hasExpat={false}
+                    lockedKeys={e.lockedKeys}
+                    lang={lang}
+                    baselinePersons={e.data.bundleEdit ? e.data.baseline?.persons ?? null : undefined}
+                  />
                 ) : (
                   <PersonReadOnlyTable persons={e.persons} hasExpat={false} period={e.period} lang={lang} />
                 )}

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
+import { isBundleOrg } from "@/lib/linkBundles";
 import { resolveTargetOrg } from "@/lib/submitScope";
 import { resolveSurveyPeriod } from "@/lib/surveyPeriods";
 import { hasSubmittedValue, SubmissionRow } from "@/lib/rollup";
@@ -52,7 +53,9 @@ export async function POST(req: NextRequest) {
     supabase.from("allocation_submissions").select("*").eq("org_id", org.id).eq("period", period),
     supabase.from("allocation_submit_unlocks").select("org_id").eq("org_id", org.id).eq("period", period).maybeSingle(),
   ]);
-  if (hasSubmittedValue((periodSubs ?? []) as SubmissionRow[]) && !unlock) {
+  // 묶음 링크에 든 조직은 늘 열려 있다 — 임시저장도 받는다.
+  const bundleOpen = !!body?.fromBundle && isBundleOrg(org);
+  if (hasSubmittedValue((periodSubs ?? []) as SubmissionRow[]) && !unlock && !bundleOpen) {
     return NextResponse.json({ ok: true, skipped: "submitted" });
   }
 
