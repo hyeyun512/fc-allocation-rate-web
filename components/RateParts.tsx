@@ -365,10 +365,21 @@ function periodLabel(label: string): string {
 }
 
 /** 읽기 전용 배부율 칸. 0%는 흐리게 두어 값이 있는 칸만 눈에 들어오게 한다 (표 공통 디자인 — globals.css의 td.z). */
-export function RateTd({ value, k, period }: { value: number | string | null | undefined; k: TargetKey; period?: string }) {
+export function RateTd({
+  value,
+  k,
+  period,
+  changed,
+}: {
+  value: number | string | null | undefined;
+  k: TargetKey;
+  period?: string;
+  /** 묶음 링크에서 고친 칸 — 빨갛게 칠한다. */
+  changed?: boolean;
+}) {
   const text = rateCell(value, k, period);
   if (text === "") return <td></td>;
-  return <td className={Number(value) > 0 ? "nz" : "z"}>{text}</td>;
+  return <td className={`${Number(value) > 0 ? "nz" : "z"}${changed ? " cell-changed" : ""}`}>{text}</td>;
 }
 
 /** 배부하지 않는 대상 칸 — 값은 비워 두고 입력을 막는다. */
@@ -535,6 +546,8 @@ export function ReadOnlyRateRow({
   onNoteEnChange,
   period,
   lang = "ko",
+  baseline,
+  baselineHeadcount,
 }: {
   label: string;
   rec: Record<TargetKey, number>;
@@ -558,17 +571,27 @@ export function ReadOnlyRateRow({
   noteEnValue?: string;
   onNoteEnChange?: (v: string) => void;
   lang?: SubmitLang;
+  /** 묶음 링크에서 고치기 전 값. 주면 달라진 칸을 빨갛게 칠한다. */
+  baseline?: Record<TargetKey, number> | null;
+  baselineHeadcount?: number | null;
 }) {
   const s = submitStrings(lang);
   const cols = useTargetColumns();
   const total = recTotal(rec);
+  const hcChanged = baseline !== undefined && differs(Number(headcount) || 0, baselineHeadcount ?? 0);
   return (
     <tr className="ro-row">
       {showClearSlot && <td></td>}
       <td>{periodLabel(label)}</td>
-      <td>{headcount != null ? s.headcountValue(headcount) : "-"}</td>
+      <td className={hcChanged ? "cell-changed" : undefined}>{headcount != null ? s.headcountValue(headcount) : "-"}</td>
       {cols.map((t) => (
-        <RateTd key={t.key} value={rec[t.key]} k={t.key} period={period} />
+        <RateTd
+          key={t.key}
+          value={rec[t.key]}
+          k={t.key}
+          period={period}
+          changed={baseline !== undefined && differs(Number(rec[t.key]) || 0, baseline?.[t.key] ?? 0)}
+        />
       ))}
       <td className="total-col">{(total * 100).toFixed(1)}%</td>
       {withNote && (
@@ -613,6 +636,18 @@ export function ReadOnlyRateRow({
 /** 배부율(소수)이 처음 값과 다른가 — 화면 표기(소수점 둘째 자리 %)보다 작은 차이는 같은 값으로 본다. */
 function differs(a: number, b: number): boolean {
   return Math.abs(a - b) > 0.000001;
+}
+
+/** 개인 한 명의 칸이 처음 값과 다른가 (처음에 없던 사람은 값이 있는 칸 전부). baseline이 undefined면 비교하지 않는다. */
+function personRateChanged(
+  baselinePersons: Record<string, Record<TargetKey, number>> | null | undefined,
+  p: PersonEditRow,
+  k: TargetKey
+): boolean {
+  if (baselinePersons === undefined) return false;
+  const cur = Number(p.rates[k]) || 0;
+  const base = baselinePersons?.[p.name.trim()];
+  return base ? differs(cur, base[k] ?? 0) : !!p.name.trim() && cur > 0;
 }
 
 export function EditableRateRow({
@@ -785,12 +820,7 @@ export function PersonEditTable({
 }) {
   const s = submitStrings(lang);
   const cols = useTargetColumns();
-  const personChanged = (p: PersonEditRow, k: TargetKey) => {
-    if (baselinePersons === undefined) return false;
-    const cur = Number(p.rates[k]) || 0;
-    const base = baselinePersons?.[p.name.trim()];
-    return base ? differs(cur, base[k] ?? 0) : !!p.name.trim() && cur > 0;
-  };
+  const personChanged = (p: PersonEditRow, k: TargetKey) => personRateChanged(baselinePersons, p, k);
   function updatePerson(key: string, patch: Partial<PersonEditRow>) {
     setPersons((list) => list.map((p) => (p.key === key ? { ...p, ...patch } : p)));
   }
@@ -952,15 +982,19 @@ export function PersonReadOnlyTable({
   hasExpat,
   period,
   lang = "ko",
+  baselinePersons,
 }: {
   persons: PersonEditRow[];
   hasExpat: boolean;
   /** 그 기간에 배부 대상이 아닌 열을 빈칸으로 둔다. */
   period?: string;
   lang?: SubmitLang;
+  /** 묶음 링크에서 고치기 전 이름별 값. 주면 달라진 칸을 빨갛게 칠한다. */
+  baselinePersons?: Record<string, Record<TargetKey, number>> | null;
 }) {
   const s = submitStrings(lang);
   const cols = useTargetColumns();
+  const personChanged = (p: PersonEditRow, k: TargetKey) => personRateChanged(baselinePersons, p, k);
   return (
     <div className="tbl-scroll" style={{ marginBottom: 12 }}>
       <table className="rate-tbl">
@@ -985,7 +1019,7 @@ export function PersonReadOnlyTable({
               <td>{p.name}</td>
               {hasExpat && <td>{p.role === "주재원" ? s.roleExpat : s.roleLegal}</td>}
               {cols.map((t) => (
-                <RateTd key={t.key} value={p.rates[t.key]} k={t.key} period={period} />
+                <RateTd key={t.key} value={p.rates[t.key]} k={t.key} period={period} changed={personChanged(p, t.key)} />
               ))}
               <td className="total-col">{(totalOf(p.rates) * 100).toFixed(1)}%</td>
               <td>

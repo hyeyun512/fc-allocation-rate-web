@@ -159,7 +159,9 @@ function useOrgEntry({
   // 임시저장본은 '아직 제출 전'이라는 뜻일 때만 잠금을 푼다. 제출한 뒤에 남거나 되살아난
   // 임시저장본까지 잠금을 풀면 제출 잠금이 통째로 무력화된다 — 제출 직후 창을 닫으면
   // pagehide 비콘이 방금 지워진 임시저장본을 다시 만들어 실제로 그렇게 됐다.
-  const unlocked = !forceLocked && (data.editAllowed || (!!draft && !data.submittedThisPeriod));
+  // 묶음 링크는 처음엔 잠긴 채(제출된 값)로 보이고, '수정'을 눌러야 열린다 — 관리자 허용은 필요 없다(사용자 지시).
+  const [bundleOpen, setBundleOpen] = useState(false);
+  const unlocked = !forceLocked && (data.editAllowed || bundleOpen || (!!draft && !data.submittedThisPeriod));
   const [justSubmitted, setJustSubmitted] = useState(false);
   const [draftSavedAt, setDraftSavedAt] = useState<string | null>(data.draftSavedAt);
   const [draftState, setDraftState] = useState<"idle" | "saving" | "error">("idle");
@@ -350,6 +352,8 @@ function useOrgEntry({
       if (!res.ok) return (lang === "ko" && json.error) || s.errSubmit;
       setSubmitted(true);
       setJustSubmitted(true);
+      // 묶음 링크는 제출하면 다시 잠근다 (또 고치려면 '수정').
+      setBundleOpen(false);
       setDraftSavedAt(null);
       return null;
     } catch (e: any) {
@@ -361,6 +365,23 @@ function useOrgEntry({
    * 재수정을 그만둔다. 서버가 임시저장본과 재수정 허용 표식을 지우고, 화면은 제출된 값으로 되돌린다.
    * 되돌아갈 값은 서버가 이미 넘겨준 data.*(= 제출된 값)라 따로 받아올 것이 없다.
    */
+  /** 묶음 링크에서 '수정'을 누른다. */
+  function openBundleEdit() {
+    setJustSubmitted(false);
+    setBundleOpen(true);
+  }
+
+  /** 묶음 링크에서 고치던 것을 버리고 제출된 값으로 되돌려 다시 잠근다 (서버에는 남긴 것이 없다). */
+  function cancelBundleEdit() {
+    setSubmittedBy(data.submittedBy ?? data.managerName ?? "");
+    setOrgRates(forPeriod(toRateMap(data.currentOrgSubmission ?? data.currentRate)));
+    setOrgHeadcountInput(String(data.submittedHeadcount ?? 0));
+    setOrgNoteInput(data.submittedNote ?? "");
+    setPersons(withBlankPersonRow(data.currentPersons.map(personRowFromCurrent).map((p) => ({ ...p, rates: forPeriod(p.rates) }))));
+    setBundleOpen(false);
+    initialDraftJson.current = null;
+  }
+
   async function cancelEdit(): Promise<string | null> {
     setCancelling(true);
     try {
@@ -431,6 +452,9 @@ function useOrgEntry({
     validate,
     submit,
     cancelEdit,
+    bundleOpen,
+    openBundleEdit,
+    cancelBundleEdit,
   };
 }
 
@@ -545,7 +569,16 @@ function OrgSubmitSection({
 
   const actionButton = (
     <div style={{ marginTop: 14, display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-      {allLocked ? (
+      {allLocked && data.bundleEdit ? (
+        <>
+          <button className="btn btn-primary" onClick={() => entries.forEach((e) => e.openBundleEdit())}>
+            수정
+          </button>
+          <span className="field-hint" style={{ margin: 0 }}>
+            제출된 값입니다. 고칠 부분이 있으면 '수정'을 누른 뒤 고치고 '제출하기'를 눌러 주세요.
+          </span>
+        </>
+      ) : allLocked ? (
         <span className="submit-locked">{s.lockedNotice}</span>
       ) : (
         <>
@@ -556,18 +589,30 @@ function OrgSubmitSection({
           )}
           {anyEditable && (
             <span className="field-hint" style={{ margin: 0 }}>
-              {data.bundleEdit ? "제출한 뒤에도 이 링크에서 다시 고칠 수 있습니다. 처음 값과 달라진 칸은 빨간색으로 표시됩니다." : s.submitHint}
+              {data.bundleEdit ? "제출하면 다시 잠기고, 처음 값과 달라진 칸은 빨간색으로 표시됩니다." : s.submitHint}
             </span>
           )}
           {/* 이미 제출한 기간을 다시 연 경우에만 — 되돌아갈 '원래 값'이 있어야 취소가 뜻을 갖는다. */}
           {entries
-            // 묶음 링크는 늘 열려 있어 '재수정 취소'로 되돌릴 잠금이 없다.
+            // 묶음 링크는 아래 '취소'로 따로 되돌린다 (서버의 재수정 허용 표식을 쓰지 않는다).
             .filter((e) => e.editable && e.submitted && !e.data.bundleEdit)
             .map((e) => (
               <button key={e.period} className="btn btn-secondary" disabled={sending || e.cancelling} onClick={() => handleCancelEdit(e)}>
                 {e.cancelling ? s.cancelEditing : multi ? `${prettyQuarterLabel(e.period)} ${s.btnCancelEdit}` : s.btnCancelEdit}
               </button>
             ))}
+          {data.bundleEdit && entries.some((e) => e.bundleOpen) && (
+            <button
+              className="btn btn-secondary"
+              disabled={sending}
+              onClick={() => {
+                if (!window.confirm("고치던 내용을 버리고 제출된 값으로 되돌릴까요?")) return;
+                entries.forEach((e) => e.cancelBundleEdit());
+              }}
+            >
+              취소
+            </button>
+          )}
           {/* 일부 기간만 잠겨 있으면 어느 기간인지 알려준다. */}
           {multi &&
             entries
@@ -628,6 +673,8 @@ function OrgSubmitSection({
         withNote
         note={e.orgNoteInput || null}
         lang={lang}
+        baseline={e.data.bundleEdit && !e.usesPersonTable ? e.data.baseline?.orgRates ?? null : undefined}
+        baselineHeadcount={e.data.baseline?.headcount ?? null}
       />
     );
   }
@@ -791,7 +838,13 @@ function OrgSubmitSection({
                     baselinePersons={e.data.bundleEdit ? e.data.baseline?.persons ?? null : undefined}
                   />
                 ) : (
-                  <PersonReadOnlyTable persons={e.persons} hasExpat={false} period={e.period} lang={lang} />
+                  <PersonReadOnlyTable
+                    persons={e.persons}
+                    hasExpat={false}
+                    period={e.period}
+                    lang={lang}
+                    baselinePersons={e.data.bundleEdit ? e.data.baseline?.persons ?? null : undefined}
+                  />
                 )}
               </div>
             ))}

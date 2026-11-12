@@ -85,7 +85,8 @@ export default async function BundlePage({ params }: { params: { tokens: string 
             const baseline = baselineOf(o.orgId, rd.period);
             // 묶음에 든 조직만 연다 — 서버(api/submissions)도 같은 목록으로 판정한다.
             // 자동 임시저장을 쓰지 않으므로 예전 임시저장본도 불러오지 않는다 — 제출된 값에서 시작한다.
-            return baseline ? { ...o, bundleEdit: true, editAllowed: true, baseline, draft: null, draftSavedAt: null } : o;
+            // 처음엔 잠긴 채로 보이고 '수정'을 눌러야 열린다 (화면이 연다 — editAllowed는 건드리지 않는다).
+            return baseline ? { ...o, bundleEdit: true, baseline, draft: null, draftSavedAt: null } : o;
           }),
         },
       })),

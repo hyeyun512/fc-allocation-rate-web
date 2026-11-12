@@ -667,4 +667,5 @@ input.required-input:not(:disabled):focus{background:#fff}
 .rate-tbl tbody tr td.cell-changed,
 .rate-tbl:has(> colgroup) tbody tr td.cell-changed,
 .rate-tbl tbody tr:hover td.cell-changed{background:#fee2e2 !important}
-.rate-tbl tbody tr td.cell-changed input{color:#b91c1c;font-weight:700}
+.rate-tbl tbody tr td.cell-changed,
+.rate-tbl tbody tr td.cell-changed input{color:#b91c1c !important;font-weight:700}

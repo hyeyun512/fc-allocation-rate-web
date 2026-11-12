@@ -6,6 +6,10 @@ import { keepsTeamRates } from "@/lib/confirmRate";
 import { isOrgActiveIn } from "@/lib/orgLifespan";
 import { resolveManagerPair, OrgManagerRow } from "@/lib/orgManager";
 import { linkTokenOf, isTokenOwner, OrgLite } from "@/lib/orgLink";
+import { bundleOfOrg } from "@/lib/linkBundles";
+
+/** 관리자 검토 화면에서 저장한 제출 행의 submitted_by (api/confirm). */
+const ADMIN_SUBMITTER = "관리자 수정 (검토및확정)";
 import { needsEnglishNote, submitLangOf, orgLabelFor } from "@/lib/englishOrgs";
 import { templateFor, previousTemplate, MailTemplateRow } from "@/lib/mailTemplateStore";
 import { OrgReviewData, ReviewRound } from "./ConfirmReview";
@@ -116,6 +120,31 @@ export default async function AdminConfirmPage() {
    * 이력(rateHistory·personHistory)은 기간과 무관하게 같고, 이번 기간 제출값·확정 여부만 기간마다 다르다.
    * 화면은 같은 조직을 기간별 데이터에서 찾아 한 표에 기간마다 행을 붙인다.
    */
+  /**
+   * 묶음 링크(lib/linkBundles.ts)에서 고쳐 제출된 기간이면 고치기 전 값, 아니면 null.
+   * 기준 시점은 '묶음을 만든 시각'과 '관리자가 마지막으로 저장한 시각' 중 나중 것 — 관리자가 저장(확정)하면
+   * 그 뒤로 묶음 링크 제출이 없으므로 빨간 표시가 사라진다.
+   */
+  function bundleBaselineOf(org: any, orgSubs: SubmissionRow[]) {
+    const bundle = bundleOfOrg(org);
+    if (!bundle) return null;
+    const t = (r: SubmissionRow) => new Date(r.submitted_at).getTime();
+    const lastAdmin = orgSubs.filter((r) => r.submitted_by === ADMIN_SUBMITTER).reduce((m, r) => Math.max(m, t(r)), 0);
+    const ref = Math.max(new Date(bundle.baselineAt).getTime(), lastAdmin);
+    if (!orgSubs.some((r) => t(r) > ref)) return null;
+    const before = latestByPerson(orgSubs.filter((r) => t(r) <= ref));
+    const orgLevel = before.find((r) => r.person_name === null) ?? null;
+    return {
+      orgRates: orgLevel ? toRateRecord(orgLevel) : null,
+      headcount: orgLevel?.headcount != null ? Number(orgLevel.headcount) : null,
+      persons: Object.fromEntries(
+        before
+          .filter((r) => r.person_name !== null && (Number(r.total) || 0) > 0)
+          .map((r) => [String(r.person_name).trim(), toRateRecord(r)])
+      ),
+    };
+  }
+
   function buildReview(period: string): ReviewRound {
     const orgList = (orgs ?? []).filter((o) => isOrgActiveIn(o.basis, period));
     const subList = allSubList.filter((s) => s.period === period);
@@ -166,6 +195,7 @@ export default async function AdminConfirmPage() {
             null;
 
       const rollup = computeRollup(orgLevelRow, personRows);
+      const bundleBaseline = bundleBaselineOf(org, orgSubs);
       // 값이 전부 0인 저장(행을 모두 지웠거나 배부율이 0%)은 제출로 보지 않는다.
       const hasAnyValue =
         (orgLevelRow ? Number(orgLevelRow.total) || 0 : 0) > 0 ||
@@ -211,6 +241,7 @@ export default async function AdminConfirmPage() {
         hasSubmission,
         submittedBy,
         latestSubmittedAt,
+        bundleBaseline,
         confirmedThisPeriod,
         rollup,
         currentOrgSubmission: orgLevelRow ? toRateRecord(orgLevelRow) : null,

@@ -65,6 +65,12 @@ export interface OrgReviewData {
   hasSubmission: boolean;
   submittedBy: string | null;
   latestSubmittedAt: string | null;
+  /** 묶음 링크에서 고쳐 제출했고 관리자가 아직 저장(확정)하지 않았으면 고치기 전 값 — 달라진 칸을 빨갛게 칠한다. */
+  bundleBaseline?: {
+    orgRates: Record<TargetKey, number> | null;
+    headcount: number | null;
+    persons: Record<string, Record<TargetKey, number>>;
+  } | null;
   confirmedThisPeriod: boolean;
   rollup: Record<TargetKey, number>;
   currentOrgSubmission: Record<TargetKey, number> | null;
@@ -1070,6 +1076,9 @@ function OrgDetail({ entries: entryData, version }: { entries: ReviewEntryData[]
     </div>
   );
 
+  /** 묶음 링크에서 고쳐 제출된 기간이면 고치기 전 값 (관리자가 저장하면 없어진다). */
+  const bb = (e: OrgReviewEntry) => e.item.bundleBaseline ?? null;
+
   /** 표에 붙는 기간 하나의 행 (입력 가능하면 입력칸, 아니면 반영된 값·자동계산 값). */
   function entryRow(e: OrgReviewEntry) {
     if (orgEditable(e)) {
@@ -1095,6 +1104,8 @@ function OrgDetail({ entries: entryData, version }: { entries: ReviewEntryData[]
           noteEnValue={e.orgNoteEnInput}
           onNoteEnChange={e.setOrgNoteEnInput}
           lockedKeys={e.lockedKeys}
+          baseline={bb(e) && !usesPersonTable ? bb(e)!.orgRates : undefined}
+          baselineHeadcount={bb(e)?.headcount ?? null}
         />
       );
     }
@@ -1105,6 +1116,8 @@ function OrgDetail({ entries: entryData, version }: { entries: ReviewEntryData[]
         period={e.period}
         rec={toNumRec(e.computedOrgRates)}
         headcount={e.currentOrgHeadcount}
+        baseline={bb(e) && !usesPersonTable ? bb(e)!.orgRates : undefined}
+        baselineHeadcount={bb(e)?.headcount ?? null}
         showClearSlot={anyOrgEditable}
         withNote
         // 자동계산 조직은 배부율은 못 고쳐도 코멘트는 적을 수 있게 한다.
@@ -1300,9 +1313,10 @@ function OrgDetail({ entries: entryData, version }: { entries: ReviewEntryData[]
                   hasExpat={hasExpat}
                   withNoteEn={item.needsEnglishNote}
                   lockedKeys={e.lockedKeys}
+                  baselinePersons={bb(e) ? bb(e)!.persons : undefined}
                 />
               ) : (
-                <PersonReadOnlyTable persons={e.persons} hasExpat={hasExpat} period={e.period} />
+                <PersonReadOnlyTable persons={e.persons} hasExpat={hasExpat} period={e.period} baselinePersons={bb(e) ? bb(e)!.persons : undefined} />
               )}
             </div>
           ))}
@@ -1366,6 +1380,13 @@ export default function ConfirmReview({
     });
   }
   const hkrStatuses = periods.map((p) => ({ period: p, confirmed: hkrHistory.some((h) => h.quarter === p) }));
+  /** 묶음 링크에서 고쳐 제출됐고 아직 저장(확정)하지 않은 조직인지 (집계 조직은 하위 팀 중 하나라도). */
+  function bundleChanged(orgId: number): boolean {
+    return rounds.some((r) => {
+      const found = r.data.find((d) => d.org.id === orgId);
+      return !!found && (!!found.bundleBaseline || found.children.some((c) => !!c.bundleBaseline));
+    });
+  }
 
   // 선택 버튼에는 기간별 표시('4Q· BP·')를 두지 않는다 — 기간은 위 '현재 라운드'에 이미 있어 모든 버튼에 반복됐다(사용자 지시).
   // 기간별 반영 상태는 버튼에 마우스를 올리면(title) 보이고, 버튼 색은 모든 기간이 반영됐을 때만 바뀐다.
@@ -1420,6 +1441,9 @@ export default function ConfirmReview({
                   {item.org.basis}
                   {item.children.length > 0 ? " 📊" : ""}
                   {item.expat ? " 🌐" : ""}
+                  {bundleChanged(item.org.id) && (
+                    <span className="dot" style={{ background: "#dc2626" }} title="묶음 링크에서 수정됨 — 저장하면 표시가 사라집니다" />
+                  )}
                 </button>
               );
             })}
