@@ -247,6 +247,8 @@ function useOrgEntry({
     }
     if (current === initialDraftJson.current) return;
     if (!editable) return;
+    // 묶음 링크는 '제출하기'를 눌러야만 저장한다 — 자동 임시저장을 하지 않는다(사용자 지시).
+    if (data.bundleEdit) return;
     // 제출을 마쳤으면 더 남기지 않는다 — 서버가 제출 시 지운 임시저장본을 다시 만들면 안 된다.
     if (justSubmitted) return;
     const timer = setTimeout(async () => {
@@ -274,7 +276,7 @@ function useOrgEntry({
   draftPayloadRef.current = draftPayload;
   // 리스너는 한 번만 등록되므로 최신 상태를 ref로 넘긴다 (클로저가 옛 값을 붙잡지 않게).
   const draftingAllowedRef = useRef(true);
-  draftingAllowedRef.current = editable && !justSubmitted;
+  draftingAllowedRef.current = editable && !justSubmitted && !data.bundleEdit;
   useEffect(() => {
     function flush() {
       if (!navigator.sendBeacon) return;
@@ -289,6 +291,19 @@ function useOrgEntry({
     window.addEventListener("pagehide", flush);
     return () => window.removeEventListener("pagehide", flush);
   }, [token, data.orgId, period]);
+
+  // 묶음 링크는 자동 저장이 없으니, 제출하지 않은 입력이 있으면 창을 닫기 전에 브라우저가 한 번 묻게 한다.
+  useEffect(() => {
+    if (!data.bundleEdit) return;
+    function warn(e: BeforeUnloadEvent) {
+      if (justSubmitted || initialDraftJson.current === null) return;
+      if (JSON.stringify(draftPayloadRef.current()) === initialDraftJson.current) return;
+      e.preventDefault();
+      e.returnValue = "";
+    }
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [data.bundleEdit, justSubmitted]);
 
   /** 제출 전 검사. 문제가 있으면 안내 문구, 없으면 null. */
   function validate(): string | null {
