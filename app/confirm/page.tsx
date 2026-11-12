@@ -1,6 +1,6 @@
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { TARGETS, TargetKey } from "@/lib/targets";
-import { latestByPerson, latestByPersonAndPeriod, latestOrgByPeriod, computeRollup, SubmissionRow } from "@/lib/rollup";
+import { latestByPerson, latestByPersonAndPeriod, latestOrgByPeriod, computeRollup, submissionRateRows, SubmissionRow } from "@/lib/rollup";
 import { HIDDEN_IN_CONFIRM } from "@/lib/autoAggregate";
 import { keepsTeamRates } from "@/lib/confirmRate";
 import { isOrgActiveIn } from "@/lib/orgLifespan";
@@ -104,6 +104,7 @@ export default async function AdminConfirmPage() {
   const allSubList = (submissions ?? []) as SubmissionRow[];
   const personSubList = (personSubmissions ?? []) as SubmissionRow[];
   const rates = rateRows ?? [];
+  const allOrgSubsList = [...personSubList, ...((orgLevelSubmissions ?? []) as SubmissionRow[])];
 
   const orgLevelHistoryMap = new Map<string, SubmissionRow>();
   latestOrgByPeriod((orgLevelSubmissions ?? []) as SubmissionRow[]).forEach((r) => {
@@ -131,13 +132,24 @@ export default async function AdminConfirmPage() {
 
       // 전 항목이 0%인 행은 '값을 지우고 저장한' 흔적이지 실제 배부율이 아니다.
       // (upsert라 행을 지울 수 없어 0으로 덮어쓴다.) 이력·현재값 어디에도 노출하지 않는다.
-      const orgRateRows = rates.filter(
+      const tableRateRows = rates.filter(
         (r) =>
           r.basis === org.basis &&
           r.division === org.division &&
           r.type === org.type &&
           (Number(r.total) || 0) > 0
       );
+      // 하위 팀은 3Q부터 표에 행이 없다 — 지난 분기 값은 제출 이력으로 채운다 (이번 라운드 기간은 아래 제출값으로 따로 보인다).
+      const isUnlistedChild = !!org.parent_basis && !keepsTeamRates(org.parent_basis);
+      const orgRateRows: any[] = isUnlistedChild
+        ? [
+            ...tableRateRows,
+            ...submissionRateRows(
+              allOrgSubsList.filter((s) => s.org_id === org.id),
+              new Set([...tableRateRows.map((r) => String(r.quarter)), ...periods])
+            ),
+          ].sort((a, b) => String(a.quarter).localeCompare(String(b.quarter)))
+        : tableRateRows;
       // 입력칸을 미리 채울 값: 그 기간 자기 행, 없으면 그 기간보다 **앞선** 기간 중 가장 나중 행.
       // 전 기간에서 마지막 행을 쓰면 4Q 화면에 먼저 확정한 27년 BP 값이 들어간다(뒤 기간 값을 끌어오면 안 된다).
       // 표기를 못 읽는 기간(직접 입력)은 예전처럼 마지막 행을 쓴다.
@@ -167,7 +179,6 @@ export default async function AdminConfirmPage() {
       // 확정도 값이 있어야 확정으로 본다 (0%만 저장된 건 확정 표기하지 않는다).
       // 집계 조직의 하위 팀(재무팀·SW팀·업무지원팀 등)은 배부율 표에 행을 남기지 않는다(상위 조직 한 줄에만 반영) —
       // 그래서 표만 보면 저장해도 늘 '미반영'으로 열려 있었다(사용자 지적). 하위 팀은 그 기간에 저장된 값이 있으면 반영된 것으로 본다.
-      const isUnlistedChild = !!org.parent_basis && !keepsTeamRates(org.parent_basis);
       const confirmedThisPeriod =
         orgRateRows.some((r) => r.quarter === period && (Number(r.total) || 0) > 0) || (isUnlistedChild && hasAnyValue);
 

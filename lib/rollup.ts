@@ -92,6 +92,30 @@ export function countedPersonRows(personRows: SubmissionRow[]): SubmissionRow[] 
   return personRows.filter((p) => (Number(p.total) || 0) > 0);
 }
 
+/**
+ * 배부율 표에 행이 없는 분기의 값을 **제출 이력**으로 만든다 (분기별 rollup 한 행씩).
+ *
+ * 집계 조직의 하위 팀(재무팀·SW팀·사업그룹장 등)은 2026-Q3부터 배부율 표에 쓰지 않고 상위 조직 한 줄에만
+ * 반영한다. 그래서 이력을 배부율 표에서만 읽으면 1Q·2Q(예전에 써 둔 행)는 보이고 3Q는 빠졌다(사용자 지적).
+ * 이미 표에 있는 분기(haveQuarters)는 건드리지 않는다.
+ */
+export function submissionRateRows(
+  orgSubs: SubmissionRow[],
+  haveQuarters: Set<string>
+): { quarter: string; total: number; [key: string]: any }[] {
+  const periods = Array.from(new Set(orgSubs.map((s) => s.period as string))).filter((p) => !haveQuarters.has(p));
+  return periods
+    .map((period) => {
+      const deduped = latestByPerson(orgSubs.filter((s) => s.period === period));
+      if (!deduped.some((r) => (Number(r.total) || 0) > 0)) return null;
+      const orgLevelRow = deduped.find((r) => r.person_name === null) ?? null;
+      const rates = computeRollup(orgLevelRow, deduped.filter((r) => r.person_name !== null));
+      const total = TARGETS.reduce((a, t) => a + (rates[t.key] || 0), 0);
+      return { quarter: period, ...rates, total };
+    })
+    .filter((r): r is NonNullable<typeof r> => !!r && r.total > 0);
+}
+
 // 개인별 제출이 있으면 인원수(=행 수) 평균, 없으면 조직 단위 제출값을 그대로 사용.
 // 개인 입력은 합계가 100%에서 ±0.5%p까지 허용되므로, 평균낸 조직 값은 100%로 정규화해서 돌려준다.
 export function computeRollup(

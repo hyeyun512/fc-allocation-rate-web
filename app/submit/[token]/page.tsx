@@ -5,11 +5,13 @@ import {
   latestByPersonAndPeriod,
   latestOrgByPeriod,
   computeRollup,
+  submissionRateRows,
   hasSubmittedValue,
   SubmissionRow,
 } from "@/lib/rollup";
 import { mirrorSourceOf, MIRROR_HEADCOUNT, averagedGroupOf, isDerivedOrg, derivedHeadcountOf } from "@/lib/autoAggregate";
 import { leaderFirst } from "@/lib/orgOrder";
+import { keepsTeamRates } from "@/lib/confirmRate";
 import { submitLangOf, orgLabelFor, submitterFor, noteFor } from "@/lib/englishOrgs";
 import { submitStrings } from "@/lib/submitLang";
 import type { CurrentPerson, PersonHistoryEntry, RateHistoryEntry, PersonRole } from "@/components/RateParts";
@@ -92,10 +94,18 @@ async function getData(token: string) {
 
   function buildOrg(o: any, period: string): SubmitOrgData {
     // basis만으로 거르면 다른 구분(division)의 동명 조직이 섞일 수 있어 셋 다 맞춘다.
-    const orgRates = (rateRows ?? []).filter(
+    const tableRates = (rateRows ?? []).filter(
       (r) => r.basis === o.basis && r.division === o.division && r.type === o.type && (Number(r.total) || 0) > 0
     );
     const orgSubs = subList.filter((s) => s.org_id === o.id);
+    // 하위 팀은 3Q부터 배부율 표에 행이 없다 — 지난 분기 값은 제출 이력으로 채운다 (관리자 검토 화면과 같다).
+    const isUnlistedChild = !!o.parent_basis && !keepsTeamRates(o.parent_basis);
+    const orgRates: any[] = isUnlistedChild
+      ? [
+          ...tableRates,
+          ...submissionRateRows(orgSubs, new Set([...tableRates.map((r) => String(r.quarter)), ...periods])),
+        ].sort((a, b) => String(a.quarter).localeCompare(String(b.quarter)))
+      : tableRates;
     const deduped = latestByPerson(orgSubs.filter((s) => s.period === period));
     const orgLevelRow = deduped.find((r) => r.person_name === null) ?? null;
     // 이름 가나다순이 아니라 입력(저장)한 순서대로 (한 번에 insert되므로 id 오름차순이 곧 입력 순서).
