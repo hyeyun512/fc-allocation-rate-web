@@ -6,6 +6,12 @@ import { quarterRank } from "./quarter";
  * 화면(탭·입력 기간)과 저장 라우트가 모두 이 함수로 가른다. 표기를 못 읽는 기간(직접 입력)은 예전처럼 받는다.
  */
 export const IT_BASIS_LAST = "2026-Q4";
+/** 임시값으로 넣어 둔 분기 — 화면에서 행을 연한 빨간색으로 칠한다 (향후 업데이트 예정, 사용자 지시 2026-11-16). */
+export const IT_PROVISIONAL_QUARTERS: readonly string[] = ["2026-Q4"];
+export function isItProvisional(quarter: string): boolean {
+  return IT_PROVISIONAL_QUARTERS.includes(quarter);
+}
+
 export function usesItBasis(period: string): boolean {
   const r = quarterRank(period);
   return r < 0 || r <= quarterRank(IT_BASIS_LAST);

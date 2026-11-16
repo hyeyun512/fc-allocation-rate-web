@@ -669,3 +669,7 @@ input.required-input:not(:disabled):focus{background:#fff}
 .rate-tbl tbody tr:hover td.cell-changed{background:#fee2e2 !important}
 .rate-tbl tbody tr td.cell-changed,
 .rate-tbl tbody tr td.cell-changed input{color:#b91c1c !important;font-weight:700}
+
+/* IT 탭: 임시값 분기(2026-Q4) 행은 연한 빨간색 (향후 업데이트 예정). 입력칸 노란색보다 앞선다. */
+.rate-tbl tbody tr.row-provisional > td{background:#fef2f2 !important}
+.prov-tag{display:inline-block;font-size:10.5px;font-weight:600;color:#b91c1c;background:#fee2e2;border-radius:4px;padding:0 5px;margin-left:4px;vertical-align:1px}

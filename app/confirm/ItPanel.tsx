@@ -6,6 +6,20 @@ import { TARGETS, TargetKey, getPreviousPeriod, isTargetActiveIn } from "@/lib/t
 import { prettyQuarterLabel, sortQuarters } from "@/lib/quarter";
 import { computeItRates, sumItBasisInput, ItBasisInput } from "@/lib/itBasis";
 import { RateTableHead, ReadOnlyRateRow, NoteTip, useTargetColumns, TargetGroupLabelRow, RateTd } from "@/components/RateParts";
+import { isItProvisional } from "@/lib/itBasis";
+
+/** 임시값 분기(2026-Q4) 행 — 연한 빨간색으로 칠하고 '임시값'이라고 적는다 (향후 업데이트 예정). */
+const provClass = (q: string) => (isItProvisional(q) ? " row-provisional" : "");
+const provTitle = (q: string) => (isItProvisional(q) ? "임시값 — 향후 업데이트 예정" : undefined);
+function quarterLabel(q: string) {
+  return isItProvisional(q) ? (
+    <>
+      {q} <span className="prov-tag">임시값</span>
+    </>
+  ) : (
+    q
+  );
+}
 import { readPasteGrid, shouldHandlePaste } from "@/lib/paste";
 
 export interface ItBasisRow {
@@ -151,8 +165,8 @@ function CurrentBasisRow({
   const total = sumItBasisInput(toBasisInput(state));
   return !editable ? (
     // 확정된 분기 — 과거 분기 행과 같은 읽기 전용 모양.
-    <tr key={quarter} className="ro-row">
-      <td style={{ textAlign: "left" }}>{quarter}</td>
+    <tr key={quarter} className={`ro-row${provClass(quarter)}`} title={provTitle(quarter)}>
+      <td style={{ textAlign: "left" }}>{quarterLabel(quarter)}</td>
       <td>{billingBasis || "-"}</td>
       {FIELDS.map((f) => (
         <td key={f.key}>{state[f.key] === "" ? 0 : Number(state[f.key])}</td>
@@ -164,8 +178,8 @@ function CurrentBasisRow({
       <td>{note ? <NoteTip text={note} /> : null}</td>
     </tr>
   ) : (
-    <tr key={quarter}>
-      <td style={{ textAlign: "left" }}>{quarter}</td>
+    <tr key={quarter} className={provClass(quarter).trim() || undefined} title={provTitle(quarter)}>
+      <td style={{ textAlign: "left" }}>{quarterLabel(quarter)}</td>
       <td>
         <select
           value={isCustomBasis ? BILLING_CUSTOM : billingBasis}
@@ -321,8 +335,8 @@ function BasisForm({
               hiparkingResident: r.hiparking_resident,
             });
             return (
-              <tr key={r.quarter} className="ro-row">
-                <td style={{ textAlign: "left" }}>{r.quarter}</td>
+              <tr key={r.quarter} className={`ro-row${provClass(r.quarter)}`} title={provTitle(r.quarter)}>
+                <td style={{ textAlign: "left" }}>{quarterLabel(r.quarter)}</td>
                 <td>{r.billing_basis ?? "-"}</td>
                 <td>{r.headquarters}</td>
                 <td>{r.overseas_corp}</td>
@@ -721,7 +735,7 @@ export default function ItPanel({
         <div key={e.quarter}>
           <div className="panel-sub" style={{ fontWeight: 700, color: "#1a202c", margin: "12px 0 8px" }}>
             {/* 어떤 청구기준으로 만들어진 비율인지 함께 밝힌다 (인원수·SAP의 기준이 다를 수 있다). */}
-            ■ 자동계산 미리보기 ({e.quarter}
+            ■ 자동계산 미리보기 ({e.quarter}{isItProvisional(e.quarter) ? " · 임시값" : ""}
             {e.headcountBasis || e.sapBasis
               ? ` · 청구기준 인원수 ${e.headcountBasis || "미지정"} / SAP ${e.sapBasis || "미지정"}`
               : ""}
@@ -777,7 +791,8 @@ export default function ItPanel({
                     key={r.key}
                     className={`ro-row${r.spanStart ? " basis-group-start" : ""}${
                       r.qStart && !r.spanStart ? " quarter-group-start" : ""
-                    }`}
+                    }${provClass(r.quarter)}`}
+                    title={provTitle(r.quarter)}
                   >
                     {/* 같은 청구기준·분기가 이어지면 첫 행에만 적고 아래로 합친다. */}
                     {r.spanStart && (
@@ -787,7 +802,7 @@ export default function ItPanel({
                     )}
                     {r.qStart && (
                       <td rowSpan={r.qSpan} className="basis-cell quarter-cell">
-                        {r.quarter}
+                        {quarterLabel(r.quarter)}
                       </td>
                     )}
                     <td style={{ textAlign: "left" }}>{r.basisName}</td>
