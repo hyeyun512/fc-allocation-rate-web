@@ -299,7 +299,7 @@ function BasisForm({
             ))}
             <th>합계</th>
             {withResident && <th>하이파킹 입주인원</th>}
-            <th>입력자</th>
+            <th>담당자</th>
             <th>확인일자</th>
             <th>코멘트</th>
           </tr>
