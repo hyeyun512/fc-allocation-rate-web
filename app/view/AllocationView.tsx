@@ -184,8 +184,8 @@ export default function AllocationView({
 }) {
   const [view, setView] = useState<string>(quarters[quarters.length - 1] ?? "");
   const [search, setSearch] = useState("");
-  const [divisions, setDivisions] = useState<Set<string>>(new Set());
-  const [types, setTypes] = useState<Set<string>>(new Set());
+  // '구분' 필터는 없앴다(사용자 지시) — 유형만 고른다. 처음엔 모든 유형이 켜져 있다.
+  const [types, setTypes] = useState<Set<string>>(() => new Set(TYPE_ORDER));
   const [changedOnly, setChangedOnly] = useState(false);
   // 저장이 끝난 코멘트. 저장 후 router.refresh()로 다시 받아오면 서버가 아직 예전 값을 주는 순간이 있어
   // 방금 적은 코멘트가 사라져 보인다 — 저장 성공 시 이 상태만 갱신한다.
@@ -217,8 +217,7 @@ export default function AllocationView({
 
   function resetFilters() {
     setSearch("");
-    setDivisions(new Set());
-    setTypes(new Set());
+    setTypes(new Set(TYPE_ORDER));
     setChangedOnly(false);
   }
 
@@ -319,14 +318,12 @@ export default function AllocationView({
 
   const filteredQuarterRows = quarterRows.filter(
     (r) =>
-      (divisions.size === 0 || divisions.has(r.division)) &&
-      (types.size === 0 || types.has(r.type)) &&
+      types.has(r.type) &&
       matchesSearch(r.basis, r.division, r.type, commentValue(view, r.basis))
   );
   const filteredDeltaRows = deltaRows.filter(
     (r) =>
-      (divisions.size === 0 || divisions.has(r.division)) &&
-      (types.size === 0 || types.has(r.type)) &&
+      types.has(r.type) &&
       !(changedOnly && r.status === "same") &&
       matchesSearch(r.basis, r.division, r.type, commentValue(deltaCommentQuarter, r.basis))
   );
@@ -374,8 +371,6 @@ export default function AllocationView({
   }
 
   // ---- chip counts ----
-  const sourceForCounts = isDelta ? deltaRows : quarterRows;
-  const divisionCounts = DIVISION_ORDER.map((d) => ({ d, n: sourceForCounts.filter((r) => r.division === d).length }));
 
   let lastDivision: string | null = null;
 
@@ -456,19 +451,6 @@ export default function AllocationView({
           value={search}
           onChange={(e) => setSearch(e.target.value)}
         />
-        <div className="av-chip-group">
-          <span className="av-chip-label">구분</span>
-          {divisionCounts.map(({ d, n }) => (
-            <button
-              key={d}
-              type="button"
-              className={`av-chip ${divisions.has(d) ? "active" : ""}`}
-              onClick={() => toggleSet(divisions, setDivisions, d)}
-            >
-              {divisionLabel(d)} ({n})
-            </button>
-          ))}
-        </div>
         <div className="av-chip-group">
           <span className="av-chip-label">유형</span>
           {TYPE_ORDER.map((t) => (

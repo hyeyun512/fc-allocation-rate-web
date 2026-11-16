@@ -8,6 +8,7 @@ import { TargetColumns, RESOURCE_HIDDEN_TARGETS } from "@/components/RateParts";
 import { roundLabel } from "@/lib/surveyPeriods";
 import ConfirmReview, { OrgReviewData, RateHistoryEntry, ReviewRound } from "./ConfirmReview";
 import ItPanel, { ItBasisRow } from "./ItPanel";
+import FixedRatesPanel, { FixedRateRow } from "./FixedRatesPanel";
 import { usesItBasis } from "@/lib/itBasis";
 import SelfUsePanel, { SelfuseBasisRow } from "./SelfUsePanel";
 import BuildingPanel, { BuildingBasisRow } from "./BuildingPanel";
@@ -15,7 +16,7 @@ import type { EvcsAverage, HqHeadcounts } from "@/lib/selfuseBasis";
 import { usesBuildingBasis } from "@/lib/selfuseBasis";
 import { quarterRank } from "@/lib/quarter";
 
-type SubTab = "survey" | "resource" | "selfuse" | "it";
+type SubTab = "survey" | "resource" | "selfuse" | "it" | "fixed";
 
 // 저장값(raw)은 기존 데이터와 동일한 "2026-Q1" 표기를 그대로 쓴다 — 화면 표기만 prettyQuarterLabel로 "2026-1Q"처럼 보여준다.
 // 두 표기를 섞어 쓰면 같은 분기가 서로 다른 문자열로 저장되어 View 등에서 중복 분기로 보이는 문제가 생긴다.
@@ -42,6 +43,7 @@ const SUB_TABS: { key: SubTab; label: string }[] = [
   { key: "resource", label: "리소스배부율" },
   { key: "selfuse", label: "건물" },
   { key: "it", label: "IT" },
+  { key: "fixed", label: "고정비율" },
   { key: "survey", label: "조사" },
 ];
 
@@ -60,6 +62,7 @@ export default function ConfirmTabs({
   buildingHistory,
   evcsAverages,
   autoHeadcounts,
+  fixedRows,
 }: {
   /**
    * 지금 라운드의 기간들 (기간 순서대로). 묶음 라운드(26년 4Q & 27년 BP)면 둘이고,
@@ -86,6 +89,8 @@ export default function ConfirmTabs({
   evcsAverages: Record<string, EvcsAverage | null>;
   /** 자가사용(건물) 기간별 자동 계산 본사 인원수 (2026-Q4~). */
   autoHeadcounts: Record<string, HqHeadcounts | null>;
+  /** 이번 라운드 기간들의 고정비율 행 (읽기 전용 '고정비율' 탭). */
+  fixedRows: FixedRateRow[];
 }) {
   // 처음 열리는 탭은 언제나 맨 앞 탭이다. 순서를 바꾸면 첫 화면도 따라오게 두어,
   // 탭 목록과 기본값이 따로 놀지 않게 한다.
@@ -241,6 +246,11 @@ export default function ConfirmTabs({
       {subTab === "it" && itPeriods.length > 0 && (
         <TargetColumns periods={[...itPeriods, ...itHistory.map((h) => h.quarter)]} current={itPeriods}>
           <ItPanel key={itPeriods.join("+")} periods={itPeriods} history={itHistory} />
+        </TargetColumns>
+      )}
+      {subTab === "fixed" && (
+        <TargetColumns periods={periods} current={periods}>
+          <FixedRatesPanel periods={periods} rows={fixedRows} />
         </TargetColumns>
       )}
     </div>

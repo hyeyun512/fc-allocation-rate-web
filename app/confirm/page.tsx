@@ -490,6 +490,9 @@ export default async function AdminConfirmPage() {
       buildingHistory={buildingHistory}
       evcsAverages={evcsAverages}
       autoHeadcounts={autoHeadcounts}
+      fixedRows={rates
+        .filter((r) => r.type === "고정비율" && periods.includes(r.quarter))
+        .map((r) => ({ quarter: r.quarter as string, division: r.division as string, basis: r.basis as string, rates: toRateRecord(r) }))}
     />
   );
 }
