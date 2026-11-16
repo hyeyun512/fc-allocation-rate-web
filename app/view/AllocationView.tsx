@@ -330,46 +330,6 @@ export default function AllocationView({
 
   const visibleRows: Array<AllocRateRow | DeltaRow> = isDelta ? filteredDeltaRows : filteredQuarterRows;
 
-  // ---- stat tiles ----
-  let stats: { label: string; value: string; sub: string; ok?: boolean }[];
-  if (isDelta) {
-    const changed = deltaRows.filter((r) => r.status === "changed").length;
-    const added = deltaRows.filter((r) => r.status === "new").length;
-    const removed = deltaRows.filter((r) => r.status === "removed").length;
-    const same = deltaRows.filter((r) => r.status === "same").length;
-    stats = [
-      {
-        label: "비교 대상 배부기준",
-        value: `${deltaRows.length}건`,
-        sub: deltaPair ? `${prettyQuarterLabel(deltaPair[0])} ∪ ${prettyQuarterLabel(deltaPair[1])} 합집합 기준` : "",
-      },
-      { label: "값 변경", value: `${changed}건`, sub: `${same}건은 변동 없음` },
-      {
-        label: `신규 추가 (${deltaPair ? prettyQuarterLabel(deltaPair[1]) : ""})`,
-        value: `${added}건`,
-        sub: added ? "이전 분기에 없던 배부기준" : "없음",
-        ok: added === 0,
-      },
-      {
-        label: `삭제됨 (${deltaPair ? prettyQuarterLabel(deltaPair[1]) : ""})`,
-        value: `${removed}건`,
-        sub: removed ? "이번 분기에서 제외됨" : "없음",
-        ok: removed === 0,
-      },
-    ];
-  } else {
-    const total = quarterRows.length;
-    const validated = quarterRows.filter((r) => Math.abs(r.total - 1) < 1e-6).length;
-    const excluded = total - validated;
-    stats = [
-      { label: "배부기준", value: `${total}건`, sub: `${DIVISION_ORDER.length}개 구분 · ${TYPE_ORDER.length}개 유형` },
-      // 배부 대상이 빠진 분기(예: 2026-Q4부터 홀딩스)에는 그만큼 줄여 센다.
-      { label: "적용 법인", value: `${TARGETS.filter((t) => isTargetActiveIn(t.key, view)).length}개`, sub: "STB ~ H.Networks" },
-      { label: "배부 유형", value: `${TYPE_ORDER.length}종`, sub: "리소스 · 자가사용 · 건물 · IT · 고정비율" },
-      { label: "합계 검증", value: `${validated}/${total}`, sub: excluded ? `${excluded}건 실적 제외 (설계상 total=0)` : "전건 100% 일치", ok: true },
-    ];
-  }
-
   // ---- chip counts ----
 
   let lastDivision: string | null = null;
@@ -430,18 +390,6 @@ export default function AllocationView({
         </div>
       </div>
 
-      <section className="av-stats">
-        {stats.map((t) => (
-          <div className="av-stat-tile" key={t.label}>
-            <p className="av-stat-label">{t.label}</p>
-            <div className="av-stat-value">{t.value}</div>
-            <p className="av-stat-sub">
-              {t.ok && <span className="ok">✓ </span>}
-              {t.sub}
-            </p>
-          </div>
-        ))}
-      </section>
 
       <section className="av-controls">
         <input
