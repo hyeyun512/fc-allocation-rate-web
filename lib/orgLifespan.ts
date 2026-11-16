@@ -21,6 +21,8 @@ export const ORG_LIFESPAN: Record<string, { from?: string; to?: string }> = {
   사업협력팀: { from: "2026-Q2", to: "2026-Q2" },
   // 3Q까지 있던 조직 (4Q에 폐쇄 — 개발 그룹 하위)
   "Staff(개발)": { to: "2026-Q3" },
+  // 26년 4Q까지 있던 조직 (27년 BP부터 배부율을 받지 않는다 — 사용자 지시 2026-11-16)
+  HBR_주재원: { to: "2026-Q4" },
   // 26년 4Q에 새로 생긴 IT사업부와 그 팀들 — 그룹 링크 하나로 조사하고, 배부율은 팀마다 남긴다
   // (lib/confirmRate.ts의 TEAM_RATE_GROUPS).
   "IT사업부": { from: "2026-Q4" },
