@@ -1,4 +1,15 @@
 import { TargetKey, isTargetActiveIn } from "./targets";
+import { quarterRank } from "./quarter";
+
+/**
+ * IT 탭(인원수비율·SAP 배부기준)은 2026-Q4까지만 쓴다 — 27년 BP부터는 필요 없다(사용자 지시 2026-11-16).
+ * 화면(탭·입력 기간)과 저장 라우트가 모두 이 함수로 가른다. 표기를 못 읽는 기간(직접 입력)은 예전처럼 받는다.
+ */
+export const IT_BASIS_LAST = "2026-Q4";
+export function usesItBasis(period: string): boolean {
+  const r = quarterRank(period);
+  return r < 0 || r <= quarterRank(IT_BASIS_LAST);
+}
 
 // IT탭 "기준정보" 원본 입력 1행 (인원수 또는 SAP ID 개수).
 export interface ItBasisInput {

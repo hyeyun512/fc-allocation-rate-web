@@ -8,6 +8,7 @@ import { TargetColumns, RESOURCE_HIDDEN_TARGETS } from "@/components/RateParts";
 import { roundLabel } from "@/lib/surveyPeriods";
 import ConfirmReview, { OrgReviewData, RateHistoryEntry, ReviewRound } from "./ConfirmReview";
 import ItPanel, { ItBasisRow } from "./ItPanel";
+import { usesItBasis } from "@/lib/itBasis";
 import SelfUsePanel, { SelfuseBasisRow } from "./SelfUsePanel";
 import BuildingPanel, { BuildingBasisRow } from "./BuildingPanel";
 import type { EvcsAverage, HqHeadcounts } from "@/lib/selfuseBasis";
@@ -105,6 +106,8 @@ export default function ConfirmTabs({
   const [customPeriod, setCustomPeriod] = useState(!QUARTER_OPTIONS.includes(round));
   const [savingSettings, setSavingSettings] = useState(false);
   const router = useRouter();
+  // IT 탭(인원수비율·SAP)을 받는 기간 — 2026-Q4까지 (27년 BP부터는 없다).
+  const itPeriods = periods.filter(usesItBasis);
 
   async function logout() {
     await fetch("/api/logout", { method: "POST" });
@@ -176,7 +179,8 @@ export default function ConfirmTabs({
       </div>
 
       <div className="admin-subtabs">
-        {SUB_TABS.map((t) => (
+        {/* IT 탭은 2026-Q4까지만 — 라운드에 IT를 받는 기간이 없으면(27년 BP만) 탭을 감춘다. */}
+        {SUB_TABS.filter((t) => t.key !== "it" || itPeriods.length > 0).map((t) => (
           <button
             key={t.key}
             type="button"
@@ -234,9 +238,9 @@ export default function ConfirmTabs({
           )}
         </TargetColumns>
       )}
-      {subTab === "it" && (
-        <TargetColumns periods={[...periods, ...itHistory.map((h) => h.quarter)]} current={periods}>
-          <ItPanel key={periods.join("+")} periods={periods} history={itHistory} />
+      {subTab === "it" && itPeriods.length > 0 && (
+        <TargetColumns periods={[...itPeriods, ...itHistory.map((h) => h.quarter)]} current={itPeriods}>
+          <ItPanel key={itPeriods.join("+")} periods={itPeriods} history={itHistory} />
         </TargetColumns>
       )}
     </div>

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
-import { computeItRates } from "@/lib/itBasis";
+import { computeItRates, usesItBasis } from "@/lib/itBasis";
 import { TARGETS, TargetKey, sumTargets, normalizeTargets, RATE_TOTAL_TOLERANCE, isTargetActiveIn, toDbTargets } from "@/lib/targets";
 
 export async function POST(req: NextRequest) {
@@ -12,6 +12,10 @@ export async function POST(req: NextRequest) {
   const sapSubmitter = sapBy ?? submittedBy ?? null;
   if (!quarter || (!headcount && !sap)) {
     return NextResponse.json({ error: "필수 항목이 누락되었습니다." }, { status: 400 });
+  }
+
+  if (!usesItBasis(quarter)) {
+    return NextResponse.json({ error: "27년 BP부터는 IT 배부기준을 받지 않습니다." }, { status: 400 });
   }
 
   const supabase = getSupabaseAdmin();
