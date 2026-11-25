@@ -3,6 +3,7 @@ import { latestByPerson, computeRollup, countedPersonRows, SubmissionRow } from 
 import { ensureFixedRates } from "./fixedRates";
 import { isOrgActiveIn } from "./orgLifespan";
 import { keepsTeamRates } from "./confirmRate";
+import { forcesItRate, excludedFromHkr, itOnlyRates } from "./itUnified";
 import {
   EVCS_AVERAGE_ORGS,
   EvcsAverage,
@@ -129,7 +130,9 @@ function buildOrgState(org: any, subs: SubmissionRow[], rateRows: any[], period:
         (Number(r.total) || 0) > 0
     ) ?? null;
 
-  const rate = hasSubmission ? (computeRollup(orgLevelRow, personRows) as Rec) : toRec(thisQuarterRate);
+  let rate = hasSubmission ? (computeRollup(orgLevelRow, personRows) as Rec) : toRec(thisQuarterRate);
+  // 26년 4Q IT사업부 팀은 무엇을 적어 냈든 IT 100%로 계산한다 (lib/itUnified.ts).
+  if (hasSubmission && forcesItRate(org, period)) rate = itOnlyRates() as Rec;
   // 가중치는 실제 입력된 인원수 (팀 수가 아니라 인원 비율로 가중해야 한다).
   // 개인별 입력 조직은 값이 채워진 개인 행 수(한 행 = 한 명), 조직 단위 입력 조직은 조직 인원수 값을 쓴다.
   const fromPersons = countedPersonRows(personRows).length;
@@ -386,6 +389,16 @@ async function runAggregates(
     }
   }
 
+  // 2-1) 26년 4Q IT사업부 팀은 IT 100%로 다시 싣는다 — 통일 전에 조사값 그대로 실린 행도 재계산 한 번으로 바로잡힌다.
+  for (const o of orgs) {
+    if (!o.parent_basis || !forcesItRate(o, period) || averagedGroupOf(o.basis)) continue;
+    const st = stateById.get(o.id);
+    if (!st?.hasSubmission) continue;
+    track(o.basis, () =>
+      upsertRate(supabase, { quarter: period, type: o.type, division: o.division, basis: o.basis, rates: st.rate, version })
+    );
+  }
+
   // 2) 다른 조직 값을 그대로 따라가는 조직의 배부율을 기록 (사업총괄대표 ← 사업그룹장)
   for (const rule of MIRROR_RULES) {
     const dst = orgs.find((o: any) => o.basis === rule.to);
@@ -409,7 +422,8 @@ async function runAggregates(
   }
 
   // 3) HKR(관계사제외) = 본사 최상위 조직들의 가중평균 → 계열사 제외 재정규화
-  const honsa = orgs.filter((o: any) => o.division === "본사" && !o.parent_basis);
+  //    26년 4Q는 IT사업부를 빼고 평균한다 (3Q와 같은 방식 — lib/itUnified.ts).
+  const honsa = orgs.filter((o: any) => o.division === "본사" && !o.parent_basis && !excludedFromHkr(o.basis, period));
   const honsaStates: OrgState[] = honsa.map((o: any) => stateById.get(o.id)!).filter(Boolean);
   // 상위 집계 조직과 같은 기준 — 이번 분기에 입력한 본사 조직이 하나도 없으면 기록하지 않고,
   // 남아 있던 행이 있으면 지운다 (입력한 적 없는 분기가 목록에 남지 않도록).

@@ -1,4 +1,5 @@
 import { TargetKey, sumTargets, normalizeTargets, RATE_TOTAL_TOLERANCE, toDbTargets } from "./targets";
+import { forcesItRate, itOnlyRates } from "./itUnified";
 
 /**
  * 조직 하나의 배부율을 운영 표(allocation_rate)에 반영한다.
@@ -44,9 +45,12 @@ export async function applyOrgRate(
   supabase: any,
   org: RateOrg,
   period: string,
-  parsed: Record<TargetKey, number>,
+  parsedInput: Record<TargetKey, number>,
   noteLabel: string
 ): Promise<ApplyRateResult> {
+  // 26년 4Q IT사업부 팀은 무엇을 적어 냈든 IT 100%로 싣는다 (lib/itUnified.ts). 값을 지운 저장(합계 0)은 그대로 지운다.
+  const parsed =
+    forcesItRate(org, period) && sumTargets(parsedInput) > 0 ? itOnlyRates() : parsedInput;
   // 하위 팀(SW팀·HW팀·재무팀 등)은 배부율 표에 싣지 않는다.
   // 그 값은 상위 조직(개발 그룹·경영지원실) 한 줄에 인원수 가중평균으로 이미 들어가 있어,
   // 따로 실으면 같은 인원이 두 줄로 잡힌다. View가 하위 팀을 걸러 보여주던 것을

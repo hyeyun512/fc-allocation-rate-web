@@ -1,5 +1,6 @@
 "use client";
 
+import { excludedFromHkr, isItUnifiedIn } from "@/lib/itUnified";
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
@@ -609,7 +610,9 @@ function HkrAutoPanel({
     const orgs = current ? current.honsaOrgs : baseHonsa;
     // 그 분기에 없던 조직은 그 분기 표에 나오면 안 된다
     // (예: 사업협력팀은 2026-Q2에만 있으므로 1Q 표에는 빠진다).
-    return leaderFirst(orgs.filter((c) => isOrgActiveIn(c.org.basis, quarter))).map((c) => {
+    return leaderFirst(
+      orgs.filter((c) => isOrgActiveIn(c.org.basis, quarter) && !excludedFromHkr(c.org.basis, quarter))
+    ).map((c) => {
       const rec =
         current && c.hasSubmission
           ? c.rollup
@@ -631,6 +634,7 @@ function HkrAutoPanel({
         </div>
         <div className="panel-sub">
           본사 · 본사 조직 {baseHonsa.length}개의 인원수 가중평균 배부율에서 계열사(H.Mobility~H.Networks) 배부분을 제외하고 나머지를 재정규화해 자동 계산됩니다.
+          {periods.some(isItUnifiedIn) && " 26년 4Q는 IT사업부를 빼고 평균합니다(IT사업부는 IT 100%)."}
           저장하면 운영 allocation_rate에 곧바로 반영됩니다.
         </div>
       </div>
@@ -1369,7 +1373,10 @@ export default function ConfirmReview({
   // HKR 자동계산은 기간마다 그 기간의 본사 조직 제출값으로 한다.
   const hkrRounds = rounds.map((r) => ({
     period: r.period,
-    honsaOrgs: sortForOrgPicker(r.data.filter(isTopLevel)).filter((item) => item.org.division === "본사"),
+    // 26년 4Q는 IT사업부를 빼고 평균한다 (lib/itUnified.ts — 서버 재계산과 같은 기준).
+    honsaOrgs: sortForOrgPicker(r.data.filter(isTopLevel)).filter(
+      (item) => item.org.division === "본사" && !excludedFromHkr(item.org.basis, r.period)
+    ),
   }));
 
   /** 조직 하나의 기간별 반영 상태 (그 기간에 없는 조직이면 그 기간은 빠진다). */

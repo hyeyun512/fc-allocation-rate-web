@@ -7,6 +7,7 @@ import { TARGETS, toDbTargets, visibleTargets, isTargetActiveIn, inactiveTargetK
 import { isOrgActiveIn } from "@/lib/orgLifespan";
 import { fixedRatesFor } from "@/lib/fixedRates";
 import { keepsTeamRates } from "@/lib/confirmRate";
+import { forcesItRate, excludedFromHkr, itOnlyRates } from "@/lib/itUnified";
 import { averagedGroupOf, isDerivedOrg } from "@/lib/autoAggregate";
 import { leaderFirst } from "@/lib/orgOrder";
 import { roundPeriods, roundLabel, resolveSurveyPeriod, mailPeriodOf, prefillsFromEarlier, linkPeriodsFor } from "@/lib/surveyPeriods";
@@ -639,6 +640,22 @@ function runCases(): Case[] {
   c.push(ok("orgs: HDG_주재원은 1Q까지", isOrgActiveIn("HDG_주재원", "2026-Q1") && !isOrgActiveIn("HDG_주재원", "2026-Q2") && !isOrgActiveIn("HDG_주재원", "2026-Q4")));
   c.push(ok("orgs: Staff(개발)은 3Q까지 (4Q에 폐쇄)", isOrgActiveIn("Staff(개발)", "2026-Q3") && !isOrgActiveIn("Staff(개발)", "2026-Q4") && !isOrgActiveIn("Staff(개발)", "2027-BP")));
   c.push(ok("it그룹: IT사업부는 4Q부터", !isOrgActiveIn("IT사업부", "2026-Q3") && isOrgActiveIn("IT사업부", "2026-Q4")));
+  c.push(
+    ok(
+      "it통일: 26년 4Q IT사업부·팀은 IT 100%, 다른 기간·다른 조직은 아니다",
+      forcesItRate({ basis: "PM팀", parent_basis: "IT사업부" }, "2026-Q4") &&
+        forcesItRate({ basis: "IT사업부" }, "2026-Q4") &&
+        !forcesItRate({ basis: "PM팀", parent_basis: "IT사업부" }, "2027-BP") &&
+        !forcesItRate({ basis: "SW팀", parent_basis: "개발 그룹" }, "2026-Q4") &&
+        itOnlyRates().it === 1 && Object.values(itOnlyRates()).reduce((a, b) => a + b, 0) === 1
+    )
+  );
+  c.push(
+    ok(
+      "it통일: 26년 4Q HKR은 IT사업부를 빼고 평균한다",
+      excludedFromHkr("IT사업부", "2026-Q4") && !excludedFromHkr("IT사업부", "2027-BP") && !excludedFromHkr("CEO", "2026-Q4")
+    )
+  );
   c.push(ok("mobility: 'Mobility 100%'는 BP에 없다", !fixedRatesFor("2027-BP").some((d) => d.basis === "Mobility 100%")));
   {
     const IT = { headquarters: 70, overseasCorp: 0, hMobility: 10, hEv: 10, hiparking: 0, peoplecar: 0, winercom: 0, holdings: 10, hiparkingResident: null };
