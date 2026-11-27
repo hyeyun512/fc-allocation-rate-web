@@ -317,6 +317,8 @@ async function runAggregates(
 
   // 그룹 평균 자리(IT사업대표·Staff(IT))는 같은 그룹의 나머지 팀 인원수 가중평균을 쓴다.
   // 그룹 평균(아래 1단계)보다 먼저 정해 두어야 그룹 값 계산에 이 자리도 들어간다.
+  // (27년 BP는 PM팀·Infra팀 공통 재배부 뒤에 한 번 더 부른다 — 아래 1-1.)
+  const applyAverageRules = () => {
   for (const rule of AVERAGE_RULES) {
     const sources = orgs.filter((o: any) => o.parent_basis === rule.group && !rule.to.includes(o.basis));
     const srcStates: OrgState[] = sources.map((o: any) => stateById.get(o.id)!).filter(Boolean);
@@ -331,6 +333,8 @@ async function runAggregates(
       });
     }
   }
+  };
+  applyAverageRules();
 
   // 집계 조직은 자기 인원을 따로 갖지 않으므로 하위 조직 인원수를 합쳐 가중치로 쓴다.
   // (그대로 두면 인원수 0으로 잡혀 HKR 같은 상위 평균에서 통째로 빠진다 — 화면 계산과 동일하게 맞춘다.)
@@ -356,29 +360,55 @@ async function runAggregates(
   };
   const parentsByDepth = orgs.filter((o: any) => childrenOf(o).length > 0).sort((a: any, b: any) => depthOf(a) - depthOf(b));
 
-  for (const parent of parentsByDepth) {
-    const children = childrenOf(parent);
-    const childStates: OrgState[] = children.map((c: any) => stateById.get(c.id)!).filter(Boolean);
-    // 이번 분기에 아무 하위 조직도 입력하지 않았으면 계산할 근거가 없다 —
-    // 남아 있던 행이 있으면 지운다 (입력한 적 없는 분기가 목록에 남지 않도록).
-    if (!childStates.some((s) => s.hasSubmission)) {
-      track(parent.basis, () => deleteRate(supabase, { quarter: period, type: parent.type, division: parent.division, basis: parent.basis })
-      );
+  // 계산만 하고(쓰기는 아래에서 한 번에) 결과를 돌려준다 — 27년 BP는 재배부 뒤에 다시 계산해야 해서 둘로 나눴다.
+  const computeParents = (): { parent: any; avg: Rec | null }[] =>
+    parentsByDepth.map((parent: any) => {
+      const childStates: OrgState[] = childrenOf(parent).map((c: any) => stateById.get(c.id)!).filter(Boolean);
+      // 이번 분기에 아무 하위 조직도 입력하지 않았으면 계산할 근거가 없다 — 아래에서 남아 있던 행을 지운다.
+      if (!childStates.some((s) => s.hasSubmission)) return { parent, avg: null };
+      const avg = weightedAvg(childStates);
+      // 방금 계산한 값을 상태에 반영해, 이 조직을 하위로 두는 상위 조직·HKR이 최신값으로 계산되게 한다.
+      const own = stateById.get(parent.id);
+      if (own) stateById.set(parent.id, { ...own, rate: avg, hasSubmission: true });
+      return { parent, avg };
+    });
+  let parentResults = computeParents();
+
+  // 1-1) 27년 BP: PM팀·Infra팀의 Humax(공통) 몫을 HKR(관계사,IT제외) 비율로 다시 나눈다 (lib/itUnified.ts).
+  //      HKR(관계사,IT제외)은 IT사업부를 빼고 내므로 먼저 구할 수 있다. 재배부한 팀 값으로 IT사업대표·Staff(IT)·IT사업부
+  //      평균과 (IT사업부가 들어가는) HKR(관계사제외)을 다시 계산한다. 제출 이력·조사 링크에는 팀이 적어 낸 원본이 남는다.
+  //      honsa = 본사 최상위 조직 (26년 4Q는 IT사업부를 빼고 평균 — 3Q와 같은 방식).
+  const honsa = orgs.filter((o: any) => o.division === "본사" && !o.parent_basis && !excludedFromHkr(o.basis, period));
+  const exItStates: OrgState[] = honsa
+    .filter((o: any) => o.basis !== IT_DIVISION_BASIS)
+    .map((o: any) => stateById.get(o.id)!)
+    .filter(Boolean);
+  const hkrExIt =
+    hasHkrExIt(period) && exItStates.some((s) => s.hasSubmission)
+      ? renormalizeExcludingAffiliates(weightedAvg(exItStates))
+      : null;
+  const redistributed: any[] = [];
+  if (hkrExIt) {
+    for (const o of orgs) {
+      if (!redistributesCommon(o.basis, period)) continue;
+      const st = stateById.get(o.id);
+      if (!st?.hasSubmission) continue;
+      stateById.set(o.id, { ...st, rate: redistributeCommon(st.rate, hkrExIt) as Rec });
+      redistributed.push(o);
+    }
+    if (redistributed.length > 0) {
+      applyAverageRules();
+      parentResults = computeParents();
+    }
+  }
+
+  for (const { parent, avg } of parentResults) {
+    if (!avg) {
+      track(parent.basis, () => deleteRate(supabase, { quarter: period, type: parent.type, division: parent.division, basis: parent.basis }));
       continue;
     }
-    const avg = weightedAvg(childStates);
-    // 방금 계산한 값을 상태에 반영해, 이 조직을 하위로 두는 상위 조직·HKR이 최신값으로 계산되게 한다.
-    const own = stateById.get(parent.id);
-    if (own) stateById.set(parent.id, { ...own, rate: avg, hasSubmission: true });
-
-    track(parent.basis, () => upsertRate(supabase, {
-        quarter: period,
-        type: parent.type,
-        division: parent.division,
-        basis: parent.basis,
-        rates: avg,
-        version,
-      })
+    track(parent.basis, () =>
+      upsertRate(supabase, { quarter: period, type: parent.type, division: parent.division, basis: parent.basis, rates: avg, version })
     );
   }
 
@@ -431,8 +461,7 @@ async function runAggregates(
   }
 
   // 3) HKR(관계사제외) = 본사 최상위 조직들의 가중평균 → 계열사 제외 재정규화
-  //    26년 4Q는 IT사업부를 빼고 평균한다 (3Q와 같은 방식 — lib/itUnified.ts).
-  const honsa = orgs.filter((o: any) => o.division === "본사" && !o.parent_basis && !excludedFromHkr(o.basis, period));
+  //    26년 4Q는 IT사업부를 빼고 평균한다 (위 honsa — lib/itUnified.ts).
   const honsaStates: OrgState[] = honsa.map((o: any) => stateById.get(o.id)!).filter(Boolean);
   // 상위 집계 조직과 같은 기준 — 이번 분기에 입력한 본사 조직이 하나도 없으면 기록하지 않고,
   // 남아 있던 행이 있으면 지운다 (입력한 적 없는 분기가 목록에 남지 않도록).
@@ -446,21 +475,13 @@ async function runAggregates(
 
   // 3-1) 27년 BP: IT사업부만 뺀 HKR을 따로 하나 더 남긴다 (lib/itUnified.ts의 HKR_EX_IT_BASIS).
   const exItKey = { quarter: period, type: "리소스배부율", division: "본사", basis: HKR_EX_IT_BASIS };
-  const exItStates: OrgState[] = honsa
-    .filter((o: any) => o.basis !== IT_DIVISION_BASIS)
-    .map((o: any) => stateById.get(o.id)!)
-    .filter(Boolean);
-  if (hasHkrExIt(period) && exItStates.some((s) => s.hasSubmission)) {
-    const hkrExIt = renormalizeExcludingAffiliates(weightedAvg(exItStates));
+  if (hkrExIt) {
     track(HKR_EX_IT_BASIS, () => upsertRate(supabase, { ...exItKey, rates: hkrExIt, version }));
 
-    // 3-2) PM팀·Infra팀의 Humax(공통) 몫을 HKR(관계사,IT제외) 비율로 다시 나눠 싣는다 (lib/itUnified.ts).
+    // 3-2) 재배부한 PM팀·Infra팀 값을 운영 표에 싣는다 (위 1-1에서 계산).
     //      제출할 때 팀 값이 그대로 한 번 실리고, 곧이어 도는 이 재계산이 재배부한 값으로 덮는다.
-    for (const o of orgs) {
-      if (!redistributesCommon(o.basis, period)) continue;
-      const st = stateById.get(o.id);
-      if (!st?.hasSubmission) continue;
-      const rates = redistributeCommon(st.rate, hkrExIt) as Rec;
+    for (const o of redistributed) {
+      const rates = stateById.get(o.id)!.rate;
       track(`${o.basis} 공통 재배부`, () =>
         upsertRate(supabase, { quarter: period, type: o.type, division: o.division, basis: o.basis, rates, version })
       );

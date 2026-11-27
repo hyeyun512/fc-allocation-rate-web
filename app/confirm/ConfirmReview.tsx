@@ -130,15 +130,19 @@ function headcountForOrg(c: OrgReviewData): number {
  * 사업총괄대표처럼 다른 조직 값을 따라가는 자리는 배부율을 원본 조직(사업그룹장)에서 가져오고
  * 인원수는 1명으로 센다 — 실제로 한 사람이 앉는 자리라 평균에서 빠지면 안 된다.
  */
+/** 제출값을 평균에 넣기 전에 바꾸는 규칙 (27년 BP PM팀·Infra팀 공통 재배부). 없으면 그대로. */
+type RecAdjust = (c: OrgReviewData, rec: Record<TargetKey, number>, period: string) => Record<TargetKey, number>;
+
 function effectiveChild(
   c: OrgReviewData,
   siblings: OrgReviewData[],
-  period: string
+  period: string,
+  adjust?: RecAdjust
 ): { rec: Record<TargetKey, number>; weight: number } {
   // 그룹 평균 자리(IT사업대표·Staff(IT))는 같은 그룹의 나머지 팀 중 입력한 팀들의 인원수 가중평균 (서버 autoAggregate와 같은 식).
   if (averagedGroupOf(c.org.basis)) {
     const src = siblings.filter((s) => !isDerivedOrg(s.org.basis) && s.hasSubmission);
-    const eff = src.map((s) => effectiveChild(s, siblings, period));
+    const eff = src.map((s) => effectiveChild(s, siblings, period, adjust));
     const totalW = eff.reduce((a, e) => a + e.weight, 0);
     const avg = {} as Record<TargetKey, number>;
     TARGETS.forEach((t) => {
@@ -150,8 +154,11 @@ function effectiveChild(
   }
   const srcBasis = mirrorSourceOf(c.org.basis);
   const from = srcBasis ? siblings.find((s) => s.org.basis === srcBasis) ?? c : c;
+  // 운영 이력값은 이미 재배부된 값이라 제출값에만 adjust를 건다.
   const rec = from.hasSubmission
-    ? from.rollup
+    ? adjust
+      ? adjust(from, from.rollup, period)
+      : from.rollup
     : from.rateHistory.find((h) => h.quarter === period)?.rates ?? toNumRec(emptyRates());
   return { rec, weight: headcountForOrg(c) };
 }
@@ -190,10 +197,10 @@ function sumOrgWeightsForQuarter(items: OrgReviewData[], quarter: string): numbe
 // 상위 집계 조직(예: 경영지원실)의 값 = 하위 조직들(예: 재무팀, Staff(경영지원))의 인원수 가중평균.
 // 하위 값이 100%에서 미세하게 벗어나 있으면 평균도 벗어나므로 100%로 맞춰서 돌려준다
 // (서버의 lib/autoAggregate weightedAvg와 같은 값이어야 화면과 저장값이 어긋나지 않는다).
-function weightedAvgFromChildren(children: OrgReviewData[], period: string): RateMap {
+function weightedAvgFromChildren(children: OrgReviewData[], period: string, adjust?: RecAdjust): RateMap {
   const r = emptyRates();
   if (children.length === 0) return r;
-  const eff = children.map((c) => effectiveChild(c, children, period));
+  const eff = children.map((c) => effectiveChild(c, children, period, adjust));
   const totalW = eff.reduce((a, e) => a + e.weight, 0);
   // 아무 조직도 인원수를 적지 않았으면 가중치를 못 쓰므로 균등 평균으로 물러난다.
   const useWeights = totalW > 0;
@@ -431,9 +438,15 @@ function ParentOrgDetail({
   /** 기간별 HKR(관계사,IT제외) — PM팀·Infra팀 공통 재배부에 쓴다 (27년 BP). */
   hkrExIt?: Record<string, Record<TargetKey, number>>;
 }) {
+  // 27년 BP IT사업부: PM팀·Infra팀 공통을 HKR(관계사,IT제외) 비율로 재배부한 값으로 평균한다 (서버 재계산과 같은 식).
+  const adjust: RecAdjust | undefined =
+    entryData[0]?.item.org.basis === IT_DIVISION_BASIS
+      ? (c, rec, period) =>
+          redistributesCommon(c.org.basis, period) && hkrExIt[period] ? redistributeCommon(rec, hkrExIt[period]) : rec
+      : undefined;
   // 기간 수는 라운드가 정하고 화면을 여는 동안 바뀌지 않으므로, 훅을 기간마다 한 번씩 불러도 순서가 고정된다.
   const entries = entryData.map(({ period, item }) => {
-    const computed = weightedAvgFromChildren(item.children, period);
+    const computed = weightedAvgFromChildren(item.children, period, adjust);
     const computedHeadcount = sumOrgWeights(item.children, period);
     const total = totalOf(computed);
     // eslint-disable-next-line react-hooks/rules-of-hooks
@@ -477,10 +490,11 @@ function ParentOrgDetail({
           e.item.children
             .filter((c) => redistributesCommon(c.org.basis, e.period))
             .flatMap((c) => {
-              const hkr = hkrExIt[e.period];
-              const hist = c.rateHistory.find((h) => h.quarter === e.period)?.rates;
-              const rec = c.hasSubmission ? (hkr ? redistributeCommon(c.rollup, hkr) : null) : hist ?? null;
-              return rec ? [{ period: e.period, basis: c.org.basis, rec, headcount: headcountForOrg(c) || null }] : [];
+              if (!c.hasSubmission || !hkrExIt[e.period]) return [];
+              const rec = redistributeCommon(c.rollup, hkrExIt[e.period]);
+              const commonPct = Math.round((Number(c.rollup.humax_common) || 0) * 1000) / 10;
+              const note = `원본 공통 ${commonPct}%`;
+              return [{ period: e.period, basis: c.org.basis, rec, headcount: headcountForOrg(c) || null, note }];
             })
         )
       : [];
@@ -578,7 +592,7 @@ function ParentOrgDetail({
           </div>
           <div className="tbl-scroll" style={{ marginBottom: 8 }}>
             <table className="rate-tbl">
-              <RateTableHead />
+              <RateTableHead withNote />
               <tbody>
                 {redistRows.map((r) => (
                   <ReadOnlyRateRow
@@ -587,6 +601,8 @@ function ParentOrgDetail({
                     period={r.period}
                     rec={r.rec}
                     headcount={r.headcount}
+                    withNote
+                    note={r.note}
                   />
                 ))}
               </tbody>
@@ -596,7 +612,8 @@ function ParentOrgDetail({
             ※ {Array.from(new Set(redistRows.map((r) => r.period))).join(", ")} {COMMON_REDIST_ORGS.join("·")}이 Humax(공통)에 둔
             비율은 {HKR_EX_IT_BASIS}의 STB·EVCS(국내)·EVCS(해외)·Humax(공통) 비율로 다시 나눠 운영 allocation_rate에 반영합니다
             (IT 등 나머지 비율은 그대로). 예) 공통 10% × HKR(관계사,IT제외) EVCS(해외) 52.1% → EVCS(해외)에 5.2% 추가.
-            아래 개별 입력표는 팀이 적어 낸 원래 값이며, 그 값을 저장하면 위 재배부 값도 자동으로 다시 계산됩니다.
+            관리자가 운영 화면에서 재배부하는 항목이라, 조사 링크와 아래 개별 입력표에는 팀이 제출한 원본이 그대로 남습니다.
+            맨 위 IT사업부와 IT사업대표·Staff(IT)는 재배부한 PM팀·Infra팀 값으로 평균합니다.
           </div>
         </>
       )}
@@ -616,7 +633,7 @@ function ParentOrgDetail({
                 const self = e.item.children.find((x) => x.org.id === c.org.id);
                 return {
                   period: e.period,
-                  rec: self ? effectiveChild(self, e.item.children, e.period).rec : null,
+                  rec: self ? effectiveChild(self, e.item.children, e.period, adjust).rec : null,
                   headcount: derivedHeadcountOf(c.org.basis),
                 };
               })}
