@@ -3,7 +3,7 @@ import { latestByPerson, computeRollup, countedPersonRows, SubmissionRow } from 
 import { ensureFixedRates } from "./fixedRates";
 import { isOrgActiveIn } from "./orgLifespan";
 import { keepsTeamRates } from "./confirmRate";
-import { forcesItRate, excludedFromHkr, itOnlyRates } from "./itUnified";
+import { forcesItRate, excludedFromHkr, itOnlyRates, HKR_EX_IT_BASIS, hasHkrExIt, IT_DIVISION_BASIS } from "./itUnified";
 import {
   EVCS_AVERAGE_ORGS,
   EvcsAverage,
@@ -433,6 +433,19 @@ async function runAggregates(
     track("HKR(관계사제외)", () => upsertRate(supabase, { ...hkrKey, rates: hkr, version }));
   } else {
     track("HKR(관계사제외) 정리", () => deleteRate(supabase, hkrKey));
+  }
+
+  // 3-1) 27년 BP: IT사업부만 뺀 HKR을 따로 하나 더 남긴다 (lib/itUnified.ts의 HKR_EX_IT_BASIS).
+  const exItKey = { quarter: period, type: "리소스배부율", division: "본사", basis: HKR_EX_IT_BASIS };
+  const exItStates: OrgState[] = honsa
+    .filter((o: any) => o.basis !== IT_DIVISION_BASIS)
+    .map((o: any) => stateById.get(o.id)!)
+    .filter(Boolean);
+  if (hasHkrExIt(period) && exItStates.some((s) => s.hasSubmission)) {
+    const hkrExIt = renormalizeExcludingAffiliates(weightedAvg(exItStates));
+    track(HKR_EX_IT_BASIS, () => upsertRate(supabase, { ...exItKey, rates: hkrExIt, version }));
+  } else {
+    track(`${HKR_EX_IT_BASIS} 정리`, () => deleteRate(supabase, exItKey));
   }
 
   // 4) 건물(분당) — EVCS 몫을 EVCS리소스평균으로 나누므로, 그 다섯 조직 값이 바뀌면 함께 다시 계산한다.

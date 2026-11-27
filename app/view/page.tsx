@@ -1,4 +1,5 @@
 import { keepsTeamRates } from "@/lib/confirmRate";
+import { HKR_EX_IT_BASIS } from "@/lib/itUnified";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { sortQuarters } from "@/lib/quarter";
 import AllocationView, { AllocRateRow } from "./AllocationView";
@@ -29,6 +30,7 @@ export default async function AdminViewPage() {
   );
   // HKR은 조직 마스터에 없는 자동계산 항목이지만 선택 목록에는 들어 있다.
   selectableBases.add("HKR(관계사제외)");
+  selectableBases.add(HKR_EX_IT_BASIS);
 
   const allRows = ((rows ?? []) as AllocRateRow[]).filter(
     (r) =>

@@ -39,3 +39,14 @@ export function itOnlyRates(): Record<TargetKey, number> {
   TARGETS.forEach((t) => (r[t.key] = t.key === "it" ? 1 : 0));
   return r;
 }
+
+/**
+ * 27년 BP는 HKR(관계사제외)을 IT사업부 포함으로 두고, IT사업부만 뺀 같은 방식의 배부율을 하나 더 만든다
+ * (사용자 지시 2026-11-27). 본사 최상위 조직 인원수 가중평균 → 계열사 제외 재정규화, 단 IT사업부는 평균에서 뺀다.
+ */
+export const HKR_EX_IT_BASIS = "HKR(관계사, IT 제외)";
+export const HKR_EX_IT_QUARTERS = ["2027-BP"];
+
+export function hasHkrExIt(period: string): boolean {
+  return HKR_EX_IT_QUARTERS.includes(period);
+}

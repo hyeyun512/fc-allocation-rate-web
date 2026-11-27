@@ -1,7 +1,7 @@
 "use client";
 
-import { excludedFromHkr, isItUnifiedIn } from "@/lib/itUnified";
-import { useRef, useState } from "react";
+import { excludedFromHkr, isItUnifiedIn, hasHkrExIt, HKR_EX_IT_BASIS, IT_DIVISION_BASIS } from "@/lib/itUnified";
+import { Fragment, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   TARGETS,
@@ -597,6 +597,13 @@ function HkrAutoPanel({
       confirmed: history.some((h) => h.quarter === r.period),
     };
   });
+  // 27년 BP는 IT사업부만 뺀 HKR을 한 줄 더 보여준다 (서버 재계산이 HKR_EX_IT_BASIS로 저장).
+  const exItEntries = rounds
+    .filter((r) => hasHkrExIt(r.period))
+    .map((r) => {
+      const orgs = r.honsaOrgs.filter((c) => c.org.basis !== IT_DIVISION_BASIS);
+      return { period: r.period, computed: computeHkr(orgs, r.period), headcount: sumOrgWeights(orgs, r.period) };
+    });
   const quarterOrder = quarterOrderWith(pastHistory.map((h) => h.quarter), periods);
   // 지난 분기 표는 이력 값으로만 그리므로 어느 기간의 조직 목록을 써도 같다 — 첫 기간 것을 쓴다.
   const baseHonsa = rounds[0].honsaOrgs;
@@ -648,8 +655,19 @@ function HkrAutoPanel({
           <tbody>
             {quarterOrder.map((q) => {
               const e = entries.find((x) => x.period === q);
+              const exIt = exItEntries.find((x) => x.period === q);
               return e ? (
-                <ReadOnlyRateRow key={q} label={q} period={q} rec={toNumRec(e.computed)} headcount={e.computedHeadcount} />
+                <Fragment key={q}>
+                  <ReadOnlyRateRow label={q} period={q} rec={toNumRec(e.computed)} headcount={e.computedHeadcount} />
+                  {exIt && (
+                    <ReadOnlyRateRow
+                      label={`${q} (IT 제외)`}
+                      period={q}
+                      rec={toNumRec(exIt.computed)}
+                      headcount={exIt.headcount}
+                    />
+                  )}
+                </Fragment>
               ) : (
                 <ReadOnlyRateRow
                   key={q}
@@ -670,6 +688,13 @@ function HkrAutoPanel({
             ⚠ {e.period} 합계가 100%가 아닙니다 — 본사 조직 입력을 확인해주세요.
           </div>
         ))}
+      {exItEntries.map((x) => (
+        <div key={`exit-${x.period}`} className="field-hint" style={{ marginBottom: 12 }}>
+          ※ {x.period} (IT 제외): 위 {x.period} HKR과 같은 방식(본사 최상위 조직 인원수 가중평균 → 계열사 제외 재정규화)으로
+          계산하되 IT사업부만 평균에서 뺀 배부율입니다. 운영 allocation_rate에는 배부기준 &apos;{HKR_EX_IT_BASIS}&apos;로 따로
+          저장되며, 기존 {x.period} HKR(관계사제외)은 IT사업부 포함 그대로 유지됩니다.
+        </div>
+      ))}
 
       {/* 분기마다 별도 표로 나눈다 — 한 표에 여러 분기 값이 섞이면 무엇으로 계산됐는지 알 수 없다. */}
       {quarterOrder.map((q) => {
