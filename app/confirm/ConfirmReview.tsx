@@ -604,7 +604,8 @@ function ParentOrgDetail({
       {/* 하위 조직 상자는 연한 바탕 + 왼쪽 색 막대로 상위(집계) 조직 패널과 구분한다 (globals.css의 .child-orgs). */}
       <div className="child-orgs" style={{ display: "flex", flexDirection: "column", gap: 16 }}>
         {/* 자동 계산 자리(IT사업대표·Staff(IT))도 다른 팀과 같은 자리에 같은 모양으로 보여준다 — 입력칸 없이 회색 상자(사용자 지시). */}
-        {leaderFirst([...editableChildren, ...averagedChildren]).map((c) =>
+        {/* Staff(IT) 회색 상자는 따로 보일 필요가 없어 뺀다 (사용자 지시 2026-11-27). 계산·운영 표 반영은 그대로. */}
+        {leaderFirst([...editableChildren, ...averagedChildren.filter((c) => c.org.basis !== "Staff(IT)")]).map((c) =>
           averagedGroupOf(c.org.basis) ? (
             <DerivedOrgDetail
               key={c.org.id}
