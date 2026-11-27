@@ -587,33 +587,12 @@ function ParentOrgDetail({
 
       {redistRows.length > 0 && (
         <>
-          <div className="panel-sub" style={{ fontWeight: 700, color: "#1a202c", margin: "20px 0 8px" }}>
-            ■ Humax(공통) 재배부 후 운영 반영값 ({COMMON_REDIST_ORGS.join("·")})
-          </div>
-          <div className="tbl-scroll" style={{ marginBottom: 8 }}>
-            <table className="rate-tbl">
-              <RateTableHead withNote />
-              <tbody>
-                {redistRows.map((r) => (
-                  <ReadOnlyRateRow
-                    key={`${r.period}-${r.basis}`}
-                    label={`${r.period} ${r.basis}`}
-                    period={r.period}
-                    rec={r.rec}
-                    headcount={r.headcount}
-                    withNote
-                    note={r.note}
-                    notePlain
-                  />
-                ))}
-              </tbody>
-            </table>
-          </div>
           <div className="field-hint" style={{ marginBottom: 12 }}>
             ※ {Array.from(new Set(redistRows.map((r) => r.period))).join(", ")} {COMMON_REDIST_ORGS.join("·")}이 Humax(공통)에 둔
             비율은 {HKR_EX_IT_BASIS}의 STB·EVCS(국내)·EVCS(해외)·Humax(공통) 비율로 다시 나눠 운영 allocation_rate에 반영합니다
             (IT 등 나머지 비율은 그대로). 예) 공통 10% × HKR(관계사,IT제외) EVCS(해외) 52.1% → EVCS(해외)에 5.2% 추가.
-            관리자가 운영 화면에서 재배부하는 항목이라, 조사 링크와 아래 개별 입력표에는 팀이 제출한 원본이 그대로 남습니다.
+            관리자가 운영 화면에서 재배부하는 항목이라 아래 팀 표에는 재배부한 값을 보이고 코멘트 칸에 원본 공통 비율을 적습니다.
+            조사 링크와 &apos;재수정&apos; 입력칸에는 팀이 제출한 원본이 그대로 남습니다.
             맨 위 IT사업부와 IT사업대표·Staff(IT)는 재배부한 PM팀·Infra팀 값으로 평균합니다.
           </div>
         </>
@@ -647,6 +626,7 @@ function ParentOrgDetail({
                 .map((e) => ({ period: e.period, item: e.item.children.find((x) => x.org.id === c.org.id) }))
                 .filter((x): x is ReviewEntryData => !!x.item)}
               version={version}
+              hkrExIt={hkrExIt}
             />
           )
         )}
@@ -1045,7 +1025,16 @@ type OrgReviewEntry = ReturnType<typeof useOrgReviewEntry>;
  * 두 기간을 함께 검토하면 지난 분기 이력은 한 번만 보이고, 그 아래에 기간마다 입력(또는 반영된 값) 행이 붙는다.
  * 저장은 하나다 — 열려 있는 기간 중 값이 있는 기간을 모두 저장한다 (기간마다 /api/confirm을 한 번씩).
  */
-function OrgDetail({ entries: entryData, version }: { entries: ReviewEntryData[]; version: string }) {
+function OrgDetail({
+  entries: entryData,
+  version,
+  hkrExIt = {},
+}: {
+  entries: ReviewEntryData[];
+  version: string;
+  /** 기간별 HKR(관계사,IT제외) — 27년 BP PM팀·Infra팀은 공통을 재배부한 값으로 보인다. */
+  hkrExIt?: Record<string, Record<TargetKey, number>>;
+}) {
   // 기간 수는 라운드가 정하고 화면을 여는 동안 바뀌지 않으므로, 훅을 기간마다 한 번씩 불러도 순서가 고정된다.
   // eslint-disable-next-line react-hooks/rules-of-hooks
   const entries: OrgReviewEntry[] = entryData.map((e) => useOrgReviewEntry({ item: e.item, period: e.period, version }));
@@ -1219,12 +1208,16 @@ function OrgDetail({ entries: entryData, version }: { entries: ReviewEntryData[]
         />
       );
     }
+    // 27년 BP PM팀·Infra팀: 공통을 HKR(관계사,IT제외) 비율로 재배부한 운영 반영값을 보이고, 코멘트 칸에 원본 공통 비율을 적는다.
+    const raw = toNumRec(e.computedOrgRates);
+    const redist = redistributesCommon(item.org.basis, e.period) && hkrExIt[e.period] && (Number(raw.humax_common) || 0) > 0;
     return (
       <ReadOnlyRateRow
         key={e.period}
         label={e.period}
         period={e.period}
-        rec={toNumRec(e.computedOrgRates)}
+        rec={redist ? redistributeCommon(raw, hkrExIt[e.period]) : raw}
+        noteLead={redist ? `원본 공통 ${Math.round((Number(raw.humax_common) || 0) * 1000) / 10}%` : null}
         headcount={e.currentOrgHeadcount}
         baseline={bb(e) && !usesPersonTable ? bb(e)!.orgRates : undefined}
         baselineHeadcount={bb(e)?.headcount ?? null}

@@ -548,12 +548,12 @@ export function ReadOnlyRateRow({
   lang = "ko",
   baseline,
   baselineHeadcount,
-  notePlain,
+  noteLead,
 }: {
   label: string;
   rec: Record<TargetKey, number>;
-  /** 코멘트를 (i) 아이콘 대신 글자로 바로 보여준다 (짧은 안내용). */
-  notePlain?: boolean;
+  /** 코멘트 칸 앞에 글자로 바로 보이는 짧은 안내 (예: "원본 공통 10%"). 기존 코멘트는 그 옆 (i)로 남는다. */
+  noteLead?: string | null;
   /** 이 행의 기간 — 그 기간에 배부 대상이 아닌 열을 빈칸으로 둔다. */
   period?: string;
   headcount?: number | null;
@@ -609,10 +609,11 @@ export function ReadOnlyRateRow({
               placeholder={s.colComment}
               label="코멘트"
             />
-          ) : notePlain ? (
-            note && <span style={{ whiteSpace: "nowrap", fontSize: 12, color: "#4a5568" }}>{note}</span>
           ) : (
-            note && <NoteTip text={note} />
+            <>
+              {noteLead && <span style={{ whiteSpace: "nowrap", fontSize: 12, color: "#4a5568", marginRight: 4 }}>{noteLead}</span>}
+              {note && <NoteTip text={note} />}
+            </>
           )}
         </td>
       )}
