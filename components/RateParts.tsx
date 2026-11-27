@@ -548,9 +548,12 @@ export function ReadOnlyRateRow({
   lang = "ko",
   baseline,
   baselineHeadcount,
+  notePlain,
 }: {
   label: string;
   rec: Record<TargetKey, number>;
+  /** 코멘트를 (i) 아이콘 대신 글자로 바로 보여준다 (짧은 안내용). */
+  notePlain?: boolean;
   /** 이 행의 기간 — 그 기간에 배부 대상이 아닌 열을 빈칸으로 둔다. */
   period?: string;
   headcount?: number | null;
@@ -606,6 +609,8 @@ export function ReadOnlyRateRow({
               placeholder={s.colComment}
               label="코멘트"
             />
+          ) : notePlain ? (
+            note && <span style={{ whiteSpace: "nowrap", fontSize: 12, color: "#4a5568" }}>{note}</span>
           ) : (
             note && <NoteTip text={note} />
           )}

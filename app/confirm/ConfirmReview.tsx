@@ -603,6 +603,7 @@ function ParentOrgDetail({
                     headcount={r.headcount}
                     withNote
                     note={r.note}
+                    notePlain
                   />
                 ))}
               </tbody>
