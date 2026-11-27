@@ -3,7 +3,16 @@ import { latestByPerson, computeRollup, countedPersonRows, SubmissionRow } from 
 import { ensureFixedRates } from "./fixedRates";
 import { isOrgActiveIn } from "./orgLifespan";
 import { keepsTeamRates } from "./confirmRate";
-import { forcesItRate, excludedFromHkr, itOnlyRates, HKR_EX_IT_BASIS, hasHkrExIt, IT_DIVISION_BASIS } from "./itUnified";
+import {
+  forcesItRate,
+  excludedFromHkr,
+  itOnlyRates,
+  HKR_EX_IT_BASIS,
+  hasHkrExIt,
+  IT_DIVISION_BASIS,
+  redistributesCommon,
+  redistributeCommon,
+} from "./itUnified";
 import {
   EVCS_AVERAGE_ORGS,
   EvcsAverage,
@@ -444,6 +453,18 @@ async function runAggregates(
   if (hasHkrExIt(period) && exItStates.some((s) => s.hasSubmission)) {
     const hkrExIt = renormalizeExcludingAffiliates(weightedAvg(exItStates));
     track(HKR_EX_IT_BASIS, () => upsertRate(supabase, { ...exItKey, rates: hkrExIt, version }));
+
+    // 3-2) PM팀·Infra팀의 Humax(공통) 몫을 HKR(관계사,IT제외) 비율로 다시 나눠 싣는다 (lib/itUnified.ts).
+    //      제출할 때 팀 값이 그대로 한 번 실리고, 곧이어 도는 이 재계산이 재배부한 값으로 덮는다.
+    for (const o of orgs) {
+      if (!redistributesCommon(o.basis, period)) continue;
+      const st = stateById.get(o.id);
+      if (!st?.hasSubmission) continue;
+      const rates = redistributeCommon(st.rate, hkrExIt) as Rec;
+      track(`${o.basis} 공통 재배부`, () =>
+        upsertRate(supabase, { quarter: period, type: o.type, division: o.division, basis: o.basis, rates, version })
+      );
+    }
   } else {
     track(`${HKR_EX_IT_BASIS} 정리`, () => deleteRate(supabase, exItKey));
   }

@@ -50,3 +50,31 @@ export const HKR_EX_IT_QUARTERS = ["2027-BP"];
 export function hasHkrExIt(period: string): boolean {
   return HKR_EX_IT_QUARTERS.includes(period);
 }
+
+/**
+ * 27년 BP: PM팀·Infra팀이 Humax(공통)에 둔 몫을 HKR(관계사,IT제외) 비율로 STB·EVCS(국내)·EVCS(해외)·Humax(공통)에
+ * 다시 나눈다 (사용자 지시 2026-11-27). 다른 대상(IT 등)은 그대로 둔다.
+ * 예) PM팀 IT 90% · 공통 10%, HKR(관계사,IT제외) STB 2.6% · EVCS국내 12.9% · EVCS해외 52.1% · 공통 32.4%
+ *     → IT 90% · STB 0.26% · EVCS국내 1.29% · EVCS해외 5.21% · 공통 3.24%
+ * 운영 표에는 재배부한 값이 실리고, 제출 이력에는 팀이 적어 낸 값이 그대로 남는다.
+ */
+export const COMMON_REDIST_ORGS = ["PM팀", "Infra팀"];
+export const COMMON_REDIST_QUARTERS = ["2027-BP"];
+export const COMMON_REDIST_KEYS: TargetKey[] = ["stb", "evcs_domestic", "evcs_overseas", "humax_common"];
+
+export function redistributesCommon(basis: string, period: string): boolean {
+  return COMMON_REDIST_QUARTERS.includes(period) && COMMON_REDIST_ORGS.includes(basis);
+}
+
+/** rate의 Humax(공통) 몫을 hkr의 STB·EVCS(국내)·EVCS(해외)·공통 비율로 나눈다. hkr에 그 네 칸이 비어 있으면 그대로 돌려준다. */
+export function redistributeCommon(
+  rate: Record<TargetKey, number>,
+  hkr: Record<TargetKey, number>
+): Record<TargetKey, number> {
+  const base = COMMON_REDIST_KEYS.reduce((s, k) => s + (Number(hkr[k]) || 0), 0);
+  const common = Number(rate.humax_common) || 0;
+  if (base <= 0 || common <= 0) return { ...rate };
+  const out = { ...rate, humax_common: 0 } as Record<TargetKey, number>;
+  for (const k of COMMON_REDIST_KEYS) out[k] = (Number(out[k]) || 0) + (common * (Number(hkr[k]) || 0)) / base;
+  return out;
+}

@@ -1,6 +1,15 @@
 "use client";
 
-import { excludedFromHkr, isItUnifiedIn, hasHkrExIt, HKR_EX_IT_BASIS, IT_DIVISION_BASIS } from "@/lib/itUnified";
+import {
+  excludedFromHkr,
+  isItUnifiedIn,
+  hasHkrExIt,
+  HKR_EX_IT_BASIS,
+  IT_DIVISION_BASIS,
+  COMMON_REDIST_ORGS,
+  redistributesCommon,
+  redistributeCommon,
+} from "@/lib/itUnified";
 import { Fragment, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
@@ -412,7 +421,16 @@ function DerivedOrgDetail({
   );
 }
 
-function ParentOrgDetail({ entries: entryData, version }: { entries: ReviewEntryData[]; version: string }) {
+function ParentOrgDetail({
+  entries: entryData,
+  version,
+  hkrExIt = {},
+}: {
+  entries: ReviewEntryData[];
+  version: string;
+  /** 기간별 HKR(관계사,IT제외) — PM팀·Infra팀 공통 재배부에 쓴다 (27년 BP). */
+  hkrExIt?: Record<string, Record<TargetKey, number>>;
+}) {
   // 기간 수는 라운드가 정하고 화면을 여는 동안 바뀌지 않으므로, 훅을 기간마다 한 번씩 불러도 순서가 고정된다.
   const entries = entryData.map(({ period, item }) => {
     const computed = weightedAvgFromChildren(item.children, period);
@@ -451,6 +469,21 @@ function ParentOrgDetail({ entries: entryData, version }: { entries: ReviewEntry
   // 그룹 평균 자리(IT사업대표·Staff(IT))도 입력란을 두지 않고 각주로 계산 방식을 알린다.
   const averagedChildren = allChildren.filter((c) => averagedGroupOf(c.org.basis));
   const editableChildren = allChildren.filter((c) => !isDerivedOrg(c.org.basis));
+
+  // 27년 BP: PM팀·Infra팀 공통 재배부 결과 (서버 재계산과 같은 식). 이번에 제출한 값이 없으면 운영 이력값(이미 재배부됨)을 그대로 쓴다.
+  const redistRows =
+    item.org.basis === IT_DIVISION_BASIS
+      ? entries.flatMap((e) =>
+          e.item.children
+            .filter((c) => redistributesCommon(c.org.basis, e.period))
+            .flatMap((c) => {
+              const hkr = hkrExIt[e.period];
+              const hist = c.rateHistory.find((h) => h.quarter === e.period)?.rates;
+              const rec = c.hasSubmission ? (hkr ? redistributeCommon(c.rollup, hkr) : null) : hist ?? null;
+              return rec ? [{ period: e.period, basis: c.org.basis, rec, headcount: headcountForOrg(c) || null }] : [];
+            })
+        )
+      : [];
 
   return (
     <div className="panel">
@@ -537,6 +570,36 @@ function ParentOrgDetail({ entries: entryData, version }: { entries: ReviewEntry
         {periods.join(", ")}에 제출한 하위 조직은 그 값을, 아직 제출하지 않은 조직은 마지막 확정값을 대신 넣어 계산합니다.
         아래 하위 조직을 저장하면 이 값도 자동으로 다시 계산되어 반영됩니다. (코멘트는 입력칸에서 벗어나면 자동 저장됩니다.)
       </div>
+
+      {redistRows.length > 0 && (
+        <>
+          <div className="panel-sub" style={{ fontWeight: 700, color: "#1a202c", margin: "20px 0 8px" }}>
+            ■ Humax(공통) 재배부 후 운영 반영값 ({COMMON_REDIST_ORGS.join("·")})
+          </div>
+          <div className="tbl-scroll" style={{ marginBottom: 8 }}>
+            <table className="rate-tbl">
+              <RateTableHead />
+              <tbody>
+                {redistRows.map((r) => (
+                  <ReadOnlyRateRow
+                    key={`${r.period}-${r.basis}`}
+                    label={`${r.period} ${r.basis}`}
+                    period={r.period}
+                    rec={r.rec}
+                    headcount={r.headcount}
+                  />
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <div className="field-hint" style={{ marginBottom: 12 }}>
+            ※ {Array.from(new Set(redistRows.map((r) => r.period))).join(", ")} {COMMON_REDIST_ORGS.join("·")}이 Humax(공통)에 둔
+            비율은 {HKR_EX_IT_BASIS}의 STB·EVCS(국내)·EVCS(해외)·Humax(공통) 비율로 다시 나눠 운영 allocation_rate에 반영합니다
+            (IT 등 나머지 비율은 그대로). 예) 공통 10% × HKR(관계사,IT제외) EVCS(해외) 52.1% → EVCS(해외)에 5.2% 추가.
+            아래 개별 입력표는 팀이 적어 낸 원래 값이며, 그 값을 저장하면 위 재배부 값도 자동으로 다시 계산됩니다.
+          </div>
+        </>
+      )}
 
       <div className="panel-sub" style={{ fontWeight: 700, color: "#1a202c", margin: "20px 0 12px" }}>
         ■ 하위 조직 개별 입력 ({editableChildren.length}개)
@@ -1404,6 +1467,14 @@ export default function ConfirmReview({
     ),
   }));
 
+  // 27년 BP HKR(관계사,IT제외) — IT사업부 패널의 PM팀·Infra팀 공통 재배부에 쓴다.
+  const hkrExItByPeriod: Record<string, Record<TargetKey, number>> = {};
+  for (const r of hkrRounds.filter((x) => hasHkrExIt(x.period))) {
+    hkrExItByPeriod[r.period] = toNumRec(
+      computeHkr(r.honsaOrgs.filter((c) => c.org.basis !== IT_DIVISION_BASIS), r.period)
+    );
+  }
+
   /** 조직 하나의 기간별 반영 상태 (그 기간에 없는 조직이면 그 기간은 빠진다). */
   function statusesOf(orgId: number): { period: string; confirmed: boolean }[] {
     return rounds.flatMap((r) => {
@@ -1496,7 +1567,12 @@ export default function ConfirmReview({
 
       {selectedId === HKR_ID && <HkrAutoPanel key={roundKey} rounds={hkrRounds} history={hkrHistory} />}
       {selected && selected.children.length > 0 && (
-        <ParentOrgDetail key={`${selected.org.id}-${roundKey}`} entries={selectedEntries} version={version} />
+        <ParentOrgDetail
+          key={`${selected.org.id}-${roundKey}`}
+          entries={selectedEntries}
+          version={version}
+          hkrExIt={hkrExItByPeriod}
+        />
       )}
       {selected && selected.children.length === 0 && (
         <OrgDetail key={`${selected.org.id}-${roundKey}`} entries={selectedEntries} version={version} />

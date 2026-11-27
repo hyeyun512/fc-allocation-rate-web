@@ -7,7 +7,7 @@ import { TARGETS, toDbTargets, visibleTargets, isTargetActiveIn, inactiveTargetK
 import { isOrgActiveIn } from "@/lib/orgLifespan";
 import { fixedRatesFor } from "@/lib/fixedRates";
 import { keepsTeamRates } from "@/lib/confirmRate";
-import { forcesItRate, excludedFromHkr, itOnlyRates } from "@/lib/itUnified";
+import { forcesItRate, excludedFromHkr, itOnlyRates, redistributeCommon, redistributesCommon } from "@/lib/itUnified";
 import { averagedGroupOf, isDerivedOrg } from "@/lib/autoAggregate";
 import { leaderFirst } from "@/lib/orgOrder";
 import { roundPeriods, roundLabel, resolveSurveyPeriod, mailPeriodOf, prefillsFromEarlier, linkPeriodsFor } from "@/lib/surveyPeriods";
@@ -656,6 +656,22 @@ function runCases(): Case[] {
       excludedFromHkr("IT사업부", "2026-Q4") && !excludedFromHkr("IT사업부", "2027-BP") && !excludedFromHkr("CEO", "2026-Q4")
     )
   );
+  {
+    const z = itOnlyRates();
+    const pm = { ...z, it: 0.9, humax_common: 0.1 };
+    const hkr = { ...z, it: 0, stb: 0.026, evcs_domestic: 0.129, evcs_overseas: 0.521, humax_common: 0.324 };
+    const r = redistributeCommon(pm, hkr);
+    const near = (a: number, b: number) => Math.abs(a - b) < 1e-9;
+    c.push(
+      ok(
+        "공통재배부: 27년 BP PM팀 공통 10%를 HKR(관계사,IT제외) 비율로 나눈다",
+        near(r.it, 0.9) && near(r.stb, 0.0026) && near(r.evcs_domestic, 0.0129) && near(r.evcs_overseas, 0.0521) &&
+          near(r.humax_common, 0.0324) && near(Object.values(r).reduce((a, b) => a + b, 0), 1) &&
+          redistributesCommon("PM팀", "2027-BP") && redistributesCommon("Infra팀", "2027-BP") &&
+          !redistributesCommon("PM팀", "2026-Q4") && !redistributesCommon("ERP PI팀", "2027-BP")
+      )
+    );
+  }
   c.push(ok("mobility: 'Mobility 100%'는 BP에 없다", !fixedRatesFor("2027-BP").some((d) => d.basis === "Mobility 100%")));
   {
     const IT = { headquarters: 70, overseasCorp: 0, hMobility: 10, hEv: 10, hiparking: 0, peoplecar: 0, winercom: 0, holdings: 10, hiparkingResident: null };
